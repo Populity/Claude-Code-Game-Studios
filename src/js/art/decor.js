@@ -2409,6 +2409,19 @@
   }
 
   // ================================================================== ambient particles
+  const sporeCache = new Map();
+  /** Pre-composited spore: soft halo + bright core in one sprite (one drawImage per particle). */
+  function sporeSprite(col) {
+    let c = sporeCache.get(col);
+    if (c) return c;
+    c = mk(24, 24);
+    const g = c.getContext('2d');
+    const gr = g.createRadialGradient(12, 12, 0, 12, 12, 12);
+    gr.addColorStop(0, rgba('#ffffff', 1)); gr.addColorStop(0.14, rgba(col, 1)); gr.addColorStop(0.3, rgba(col, 0.35)); gr.addColorStop(1, rgba(col, 0));
+    g.fillStyle = gr; g.fillRect(0, 0, 24, 24);
+    sporeCache.set(col, c);
+    return c;
+  }
   function drawMotes(ctx, view, t) {
     const SPX = W + 120, SPY = H + 120;
     for (const { m, arr } of S.motes) {
@@ -2436,7 +2449,7 @@
           continue;
         }
         const a = m.alpha * (m.kind === 'sand' ? 1 : 0.55 + 0.45 * Math.sin(t * p.f + p.ph));
-        if (m.kind === 'spore') { glow(ctx, m.color, x, y, p.s * 3, a * 0.6); ctx.fillStyle = m.color; }
+        if (m.kind === 'spore') { ctx.globalAlpha = a; const r = p.s * 3; ctx.drawImage(sporeSprite(m.color), x - r, y - r, r * 2, r * 2); continue; }
         ctx.globalAlpha = a;
         if (m.kind === 'sand') ctx.fillRect(x, y, p.s * 3, p.s * 0.8);
         else ctx.fillRect(x - p.s / 2, y - p.s / 2, p.s, p.s);

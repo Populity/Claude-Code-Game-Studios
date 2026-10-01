@@ -1501,12 +1501,18 @@
   function sceneDescent(ctx, t) {
     const k = easeInOut(Math.min(t, 16) / 16);
     const bx = Math.sin(t * 7.1) * 1.6 + Math.sin(t * 13.7) * 0.9, by = Math.cos(t * 8.3) * 1.6;
-    cam(ctx, 1 + 0.03 * k, 480, 380, bx * 0.3, -14 * k, Math.sin(t * 0.4) * 0.01);
-    blit(ctx, daySky());
-    drawMoon(ctx, moonImg('dm1', 44, norm3([-0.75, 0.15, 0.6]), [250, 232, 220], 3.1), 772, 128, C.white, 0.18);
-    drawMoon(ctx, moonImg('dm2', 13, norm3([-0.7, 0.1, 0.7]), [236, 220, 240], 7.7), 640, 70, C.white, 0.1);
-    drawSpire(ctx, 680, 398, 92, 'rgba(110,60,80,0.72)', null, t, 0.7 + 0.3 * Math.sin(t * 2.2), C.cyan);
-    blit(ctx, dayGround());
+    const oy = -14 * k;
+    blit(ctx, layer('descent-back', DW, DH, (g) => {
+      g.drawImage(daySky(), 0, 0, DW, DH);
+      paintMoon(g, 772, 128, 44, norm3([-0.75, 0.15, 0.6]), [250, 232, 220], 3.1, C.white, 0.18);
+      paintMoon(g, 640, 70, 13, norm3([-0.7, 0.1, 0.7]), [236, 220, 240], 7.7, C.white, 0.1);
+      drawSpire(g, 680, 398, 92, 'rgba(110,60,80,0.72)', null, 0, 0);
+      g.drawImage(dayGround(), 0, 0, DW, DH);
+      bakeGrain(g, DW, DH, 0.1);
+    }), bx * 0.3, oy);
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    const sl = 0.7 + 0.3 * Math.sin(t * 2.2);
+    glow(ctx, 680 + bx * 0.3, 306 + oy, 22, C.cyan, 0.45 * sl); glow(ctx, 680 + bx * 0.3, 306 + oy, 5, C.white, 0.8 * sl);
     ctx.restore();
     // far clouds below drifting up slowly
     for (let i = 0; i < 6; i++) {
@@ -1514,7 +1520,7 @@
       const y = DH + 60 - fract(hash(i, 1) + t * 0.035) * (DH + 200);
       const x = hash(i, 2) * 1000 - 120;
       ctx.globalAlpha = 0.6 * sstep(-60, 80, y) * (1 - sstep(300, 420, y) * 0.5);
-      ctx.drawImage(img, x, y, 300, 90);
+      blit(ctx, img, x, y);
     }
     ctx.globalAlpha = 1;
     // speed streaks
@@ -1540,16 +1546,13 @@
     ctx.restore();
     // near clouds sweeping past the lens
     for (let i = 0; i < 4; i++) {
-      const img = cloudImg('dnear' + (i % 2), 520, 200, 410 + (i % 2), [255, 240, 225], [214, 150, 130], 70, false);
+      const img = cloudImg('dnear' + (i % 2), 760, 290, 410 + (i % 2), [255, 240, 225], [214, 150, 130], 70, false);
       const y = DH + 260 - fract(hash(i, 51) + t * 0.12) * (DH + 520);
       const x = hash(i, 52) * 900 - 280;
       ctx.globalAlpha = 0.5 * Math.sin(Math.PI * clamp01((y + 260) / (DH + 520)));
-      ctx.drawImage(img, x, y, 760, 290);
+      blit(ctx, img, x, y);
     }
     ctx.globalAlpha = 1;
-    ctx.save(); ctx.globalCompositeOperation = 'lighter';
-    glow(ctx, 160, 280, 420, [255, 210, 160], 0.14);
-    ctx.restore();
     vignette(ctx, 0.6, [60, 20, 30]);
   }
 
@@ -1564,7 +1567,10 @@
       g.globalCompositeOperation = 'source-over';
       paintStars(g, DW, 160, 919, 160, { pow: 3, size: 1, alpha: 0.5 });
       paintSkyRing(g, 380, 1000, 1100, 900, 0.14, Math.PI * 1.05, Math.PI * 1.95, 40, [255, 220, 210], 0.28);
+      paintMoon(g, 196, 112, 30, norm3([0.8, 0.1, 0.55]), [250, 220, 210], 3.1, C.rose, 0.1);
+      paintMoon(g, 300, 70, 9, norm3([0.8, 0.1, 0.55]), [230, 210, 240], 7.7);
       paintMesas(g, 372, 52, [120, 56, 70], 26);
+      drawSpire(g, 186, 372, 70, 'rgba(70,30,52,0.8)', null, 0, 0);
       paintHaze(g, 340, 400, [255, 190, 140], 0.45);
       paintDunes(g, DW, DH, { y: 392, amp: 22, seed: 7, top: [170, 86, 70], bottom: [120, 56, 56], rim: [255, 200, 150], rimA: 0.7, sunRight: true, freq: 1.4 });
       paintHaze(g, 380, 420, [255, 180, 130], 0.3);
@@ -1572,7 +1578,7 @@
     });
   }
   function duskFront() {
-    return layer('dusk-front', DW, DH, (g) => {
+    return layerAt('dusk-front', 0, 440, DW, 100, (g) => {
       paintDunes(g, DW, DH, { y: 520, amp: 60, seed: 9, top: [86, 36, 40], bottom: [30, 12, 22], rim: [255, 170, 110], rimA: 0.75, rimW: 2, shade: [20, 6, 16], shadeA: 0.4, sunRight: true, freq: 0.8 });
     });
   }
@@ -1587,11 +1593,11 @@
     let shake = ti > 0 ? Math.exp(-ti * 2.2) * 12 : 0;
     const jx = (hash(Math.floor(t * 40), 31) - 0.5) * shake, jy = (hash(Math.floor(t * 40), 32) - 0.5) * shake;
     const k = easeInOut(Math.min(t, 16) / 16);
-    cam(ctx, 1.06 - 0.05 * k, 480, 360, jx, jy);
+    cam(ctx, 1, 480, 360, jx, jy);
     blit(ctx, duskBack());
-    drawMoon(ctx, moonImg('cm1', 30, norm3([0.8, 0.1, 0.55]), [250, 220, 210], 3.1), 196, 112, C.rose, 0.1);
-    drawMoon(ctx, moonImg('cm2', 9, norm3([0.8, 0.1, 0.55]), [230, 210, 240], 7.7), 300, 70, null, 0);
-    drawSpire(ctx, 186, 372, 70, 'rgba(70,30,52,0.8)', null, t, 0.5 + 0.5 * Math.sin(t * 2.2), C.cyan);
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    glow(ctx, 186, 302, 12, C.cyan, 0.3 + 0.3 * Math.sin(t * 2.2));
+    ctx.restore();
     // incoming streak
     ctx.save(); ctx.globalCompositeOperation = 'lighter';
     if (t < T0 + 0.1) {
@@ -1621,13 +1627,13 @@
     // dust explosion: billowing puffs that expand, then settle and drift with the wind
     if (ti > 0) {
       const settleK = sstep(1.5, 8, ti), fadeK = 1 - 0.75 * sstep(3, 14, ti);
-      for (let i = 0; i < 30; i++) {
+      for (let i = 0; i < 16; i++) {
         const a = Math.PI + 0.12 + hash(i, 101) * (Math.PI - 0.24);
         const reach = (60 + hash(i, 102) * 220) * (0.6 + 0.6 * Math.abs(Math.cos(a)));
         const ex = easeOut(ti / (1.1 + hash(i, 103)));
         const x = IX + Math.cos(a) * reach * ex + ti * 9 * settleK;
         const y = IY + Math.sin(a) * reach * ex * 0.55 - ti * 4 * settleK + 10;
-        const sz = (50 + hash(i, 104) * 90) * (0.35 + 0.9 * ex + 0.06 * ti);
+        const sz = (60 + hash(i, 104) * 80) * (0.35 + 0.8 * ex + 0.04 * Math.min(ti, 12));
         ctx.globalAlpha = 0.9 * fadeK * (0.75 + 0.25 * hash(i, 105));
         ctx.drawImage(dustSprite(i % 3), x - sz, y - sz * 0.7, sz * 2, sz * 1.45);
       }
@@ -1649,7 +1655,7 @@
     ctx.restore();
     // dusk falls — the fire stays bright
     ctx.fillStyle = `rgba(6,3,12,${0.62 * sstep(4, 16, t)})`; ctx.fillRect(0, 0, DW, DH);
-    cam(ctx, 1.06 - 0.05 * k, 480, 360, jx, jy);
+    cam(ctx, 1, 480, 360, jx, jy);
     if (ti > 0) drawPodFire(ctx, t, ti, IX, IY);
     ctx.restore();
     // impact flash
@@ -1691,20 +1697,24 @@
     const k = easeInOut(Math.min(t, 16) / 16);
     let shake = 0; if (t > 0.3 && t < 2) shake = (1 - (t - 0.3) / 1.7) * 6;
     const jx = (hash(Math.floor(t * 40), 41) - 0.5) * shake, jy = (hash(Math.floor(t * 40), 42) - 0.5) * shake;
-    cam(ctx, 1.08 - 0.08 * k, TX, 300, jx, jy);
+    cam(ctx, 1, TX, 300, jx, jy - 10 * k);
     blit(ctx, layer('beacon-sky', DW, DH, (g) => {
       vfill(g, 0, DH, [[0, [4, 6, 16]], [0.5, [14, 16, 36]], [0.8, [30, 26, 50]], [1, [10, 8, 18]]]);
       paintNebula(g, 81, [{ x: 480, y: 120, sx: 400, sy: 120, r: 220, c: [40, 60, 130], a: 0.08, n: 10 }]);
       paintStars(g, DW, 330, 828, 700, { pow: 3, size: 1.3 });
+      paintMesas(g, 420, 61, [16, 14, 30], 20);
+      paintDunes(g, DW, DH, { y: 448, amp: 26, seed: 12, top: [26, 26, 46], bottom: [10, 10, 20], rim: [120, 220, 255], rimA: 0.35, freq: 1.2 });
+      paintDunes(g, DW, DH, { y: 520, amp: 50, seed: 13, top: [18, 18, 34], bottom: [6, 6, 12], rim: [120, 220, 255], rimA: 0.25, freq: 0.9 });
+      bakeGrain(g, DW, DH, 0.1);
     }));
     // storm cloud banks parting around the beam
     const cl = [[0, -1], [1, 1], [2, -1], [3, 1]];
     for (const [i, s] of cl) {
-      const img = cloudImg('storm' + i, 620, 220, 1500 + i, [70, 70, 100], [12, 12, 24], 80, false);
+      const img = cloudImg('storm' + i, 680, 240, 1500 + i, [70, 70, 100], [12, 12, 24], 80, false);
       const off = s * (40 + 380 * open) * (i < 2 ? 1 : 0.7);
       const x = (s < 0 ? -120 : 460) + off + Math.sin(t * 0.2 + i) * 6;
       const y = 30 + (i >> 1) * 70;
-      ctx.globalAlpha = 0.95; ctx.drawImage(img, x, y, 680, 240);
+      ctx.globalAlpha = 0.95; blit(ctx, img, x, y);
     }
     ctx.globalAlpha = 1;
     // beam-lit cloud undersides
@@ -1722,12 +1732,6 @@
       ctx.stroke();
     }
     ctx.restore();
-    // ground
-    blit(ctx, layer('beacon-ground', DW, DH, (g) => {
-      paintMesas(g, 420, 61, [16, 14, 30], 20);
-      paintDunes(g, DW, DH, { y: 448, amp: 26, seed: 12, top: [26, 26, 46], bottom: [10, 10, 20], rim: [120, 220, 255], rimA: 0.35, freq: 1.2 });
-      paintDunes(g, DW, DH, { y: 520, amp: 50, seed: 13, top: [18, 18, 34], bottom: [6, 6, 12], rim: [120, 220, 255], rimA: 0.25, freq: 0.9 });
-    }));
     drawSpire(ctx, TX, 470, 470 - TY, '#05060c', 'rgba(126,249,255,0.25)', t, 0.6 + 0.4 * fire, C.cyan);
     // the column of light
     ctx.save(); ctx.globalCompositeOperation = 'lighter';
@@ -1898,7 +1902,7 @@
     });
   }
   function nightGround(key, seed, rim) {
-    return layer('night-ground:' + key, DW, DH, (g) => {
+    return layerAt('night-ground:' + key, 0, 380, DW, 160, (g) => {
       paintMesas(g, 420, seed, [14, 12, 26], 22);
       paintHaze(g, 395, 440, [60, 40, 80], 0.35);
       paintDunes(g, DW, DH, { y: 446, amp: 22, seed: seed + 1, top: [34, 30, 54], bottom: [14, 12, 24], rim: rim, rimA: 0.35, freq: 1.3 });
@@ -1932,7 +1936,7 @@
     return out;
   }
   function wreckField() {
-    return layer('wreck-field', DW, DH, (g) => {
+    return layerAt('wreck-field', 0, 0, DW, 372, (g) => {
       g.imageSmoothingQuality = 'high';
       for (const w of wreckList()) {
         g.save(); g.translate(w.x, w.y); g.rotate(w.rot); g.scale(w.s, w.s * (w.flip ? -1 : 1));
@@ -1952,9 +1956,7 @@
     const p = easeInOut(Math.min(t, 20) / 20);
     const z = 1.34 - 0.34 * p;
     const fy = lerp(250, 270, p);
-    cam(ctx, 1 + (z - 1) * 0.4, 480, fy);
     blit(ctx, nightSky('wrecks', 1313));
-    ctx.restore();
     cam(ctx, z, 520, fy);
     blit(ctx, wreckField());
     // glints, nav lights, a fresh one still venting
@@ -1976,7 +1978,7 @@
     drawShip(ctx, 880 - t * 0.8, 120, 0.26, -2.6 - t * 0.008, t, { img: wreckImg(3), lights: false });
     ctx.restore();
     // ground, Spire and its (now quieter) beam
-    cam(ctx, 1 + (z - 1) * 0.5, 480, 420);
+    cam(ctx, 1, 480, 420, 0, (z - 1) * 60);
     const BX = 600, BY = 330;
     ctx.save(); ctx.globalCompositeOperation = 'lighter';
     const fl = 0.85 + 0.15 * Math.sin(t * 9);
@@ -1992,11 +1994,11 @@
     // the clearing: last storm wisps dissolving outward
     const clear = 1 - sstep(0, 6, t);
     if (clear > 0) {
-      for (let i = 0; i < 6; i++) {
-        const img = cloudImg('storm' + (i % 4), 620, 220, 1500 + (i % 4), [70, 70, 100], [12, 12, 24], 80, false);
+      for (let i = 0; i < 4; i++) {
+        const img = cloudImg('storm' + (i % 4), 680, 240, 1500 + (i % 4), [70, 70, 100], [12, 12, 24], 80, false);
         const s = i % 2 ? 1 : -1;
         ctx.globalAlpha = clear * 0.9;
-        ctx.drawImage(img, (s < 0 ? -200 : 400) + s * 300 * (1 - clear), -40 + (i >> 1) * 80, 760, 260);
+        blit(ctx, img, (s < 0 ? -200 : 400) + s * 300 * (1 - clear), -40 + (i >> 1) * 80);
       }
       ctx.globalAlpha = 1;
     }
