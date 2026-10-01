@@ -83,7 +83,7 @@
   const CACHE_BUDGET_PX = 26e6; // ~100 MB of RGBA; least-recently-used layers are dropped beyond it
 
   /** Cache resolution multiplier: follows the canvas scale, quantised, capped for memory. */
-  function res() { const s = G.renderScale || 1; return Math.min(1.5, Math.max(1, Math.round(s * 4) / 4)); }
+  function res() { const s = G.renderScale || 1; return Math.min(2, Math.max(0.5, Math.round(s * 1000) / 1000)); }
 
   /**
    * Lazily paint + memoise an offscreen layer of logical size w×h.
@@ -112,7 +112,44 @@
     }
     return c;
   }
-  const blit = (ctx, c, x, y) => ctx.drawImage(c, x || 0, y || 0, c.lw, c.lh);
+  /**
+   * Layer with an origin: the builder paints in scene coordinates but only the
+   * (x0, y0, w, h) box is stored — cropping transparent areas saves fill-rate.
+   */
+  function layerAt(key, x0, y0, w, h, build, scale) {
+    const c = layer(key + '@' + x0 + ',' + y0, w, h, (g, ww, hh, cv) => { g.translate(-x0, -y0); build(g, ww, hh, cv); }, scale);
+    c.ox = x0; c.oy = y0;
+    return c;
+  }
+  /**
+   * Draw a cached layer at its logical position (+dx, dy). When the current transform is
+   * an unrotated, unscaled-relative mapping (layer pixels == device pixels) the draw is
+   * snapped to whole device pixels — the 1:1 blit is ~10× cheaper than a resampled one on
+   * software canvases. Otherwise it resamples (nearest when `nearest`, for soft layers).
+   */
+  function blit(ctx, c, dx, dy, nearest) {
+    const x = (c.ox || 0) + (dx || 0), y = (c.oy || 0) + (dy || 0);
+    const m = ctx.getTransform();
+    if (m.b === 0 && m.c === 0 && Math.abs(m.a * c.lw - c.width) < 0.6 && Math.abs(m.d * c.lh - c.height) < 0.6) {
+      ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.drawImage(c, Math.round(m.e + m.a * x), Math.round(m.f + m.d * y));
+      ctx.restore();
+      return;
+    }
+    if (nearest) { ctx.save(); ctx.imageSmoothingEnabled = false; ctx.drawImage(c, x, y, c.lw, c.lh); ctx.restore(); }
+    else ctx.drawImage(c, x, y, c.lw, c.lh);
+  }
+  /** Bake a static film-grain tooth into a layer (zero per-frame cost). */
+  function bakeGrain(g, w, h, a) {
+    const n = layer('grain', 160, 160, (gg, ww, hh, c) => {
+      const id = gg.createImageData(c.width, c.height), d = id.data, r = G.rng(991);
+      for (let i = 0; i < d.length; i += 4) { const v = 128 + (r() + r() - 1) * 120; d[i] = d[i + 1] = d[i + 2] = v; d[i + 3] = 255; }
+      gg.putImageData(id, 0, 0);
+    }, 1);
+    g.save(); g.globalAlpha = a || 0.12; g.globalCompositeOperation = 'soft-light';
+    g.fillStyle = g.createPattern(n, 'repeat'); g.fillRect(0, 0, w + 2000, h + 2000);
+    g.restore();
+  }
 
   // ════════════════════════════════════════════════════════════════════ palette
   const C = {
@@ -334,31 +371,25 @@
   }
 
   // ════════════════════════════════════════════════════════════════════ post
-  function vignette(ctx, a, col) {
-    const key = col ? col.join(',') : '0,0,0';
-    const v = layer('vig:' + key, 128, 128, (g) => {
-      const c = col || [0, 0, 0];
-      const gr = g.createRadialGradient(64, 64, 26, 64, 64, 92);
+  /**
+   * Cinematic vignette (device-resolution cache → 1:1 blit). `col` tints it (alarm red).
+   * `inner` (0..1) also darkens a soft central pool — used to keep menus readable.
+   */
+  function vignette(ctx, a, col, inner) {
+    const c = col || [0, 0, 0];
+    const v = layer('vig:' + c.join(',') + ':' + (inner || 0), DW, DH, (g) => {
+      g.save(); g.scale(DW / 256, DH / 256);
+      const gr = g.createRadialGradient(128, 128, 52, 128, 128, 184);
       gr.addColorStop(0, rgba(c, 0)); gr.addColorStop(0.55, rgba(c, 0.35)); gr.addColorStop(1, rgba(c, 1));
-      g.fillStyle = gr; g.fillRect(0, 0, 128, 128);
-    }, 1);
-    ctx.globalAlpha = a; ctx.drawImage(v, 0, 0, DW, DH); ctx.globalAlpha = 1;
-  }
-  let grainState = null;
-  /** Animated film grain (soft-light noise) — the painterly "tooth" over everything. */
-  function grain(ctx, t, a) {
-    const img = layer('grain', 160, 160, (g, w, h, c) => {
-      const id = g.createImageData(c.width, c.height), d = id.data, r = G.rng(991);
-      for (let i = 0; i < d.length; i += 4) { const v = 128 + (r() + r() - 1) * 120; d[i] = d[i + 1] = d[i + 2] = v; d[i + 3] = 255; }
-      g.putImageData(id, 0, 0);
-    }, 1);
-    if (!grainState || grainState.ctx !== ctx || grainState.img !== img) grainState = { ctx, img, pat: ctx.createPattern(img, 'repeat') };
-    const f = Math.floor(t * 18);
-    const ox = (hash(f, 3) * 160) | 0, oy = (hash(f, 7) * 160) | 0;
-    ctx.save();
-    ctx.globalAlpha = a; ctx.globalCompositeOperation = 'soft-light';
-    ctx.translate(-ox, -oy); ctx.fillStyle = grainState.pat; ctx.fillRect(ox, oy, DW, DH);
-    ctx.restore();
+      g.fillStyle = gr; g.fillRect(0, 0, 256, 256);
+      g.restore();
+      if (inner) {
+        const ig = g.createRadialGradient(480, 290, 30, 480, 290, 430);
+        ig.addColorStop(0, rgba(c, inner)); ig.addColorStop(0.6, rgba(c, inner * 0.55)); ig.addColorStop(1, rgba(c, 0));
+        g.fillStyle = ig; g.fillRect(0, 0, DW, DH);
+      }
+    });
+    ctx.globalAlpha = a; blit(ctx, v); ctx.globalAlpha = 1;
   }
   /** Camera: zoom z about focus (fx, fy), plus offset/roll. Pair with ctx.restore(). */
   function cam(ctx, z, fx, fy, ox, oy, rot) {
@@ -1038,7 +1069,6 @@
     ctx.restore();
     bokeh(ctx, t, 10, -40, 0, C.ice, 0.06, 9);
     vignette(ctx, 0.8);
-    grain(ctx, t, 0.35);
   }
 
   /** signal — bridge viewport, a rhythmic signal pulsing out of an uncharted system. */
@@ -1101,7 +1131,6 @@
     ctx.restore();
     drawSignalHud(ctx, t, SX, SY, flash);
     vignette(ctx, 0.6);
-    grain(ctx, t, 0.35);
   }
   function paintBridge(g) {
     const dark = '#06080d';
@@ -1257,7 +1286,6 @@
     ctx.fillStyle = `rgba(150,8,16,${0.08 + 0.12 * pulse})`; ctx.fillRect(0, 0, DW, DH);
     vignette(ctx, 0.55 + 0.35 * pulse, [90, 0, 6]);
     vignette(ctx, 0.5);
-    grain(ctx, t, 0.4);
   }
   /** Infalling star-streaks along a tilted disk (lifecycle-based so any t is safe). */
   function drawSwirl(ctx, t, AX, AY) {
@@ -1405,7 +1433,6 @@
     }
     ctx.restore();
     vignette(ctx, 0.7);
-    grain(ctx, t, 0.35);
   }
 
   /** ship_breakup — the hull splits in the upper atmosphere; cryo section falls alone. */
@@ -1469,7 +1496,6 @@
     glow(ctx, 900, 420, 500, [255, 160, 100], 0.15);
     ctx.restore();
     vignette(ctx, 0.75);
-    grain(ctx, t, 0.35);
   }
 
   /** Tessera's daytime sky with ring arch, moons, horizon (cached; used by descent). */
@@ -1551,7 +1577,6 @@
     glow(ctx, 160, 280, 420, [255, 210, 160], 0.14);
     ctx.restore();
     vignette(ctx, 0.6, [60, 20, 30]);
-    grain(ctx, t, 0.3);
   }
 
   /** Dusk desert used by crash (cached). */
@@ -1656,7 +1681,6 @@
     // impact flash
     if (ti > 0 && ti < 1) { ctx.fillStyle = `rgba(255,236,210,${0.9 * Math.exp(-ti * 5)})`; ctx.fillRect(0, 0, DW, DH); }
     vignette(ctx, 0.75);
-    grain(ctx, t, 0.35);
   }
   function drawPodFire(ctx, t, ti, IX, IY) {
     const vis = sstep(0.8, 2.6, ti);
@@ -1774,7 +1798,6 @@
     // initial flash
     if (t > 0.3 && t < 1.5) { ctx.fillStyle = `rgba(210,250,255,${0.6 * Math.exp(-(t - 0.3) * 4)})`; ctx.fillRect(0, 0, DW, DH); }
     vignette(ctx, 0.75);
-    grain(ctx, t, 0.35);
   }
 
   /** voice — near-black; a violet glitch silhouette of a woman with short hair forms from static. */
@@ -2004,7 +2027,6 @@
       ctx.globalAlpha = 1;
     }
     vignette(ctx, 0.7);
-    grain(ctx, t, 0.3);
   }
 
   /** credits — calm desert night; ring, moons, the dim Spire, drifting sand. Loops. */

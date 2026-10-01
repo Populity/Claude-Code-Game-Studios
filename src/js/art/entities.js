@@ -269,7 +269,7 @@
     e._po = o;
     if (moving && every(e, '_dustT', t, 0.16)) G.fx && G.fx.dust(x + w / 2, y + h, 2);
     // ease with a little overshoot as it arrives fully open
-    let k = easeInOutCubic(o) + 0.06 * Math.sin(clamp01((o - 0.82) / 0.18) * Math.PI);
+    let k = lerp(easeInOutCubic(o), easeOutCubic(o), 0.4) + 0.06 * Math.sin(clamp01((o - 0.82) / 0.18) * Math.PI);
     const jx = moving ? (hash1(Math.floor(t * 45)) - 0.5) * 1.6 : 0;
     const jy = moving ? (hash1(Math.floor(t * 45) + 7) - 0.5) * 0.8 : 0;
     const status = o >= 0.6 ? C.ok : moving ? (Math.sin(t * 22) > 0 ? C.warn : '#7a4a20') : C.bad;
@@ -321,7 +321,9 @@
     const bot = sprite(key + ':b', pw, ph, 0, paintPanel(false));
     const d = (half + 6) * k;
     // frame recess behind the panels
-    ctx.fillStyle = '#07090d'; ctx.fillRect(px, py, pw, ph);
+    // translucent recess: the opening must read as passable (background visible)
+    ctx.fillStyle = 'rgba(4,6,10,0.22)'; ctx.fillRect(px, py, pw, ph);
+    if (k > 0.02) { shadow(ctx, x + w / 2, py + half - d + 2, pw * 0.7, 4, 0.5); shadow(ctx, x + w / 2, py + half + d - 2, pw * 0.7, 4, 0.35); }
     if (k > 0.02) {
       // light leaking through the opening gap
       const gy = py + half;
@@ -384,7 +386,8 @@
     const col = powered || o > 0.5 ? P.glyph : C.bad;
     const pulse = powered ? 0.85 + 0.15 * Math.sin(t * 9) : 0.45 + 0.25 * Math.sin(t * 2.6);
     const d = ph * k;
-    ctx.fillStyle = '#06070a'; ctx.fillRect(px, py, pw, ph);
+    ctx.fillStyle = 'rgba(4,5,8,0.22)'; ctx.fillRect(px, py, pw, ph);
+    if (k > 0.02 && k < 0.999) shadow(ctx, x + w / 2, py + ph - d + 2, pw * 0.8, 4, 0.55);
     ctx.save();
     ctx.beginPath(); ctx.rect(px, py, pw, ph); ctx.clip();
     const sx = px + jx, sy = py - d + jy;
@@ -478,6 +481,13 @@
       const a = (0.35 + 0.55 * solid) * fl;
       if (L > 0.5) {
         const segs = [[x + anc, L], [x + w - anc - L, L]];
+        // opaque core so the walkable plane reads on bright backgrounds too
+        for (const [sx, sw] of segs) {
+          ctx.fillStyle = rgba('#0b2a33', 0.35 + 0.3 * solid); ctx.fillRect(sx, y + 1, sw, 6.5);
+          ctx.fillStyle = rgba(col, (0.3 + 0.4 * solid) * fl); ctx.fillRect(sx, y + 1, sw, 6);
+          ctx.fillStyle = rgba('#ffffff', (0.55 + 0.45 * solid) * fl); ctx.fillRect(sx, y, sw, 1.4);
+          ctx.fillStyle = rgba('#03141a', 0.5 * a); ctx.fillRect(sx, y + 7, sw, 0.8);
+        }
         ctx.save();
         ctx.globalCompositeOperation = 'lighter';
         for (const [sx, sw] of segs) {
@@ -604,7 +614,7 @@
     blit(ctx, top, x + 3, y + sink);
     if (!P.human) {
       ctx.globalCompositeOperation = 'lighter';
-      ctx.fillStyle = rgba(e.active ? P.glyph : P.glyph2, e.active ? 0.95 : 0.35 + 0.15 * Math.sin(t * 2.5));
+      ctx.fillStyle = rgba(e.active ? P.glyph : P.glyph2, e.active ? 0.95 : 0.6 + 0.2 * Math.sin(t * 2.5));
       ctx.fillRect(x + 6, y + sink + 1.6, w - 12, 1);
       ctx.globalCompositeOperation = 'source-over';
     }
@@ -617,9 +627,9 @@
     // LED row
     for (let lx = x + 6; lx <= x + w - 6; lx += 6) {
       ctx.fillStyle = e.active ? col : rgba(col, 0.55 + 0.3 * Math.sin(t * 3 + lx * 0.2));
-      ctx.fillRect(lx - 0.8, y + 4, 1.6, 1.2);
+      ctx.fillRect(lx - 1.1, y + 3.8, 2.2, 1.6);
     }
-    glow(ctx, x + w / 2, y + 4.6, w * 0.6, 4, col, e.active ? 0.6 : 0.2);
+    glow(ctx, x + w / 2, y + 4.6, w * 0.6, 5, col, e.active ? 0.8 : 0.4 + 0.1 * Math.sin(t * 3));
   }
 
   // ======================================================================================
@@ -880,8 +890,9 @@
     ctx.lineWidth = 1;
     ctx.beginPath(); ctx.ellipse(cx, floor - 0.5, 11, 2.6, 0, 0, TAU); ctx.stroke();
     ctx.restore();
-    glow(ctx, cx, floor, 14, 4, C.item, 0.35);
-    glow(ctx, cx, cy, 20, 20, C.item, 0.32 + 0.1 * Math.sin(t * 3 + seed));
+    glow(ctx, cx, floor, 16, 5, C.item, 0.6);
+    glow(ctx, cx, cy, 22, 22, C.item, 0.6 + 0.15 * Math.sin(t * 3 + seed));
+    glow(ctx, cx, cy, 9, 9, '#fff4c0', 0.35);
     const rot = e.item === 'gear' ? t * 0.8 : Math.sin(t * 1.3 + seed) * 0.12;
     drawItem(ctx, e.item, cx, cy, 18, null, rot);
     // glint
@@ -1141,16 +1152,18 @@
         g.fillStyle = 'rgba(0,0,0,0.35)'; g.fillRect(6, h / 2 - 4, w - 12, 8);
         hazard(g, 7, h / 2 - 3, w - 14, 6, 3);
         g.fillStyle = 'rgba(230,236,244,0.75)'; g.font = '700 4.5px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
-        g.fillText(P.wreck ? 'K-7 · 03' : 'K-7 · 12', w / 2, 8);
+        g.fillText('K-7', w / 2, 8.5);
         if (P.wreck) { const r = G.rng(71); for (let i = 0; i < 6; i++) { g.fillStyle = rgba(P.rust, 0.3 + r() * 0.35); g.fillRect(r() * w, r() * h, 1 + r() * 3, 2 + r() * 6); } }
       } else {
-        bevel(g, 0, 0, w, h, P.stone, 2, 0.3);
+        g.fillStyle = 'rgba(6,8,10,0.6)'; G.roundRect(g, -0.8, -0.8, w + 1.6, h + 1.6, 2.5); g.fill();
+        bevel(g, 0, 0, w, h, P.stone, 2, 0.35);
         grain(g, 0, 0, w, h, G.hash(P.key + 'crate'));
         // chiselled bevel
         g.fillStyle = 'rgba(255,255,255,0.12)'; g.fillRect(3, 3, w - 6, 1); g.fillRect(3, 3, 1, h - 6);
         g.fillStyle = 'rgba(0,0,0,0.3)'; g.fillRect(3, h - 4, w - 6, 1); g.fillRect(w - 4, 3, 1, h - 6);
         // carved glyph square
-        g.strokeStyle = 'rgba(0,0,0,0.45)'; g.lineWidth = 1; g.strokeRect(9.5, 9.5, w - 19, h - 19);
+        g.strokeStyle = 'rgba(0,0,0,0.55)'; g.lineWidth = 1.4; g.strokeRect(8.5, 8.5, w - 17, h - 17);
+        g.strokeStyle = 'rgba(255,255,255,0.18)'; g.lineWidth = 0.8; g.strokeRect(9.8, 9.8, w - 17, h - 17);
         g.fillStyle = 'rgba(0,0,0,0.45)'; rune(g, w / 2, h / 2, 3, G.hash(P.key) % 50);
         // bronze corner bands
         g.fillStyle = P.bronze[1]; g.fillRect(0, 5, w, 1.6); g.fillRect(0, h - 7, w, 1.6);
@@ -1171,7 +1184,7 @@
     if (glyphLit) {
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
-      ctx.strokeStyle = rgba(P.glyph, 0.22 + 0.1 * Math.sin(t * 1.5 + x)); ctx.fillStyle = ctx.strokeStyle; ctx.lineWidth = 0.9;
+      ctx.strokeStyle = rgba(P.glyph, 0.45 + 0.15 * Math.sin(t * 1.5 + x)); ctx.fillStyle = ctx.strokeStyle; ctx.lineWidth = 1;
       rune(ctx, x + w / 2, y + h / 2, 3, G.hash(P.key) % 50);
       ctx.restore();
     }
@@ -1641,7 +1654,8 @@
     const cy = e.y + 8 + Math.sin(t * 2.4 + seed) * 2.2 - easeOutCubic(k) * 18;
     const s = 1 + easeOutBack(k) * 0.7;
     const a = 1 - k * k;
-    glow(ctx, cx, cy, 16 * s, 16 * s, C.shard, (0.4 + 0.12 * Math.sin(t * 3 + seed)) * a + k * 0.6);
+    glow(ctx, cx, cy, 18 * s, 18 * s, C.shard, (0.75 + 0.2 * Math.sin(t * 3 + seed)) * a + k * 0.6);
+    glow(ctx, cx, cy, 7 * s, 9 * s, '#ffffff', 0.3 * a);
     if (!e.collected) shadow(ctx, cx + 1, e.y + 24, 5, 1.6, 0.25);
     ctx.save();
     ctx.globalAlpha = a;
@@ -1696,7 +1710,7 @@
     const col = C.jump;
     const fire = ft < 0.45 ? 1 - ft / 0.45 : 0;
     shadow(ctx, cx + 2, floor, 17, 2.5, 0.45);
-    glow(ctx, cx, top, 20, 7 + fire * 10, col, 0.3 + 0.12 * Math.sin(t * 4) + fire * 0.9);
+    glow(ctx, cx, top, 22, 8 + fire * 10, col, 0.5 + 0.15 * Math.sin(t * 4) + fire * 0.9);
     // springs
     ctx.strokeStyle = P.human ? '#c9d1dc' : P.bronze[0]; ctx.lineWidth = 1.3; ctx.lineJoin = 'round';
     for (const sx of [x + 9, x + 23]) {
@@ -1719,11 +1733,11 @@
     ctx.globalCompositeOperation = 'lighter';
     ctx.fillStyle = rgba(col, 0.6 + 0.4 * fire + 0.15 * Math.sin(t * 4)); ctx.fillRect(x + 5, top + 1.5, 22, 1);
     // chevrons
-    ctx.lineWidth = 1.6; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.lineWidth = 2; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
     for (let i = 0; i < 3; i++) {
       let a, yy;
       if (fire > 0) { a = fire * (1 - i * 0.2); yy = top - 6 - i * 6 - (1 - fire) * 40; }
-      else { const ph = ((t * 1.2 - i * 0.33) % 1 + 1) % 1; a = Math.sin(ph * Math.PI) * 0.45; yy = top - 4 - ph * 16; }
+      else { const ph = ((t * 1.2 - i * 0.33) % 1 + 1) % 1; a = Math.sin(ph * Math.PI) * 0.75; yy = top - 4 - ph * 16; }
       ctx.strokeStyle = rgba(col, a);
       ctx.beginPath(); ctx.moveTo(cx - 5, yy + 3); ctx.lineTo(cx, yy); ctx.lineTo(cx + 5, yy + 3); ctx.stroke();
     }

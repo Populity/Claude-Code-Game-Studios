@@ -49,7 +49,7 @@
     belt: ['#2e2219', '#5a432f', '#8f6e4c'],
     metal: '#d3dae6',
     warmRim: 'rgba(255,236,205,0.85)',
-    coolRim: 'rgba(110,165,255,0.55)',
+    coolRim: 'rgba(110,165,255,0.42)', hairRim: 'rgba(255,165,120,0.9)', hairCool: 'rgba(120,150,230,0.35)',
   };
 
   // ------------------------------------------------------------------ small helpers
@@ -122,18 +122,17 @@
    * Fill a closed shape with outline, then clip to it and lay a warm key rim on light-facing edges
    * and a cool ambient rim on the opposite edges. `inner` (optional) draws details inside the clip.
    */
-  function shape(ctx, path, fill, lx, ly, inner, outlineW) {
+  function shape(ctx, path, fill, lx, ly, inner, outlineW, warm, cool) {
     path(ctx);
-    ctx.lineWidth = outlineW || 1.5; ctx.strokeStyle = C.line; ctx.lineJoin = 'round';
-    ctx.stroke();
+    if (outlineW !== 0) { ctx.lineWidth = outlineW || 1.5; ctx.strokeStyle = C.line; ctx.lineJoin = 'round'; ctx.stroke(); }
     ctx.fillStyle = fill; ctx.fill();
     ctx.save();
     path(ctx); ctx.clip();
     if (inner) inner(ctx);
-    ctx.save(); ctx.translate(-lx * 0.9, -ly * 0.9); path(ctx);
-    ctx.lineWidth = 1.1; ctx.strokeStyle = C.warmRim; ctx.globalAlpha = 0.55; ctx.stroke(); ctx.restore();
-    ctx.save(); ctx.translate(lx * 0.8, ly * 0.8); path(ctx);
-    ctx.lineWidth = 1.0; ctx.strokeStyle = C.coolRim; ctx.stroke(); ctx.restore();
+    ctx.save(); ctx.translate(-lx * 0.75, -ly * 0.75); path(ctx);
+    ctx.lineWidth = 0.75; ctx.strokeStyle = warm || C.warmRim; ctx.globalAlpha = 0.6; ctx.stroke(); ctx.restore();
+    ctx.save(); ctx.translate(lx * 0.6, ly * 0.6); path(ctx);
+    ctx.lineWidth = 0.65; ctx.strokeStyle = cool || C.coolRim; ctx.stroke(); ctx.restore();
     ctx.restore();
   }
 
@@ -289,7 +288,7 @@
     { ax: 5.0, ay: -2.4, dx: 0.3, dy: 1, n: 2, len: 1.9, w: 1.1, front: true },     // fringe tip
     { ax: -0.7, ay: 1.4, dx: -0.1, dy: 1, n: 2, len: 2.0, w: 1.2, front: true },    // lock before the ear
     { ax: -4.6, ay: 4.0, dx: -0.5, dy: 1, n: 3, len: 1.9, w: 1.4, front: false },   // nape
-    { ax: -2.6, ay: -6.4, dx: -0.85, dy: -0.4, n: 2, len: 1.8, w: 1.0, front: false }, // crown tuft
+    { ax: -3.6, ay: -5.6, dx: -0.92, dy: 0.25, n: 2, len: 1.6, w: 1.0, front: false }, // crown tuft
   ];
   const LANYARD = { ax: -4.2, ay: -1.0, n: 3, len: 2.3 };   // torso frame (belt D-ring)
 
@@ -380,7 +379,7 @@
         T.ntoe = lerp(0.35, 0.95, e); T.ftoe = lerp(0.5, 1.0, e);
         T.hy = HIP_Y - 0.4;
         T.lean = 0.04 + 0.08 * sp * fwd;
-        nh = [lerp(5.4, 3.0, e), lerp(2.0, -9.6, e)];
+        nh = [lerp(5.6, 8.6, e), lerp(2.0, -3.4, e)];
         fh = [lerp(-5.0, -3.6, e), lerp(3.2, 8.6, e)];
         T.tilt = -0.07 * e; T.lookY = -0.7 * e; T.lookX = 0.6;
         T.mouth = 0.35 * e; T.brow = 0.4 * e;
@@ -389,8 +388,8 @@
       case 'fall': {
         const f = clamp(p.vy / 900, 0, 1);
         const fl = Math.sin(tt * 11) * f;
-        nh = [4.4 + fl * 0.8, -6.4 - 2.6 * f + fl * 0.6];
-        fh = [-3.6 - fl * 0.6, -5.6 - 2.6 * f - fl * 0.5];
+        nh = [8.8 + fl * 0.6, 1.5 - 1.8 * f + fl * 0.8];
+        fh = [-7.4 - fl * 0.6, -1.4 - 2.6 * f - fl * 0.7];
         T.nfx = 2.6 + Math.sin(tt * 8) * f * 0.8; T.nfy = lerp(-5.0, -1.6, f);
         T.ffx = -2.2 - Math.sin(tt * 8 + 1) * f * 0.6; T.ffy = lerp(-3.4, -0.6, f);
         T.ntoe = 0.5; T.ftoe = 0.55;
@@ -651,10 +650,10 @@
   }
 
   function drawGlove(ctx, h, pal) {
-    ctx.beginPath(); ctx.arc(h.x, h.y, 1.95, 0, TAU);
-    ctx.lineWidth = 1.3; ctx.strokeStyle = C.line; ctx.stroke();
+    ctx.beginPath(); ctx.arc(h.x, h.y, 1.65, 0, TAU);
+    ctx.lineWidth = 1.2; ctx.strokeStyle = C.line; ctx.stroke();
     ctx.fillStyle = pal[1]; ctx.fill();
-    ctx.beginPath(); ctx.arc(h.x - 0.45, h.y - 0.5, 0.8, 0, TAU); ctx.fillStyle = pal[2]; ctx.fill();
+    ctx.beginPath(); ctx.arc(h.x - 0.4, h.y - 0.45, 0.65, 0, TAU); ctx.fillStyle = pal[2]; ctx.fill();
   }
 
   function drawStrand(ctx, M, idx, xf) {
@@ -777,7 +776,7 @@
       q.lineTo(-1.0, 0.4);
       q.closePath();
     };
-    shape(ctx, backPath, hg, hlx, hly, null, 1.5);
+    shape(ctx, backPath, hg, hlx, hly, null, 1.5, C.hairRim, C.hairCool);
 
     // face
     const facePath = (q) => {
@@ -853,7 +852,13 @@
       q.beginPath(); q.arc(0.6, -1.0, 5.4, Math.PI * 1.08, Math.PI * 1.42); q.stroke();
       q.strokeStyle = 'rgba(30,8,6,0.5)'; q.lineWidth = 0.5;
       q.beginPath(); q.moveTo(0.4, -6.4); q.quadraticCurveTo(2.6, -5, 3.6, -3.4); q.stroke();
-    }, 1.4);
+    }, 0, C.hairRim, C.hairCool);
+    // outline only the fringe edge so front and back hair read as one mass
+    ctx.strokeStyle = C.line; ctx.lineWidth = 0.8; ctx.lineJoin = 'round';
+    ctx.beginPath(); ctx.moveTo(4.6, -5.9);
+    ctx.bezierCurveTo(5.6, -5.2, 6.4 + lagX * 0.2, -3.7 + lagY * 0.2, 5.9 + lagX * 0.3, -1.6 + lagY * 0.3);
+    ctx.quadraticCurveTo(4.8, -3.0, 3.7, -3.2); ctx.quadraticCurveTo(2.7, -2.3, 1.7, -3.1);
+    ctx.quadraticCurveTo(0.6, -3.7, -0.2, -2.1); ctx.quadraticCurveTo(-0.5, 0.6, -0.8 + lagX * 0.3, 2.4); ctx.stroke();
     ctx.restore();
   }
 
@@ -890,15 +895,15 @@
     const x = S.shN.x + 1.4 * c + 0.4 * s, y = S.shN.y + 1.4 * s - 0.4 * c;
     ctx.save(); ctx.translate(x, y); ctx.rotate(P.lean);
     // faint forward cone
-    const cg = ctx.createLinearGradient(0, 0, 28, 0);
-    cg.addColorStop(0, 'rgba(255,236,180,0.16)'); cg.addColorStop(1, 'rgba(255,236,180,0)');
+    const cg = ctx.createLinearGradient(0, 0, 22, 0);
+    cg.addColorStop(0, 'rgba(255,236,180,0.07)'); cg.addColorStop(1, 'rgba(255,236,180,0)');
     ctx.globalCompositeOperation = 'lighter';
-    ctx.fillStyle = cg; ctx.beginPath(); ctx.moveTo(1.6, -0.6); ctx.lineTo(28, -7); ctx.lineTo(28, 9); ctx.lineTo(1.6, 0.8); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = cg; ctx.beginPath(); ctx.moveTo(1.6, -0.6); ctx.lineTo(22, -5); ctx.lineTo(22, 7); ctx.lineTo(1.6, 0.8); ctx.closePath(); ctx.fill();
     ctx.globalCompositeOperation = 'source-over';
     ctx.fillStyle = C.line; G.roundRect(ctx, -1.6, -1.6, 3.6, 3.0, 0.8); ctx.fill();
     ctx.fillStyle = C.gra[2]; G.roundRect(ctx, -1.1, -1.1, 2.6, 2.0, 0.5); ctx.fill();
     ctx.fillStyle = '#fff6d8'; ctx.beginPath(); ctx.arc(1.4, -0.1, 0.75, 0, TAU); ctx.fill();
-    glow(ctx, 1.6, -0.1, 6.5, '255,232,170', 0.5 + 0.06 * Math.sin(t * 9.0));
+    glow(ctx, 1.6, -0.1, 5.5, '255,232,170', 0.4 + 0.06 * Math.sin(t * 9.0));
     ctx.restore();
   }
 
@@ -1134,11 +1139,11 @@
       if (rotorA > 0.05) {
         glow(ctx, 0, 9, 10, col, 0.22 * rotorA);
         ctx.globalCompositeOperation = 'lighter';
-        ctx.strokeStyle = `rgba(${col},${0.35 * rotorA})`; ctx.lineWidth = 1;
-        for (let i = -1; i <= 1; i += 2) {
-          const len = 3 + hash1(Math.floor(t * 24) + i) * 3;
-          ctx.beginPath(); ctx.moveTo(i * 2.2, 7.6); ctx.lineTo(i * 2.6, 7.6 + len); ctx.stroke();
-        }
+        const fl = 0.75 + 0.25 * hash1(Math.floor(t * 30));
+        const jg = ctx.createLinearGradient(0, 6.5, 0, 6.5 + 6 * fl);
+        jg.addColorStop(0, `rgba(${col},${0.55 * rotorA})`); jg.addColorStop(1, `rgba(${col},0)`);
+        ctx.fillStyle = jg;
+        ctx.beginPath(); ctx.moveTo(-2.2, 6.6); ctx.lineTo(2.2, 6.6); ctx.lineTo(0, 6.6 + 6 * fl); ctx.closePath(); ctx.fill();
         ctx.globalCompositeOperation = 'source-over';
       }
       ctx.rotate(tilt + bodyRot);
@@ -1212,7 +1217,7 @@
       });
       if (d.state !== 'broken') {
         ctx.globalCompositeOperation = 'lighter';
-        ctx.strokeStyle = `rgba(${col},0.35)`; ctx.lineWidth = 3;
+        ctx.strokeStyle = `rgba(${col},0.25)`; ctx.lineWidth = 2.6;
         ctx.beginPath(); ctx.ellipse(0, 1.6, R + 0.3, 2.6, 0, 0.15, Math.PI - 0.15); ctx.stroke();
         ctx.globalCompositeOperation = 'source-over';
       }

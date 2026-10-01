@@ -17,7 +17,7 @@
   const T = G.TILE, W = G.VIEW_W, H = G.VIEW_H;
   const Pal = G.Art.Palette;
   const TAU = Math.PI * 2;
-  const CHUNK = 16, CPX = CHUNK * T, PAD = 2, MAX_CHUNKS = 16;
+  const CHUNK = 8, CPX = CHUNK * T, PAD = 2, MAX_CHUNKS = 40; // 8x8-tile chunks: empty areas never allocate
   const SW = 1536; // background strip width (logical px), all layer content wraps at SW
   let TC = null;   // G.TILE_CODES (resolved lazily; level.js defines it)
 
@@ -1092,6 +1092,14 @@
   }
 
   // ================================================================== backgrounds
+  /** Resample a canvas to scale q, remembering its logical size in _lw/_lh. */
+  function downscale(c, q) {
+    const o = mk(c.width * q, c.height * q), g = o.getContext('2d');
+    g.imageSmoothingQuality = 'high';
+    g.drawImage(c, 0, 0, o.width, o.height);
+    o._lw = c.width; o._lh = c.height;
+    return o;
+  }
   function strip(h) { const c = mk(SW, h); return { c, g: c.getContext('2d'), h }; }
   /** Call fn(x) and its wrapped twins so content tiles seamlessly at SW. */
   function wrapX(x, half, fn) { fn(x); if (x + half > SW) fn(x - SW); if (x - half < 0) fn(x + SW); }
@@ -2050,7 +2058,10 @@
       buildScatter(level);
       buildCrumbleSprites();
       const bg = (BG[S.biome] || BG.desert)(S.pal);
-      S.sky = bg.sky; S.layers = bg.layers;
+      // store layers at reduced resolution: distant layers are soft anyway, and texture memory
+      // (not draw count) is what blows the frame budget on weak GPUs / software raster.
+      S.sky = downscale(bg.sky, 0.75);
+      S.layers = bg.layers.map((L, i) => Object.assign(L, { c: downscale(L.c, L.q || [0.5, 0.65, 0.8, 0.8][Math.min(3, i)]) }));
       buildOverlay();
       buildShafts();
       buildMotes();
@@ -2076,27 +2087,27 @@
       // sky (non-tiled, tiny parallax)
       const sx = -((view.x / maxX) * (SKY_W - W));
       const sy = -(SKY_H - H) + G.clamp(dY * 0.03, 0, SKY_H - H);
-      ctx.drawImage(S.sky, snap(sx), snap(sy));
+      ctx.drawImage(S.sky, snap(sx), snap(sy), SKY_W, SKY_H);
       if (S.biome === 'tower') drawLightningSky(ctx, t);
       for (const L of S.layers) {
-        const lw = L.c.width, lh = L.c.height;
+        const lw = L.c._lw, lh = L.c._lh;
         let x = -mod(view.x * L.fx, lw);
         x = snap(x);
         if (L.sea) {
           const hk = G.clamp(dY / 1400, 0, 1);
           const y = snap(H + 40 - hk * 300);
           if (y >= H) continue;
-          for (let xx = x; xx < W; xx += lw) ctx.drawImage(L.c, xx, y);
+          for (let xx = x; xx < W; xx += lw) ctx.drawImage(L.c, xx, y, lw, lh);
           if (y + lh < H) { ctx.fillStyle = L.below; ctx.fillRect(0, y + lh - 1, W, H - y - lh + 1); }
           continue;
         }
         if (L.tileY) {
           const y = snap(-mod(-(L.y0 + dY * L.fy), lh));
-          for (let yy = y; yy < H; yy += lh) for (let xx = x; xx < W; xx += lw) ctx.drawImage(L.c, xx, yy);
+          for (let yy = y; yy < H; yy += lh) for (let xx = x; xx < W; xx += lw) ctx.drawImage(L.c, xx, yy, lw, lh);
         } else {
           const y = snap(L.y0 + (L.topAnchor ? 0 : dY * L.fy));
           if (y < H) {
-            for (let xx = x; xx < W; xx += lw) ctx.drawImage(L.c, xx, y);
+            for (let xx = x; xx < W; xx += lw) ctx.drawImage(L.c, xx, y, lw, lh);
             if (L.below && y + lh < H) { ctx.fillStyle = L.below; ctx.fillRect(0, y + lh - 1, W, H - (y + lh) + 1); }
           }
           if (L.above && y > 0) { ctx.fillStyle = L.above; ctx.fillRect(0, 0, W, y + 1); }
@@ -2244,6 +2255,7 @@
     stats() { return { chunks: [...S.chunks.values()].filter((e) => e.c).length, scatter: S.scatter.length, anim: S.anim.length, initMs: S.initMs, cs: S.cs }; },
   };
   const P0 = () => S.pal;
+  Object.defineProperty(Decor, '_state', { value: S, enumerable: false }); // QA only
 
   function prefetch(view) {
     const t0 = performance.now();
