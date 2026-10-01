@@ -3,13 +3,13 @@
  * Carry an energy cell through a hazard loop (dying returns it), then a big 7×5 pipes terminal. Exit needs both.
  *
  * ROUTE (QA): P (sand) → hop up the tilted steps → C1 (27) cryo bay, l06_cryo → drop through the broken deck (48-50)
- * → C2 (52) hold: crumbling grating over coolant (57-59) → sparks x64/x68 alternate (period 2.0, on 0.8, offsets 0/1.0)
+ * → C2 (52) hold: crumbling grating over coolant (56-60, keep running) → sparks x64/x68 alternate (period 2.0, on 0.8, offsets 0/1.0)
  * → 4-wide coolant jump (72-75) → pass under the vertical blade x81 while it is up → C3 (89) → take the CELL (93) →
  * wall-jump up the shaft (x96 wall rows 15-20 ↔ x100 wall) → land on the x96 wall top (stand 14) → corridor going left:
  * sparks x90/x84 (period 2.2, on 0.9, alternate) and blade x79 (vertical) → socket (72): l06_orion, lift + exit power
  * → ride the lift (74) up → C4 (79) upper deck: 4-arc wave (x84..96, period 2.0, each next arc off 0.5 s later) →
  * crumbling plates (106-107) → girder (111-112, wait) → time the vertical blade x114 (it rests 0.5 s at each end) →
- * strut (116-117) → moving plate 119↔124 → C5 (130) → pipes terminal (146): l06_plan → C6 (152) → arc x158 →
+ * strut (116-117) → moving plate 118↔125 (flush with strut and deck) → C5 (130) → pipes terminal (146): l06_plan → C6 (152) → arc x158 →
  * crumbling bridge 162-165 / jump / 168-170 → l06_end → exit (185).
  * PIPES: 7×5, seeded, solvable by construction. Exit 'exit' is wired to BOTH the socket and the terminal.
  * SHARDS: (26,23) behind the storage arc x32 in the hold's dead end; (98,11) climb to the very top of the shaft;
@@ -50,7 +50,7 @@ G.registerLevel({
     '########################............................................................................##########################################################################################', // 21
     '########################............................................................................##########################################################################################', // 22
     '########################..*.........................C....................................C..........##########################################################################################', // 23
-    '########################################################~XXX~###########~~~~##################################################################################################################', // 24
+    '########################################################XXXXX###########~~~~##################################################################################################################', // 24
     '########################################################~~~~~###########~~~~##################################################################################################################', // 25
   ],
   entities: [
@@ -68,14 +68,14 @@ G.registerLevel({
     { type: 'laser', x: 84, y: 11, dir: 'down', period: 2.2, on: 0.9, offset: 1.1 },
     { type: 'saw', x: 79, y: 11, path: [[79, 11], [79, 16]], speed: 2.5, pause: 0.6 },
     { type: 'socket', x: 72, y: 16, needs: 'cell', targets: ['lift', 'exit'], onRepair: 'l06_orion', objective: 'Поднимитесь на инженерную палубу' },
-    { type: 'mplatform', id: 'lift', x: 74, y: 16, w: 3, path: [[74, 16], [74, 9]], speed: 2, pause: 1 },
+    { type: 'mplatform', id: 'lift', x: 74, y: 16, w: 3, path: [[74, 16], [74, 9]], speed: 3, pause: 1.2 },
     // E — upper deck: arc wave, broken deck over the breach, pipes terminal, exit
     { type: 'laser', x: 84, y: 3, dir: 'down', period: 2, on: 0.8, offset: 0 },
     { type: 'laser', x: 88, y: 3, dir: 'down', period: 2, on: 0.8, offset: 1.5 },
     { type: 'laser', x: 92, y: 3, dir: 'down', period: 2, on: 0.8, offset: 1 },
     { type: 'laser', x: 96, y: 3, dir: 'down', period: 2, on: 0.8, offset: 0.5 },
     { type: 'saw', x: 114, y: 4, path: [[114, 4], [114, 11]], speed: 3, pause: 0.5 },
-    { type: 'mplatform', x: 119, y: 9, w: 3, path: [[119, 9], [124, 9]], speed: 2, pause: 0.5 },
+    { type: 'mplatform', x: 118, y: 9, w: 3, path: [[118, 9], [125, 9]], speed: 2, pause: 0.6 },
     { type: 'terminal', x: 146, y: 8, targets: ['exit'], onSolve: 'l06_plan', objective: 'Шлюз открыт — к выходу', puzzle: { type: 'pipes', w: 7, h: 5, title: 'Магистраль криосекции', subtitle: 'Проведите энергию от новой ячейки к капсулам. Каждый сегмент поворачивается.' } },
     { type: 'laser', x: 158, y: 3, dir: 'down', period: 2, on: 0.8 },
     { type: 'sign', x: 182, y: 8, title: 'Аварийный шлюз', text: 'Открывается только при восстановленном питании и магистрали.' },

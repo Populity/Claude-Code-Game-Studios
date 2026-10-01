@@ -409,20 +409,21 @@
   }
 
   // ════════════════════════════════════════════════════════════════════ Tessera (planet)
-  const TEX_W = 640, TEX_H = 320, TEX_FULL = TEX_W + TEX_W / 2 + 4;
+  const TEX_W = 1024, TEX_H = 512, TEX_FULL = TEX_W + TEX_W / 2 + 4;
   function wrapCopy(d, w, full, h) {
-    for (let y = 0; y < h; y++) for (let x = w; x < full; x++) {
-      const s = (y * full + (x - w)) * 4, t = (y * full + x) * 4;
-      d[t] = d[s]; d[t + 1] = d[s + 1]; d[t + 2] = d[s + 2]; d[t + 3] = d[s + 3];
-    }
+    for (let y = 0; y < h; y++) d.copyWithin((y * full + w) * 4, (y * full) * 4, (y * full + (full - w)) * 4);
   }
-  /** Equirect-ish surface texture: amber deserts, rose highlands, canyon networks, frost caps. */
+  /**
+   * Equirect surface texture with the cloud deck baked in (one opaque pass per frame,
+   * no alpha seams): amber ergs, rose highlands, dark canyon networks, frost caps,
+   * banded wind-swept clouds.
+   */
   function planetTex() {
     return layer('tessera-tex', TEX_FULL, TEX_H, (g, w, h, c) => {
-      const [n1, n2, n3] = noises();
+      const [n1, n2, n3, n4] = noises();
       const id = g.createImageData(TEX_FULL, TEX_H), d = id.data;
-      const stops = [[0, [64, 26, 36]], [0.25, [112, 46, 54]], [0.4, [168, 82, 78]], [0.52, [206, 128, 82]],
-        [0.64, [228, 162, 96]], [0.78, [240, 198, 142]], [1, [252, 228, 192]]];
+      const stops = [[0, [58, 22, 34]], [0.22, [104, 40, 52]], [0.38, [160, 74, 74]], [0.5, [204, 122, 80]],
+        [0.62, [228, 160, 96]], [0.76, [242, 198, 140]], [1, [252, 228, 194]]];
       const pal = [];
       for (let i = 0; i < 256; i++) {
         const e = i / 255; let j = 0; while (j < stops.length - 2 && e > stops[j + 1][0]) j++;
@@ -431,15 +432,20 @@
       for (let y = 0; y < TEX_H; y++) {
         const v = y / TEX_H, lat = Math.abs(v - 0.5) * 2;
         for (let x = 0; x < TEX_W; x++) {
-          const X = (x / TEX_W) * 8, Y = v * 4;
-          const wx = fbm(n2, X, Y, 3, 8) * 2.4;
-          let e = fbm(n1, X + wx, Y + wx * 0.4, 5, 8);
-          e = clamp01((e - 0.3) / 0.42) + 0.04 * Math.sin(v * 150 + wx * 7);
-          const rid = 1 - Math.abs(2 * fbm(n3, X * 2 + wx, Y * 2, 3, 16) - 1);
+          const X = (x / TEX_W) * 16, Y = v * 8;
+          const wx = fbm(n2, X * 0.5, Y * 0.5, 2, 8) * 1.6;
+          let e = fbm(n1, X + wx, Y + wx * 0.5, 4, 16);
+          e = clamp01((e - 0.3) / 0.4) + 0.05 * Math.sin(v * 260 + wx * 9 + X * 0.6);
+          const rid = 1 - Math.abs(2 * n3(X * 2.2 + wx, Y * 2.2, 35) - 1);
           let col = pal[(clamp01(e) * 255) | 0];
-          if (rid > 0.86) col = mixc(col, [70, 30, 34], (rid - 0.86) * 4.5);
-          const pc = sstep(0.8, 0.93, lat + (wx - 1.2) * 0.06);
-          if (pc > 0) col = mixc(col, [250, 232, 214], pc * 0.9);
+          if (rid > 0.9) col = mixc(col, [64, 26, 34], (rid - 0.9) * 6);
+          const pc = sstep(0.8, 0.92, lat + (wx - 0.8) * 0.08);
+          if (pc > 0) col = mixc(col, [250, 234, 220], pc * 0.92);
+          // clouds: zonal bands with eddies
+          const wv = n2(X * 0.35 + 7, v * 6, 6);
+          const cl = fbm(n4, X * 0.8 + wv * 2.2, v * 26 + wv * 5, 4, 13);
+          const ca = sstep(0.52, 0.72, cl) * (0.5 + 0.5 * Math.sin(v * Math.PI)) * 0.9;
+          if (ca > 0) col = mixc(col, [255, 240, 230], ca);
           const i = (y * TEX_FULL + x) * 4;
           d[i] = col[0]; d[i + 1] = col[1]; d[i + 2] = col[2]; d[i + 3] = 255;
         }
@@ -448,160 +454,128 @@
       g.putImageData(id, 0, 0);
     }, 1);
   }
-  /** Banded, swirling cloud layer (alpha) — rotates faster than the surface. */
-  function cloudTex() {
-    return layer('tessera-clouds', TEX_FULL, TEX_H, (g, w, h, c) => {
-      const [, n2, , n4] = noises();
-      const id = g.createImageData(TEX_FULL, TEX_H), d = id.data;
-      for (let y = 0; y < TEX_H; y++) {
-        const v = y / TEX_H;
-        for (let x = 0; x < TEX_W; x++) {
-          const X = (x / TEX_W) * 8;
-          const wv = fbm(n2, X * 0.5 + 3, v * 3, 3, 4);
-          const cl = fbm(n4, X + wv * 1.8, v * 12 + wv * 4, 5, 8);
-          const a = sstep(0.5, 0.74, cl) * (0.55 + 0.45 * Math.sin(v * Math.PI));
-          const i = (y * TEX_FULL + x) * 4;
-          d[i] = 255; d[i + 1] = 238 - a * 10; d[i + 2] = 226 - a * 14; d[i + 3] = a * 235;
-        }
-      }
-      wrapCopy(d, TEX_W, TEX_FULL, TEX_H);
-      g.putImageData(id, 0, 0);
-    }, 1);
-  }
   /**
-   * Map an equirect texture onto a disc as a rotating sphere: N vertical slices,
+   * Map the equirect texture onto a disc as a rotating sphere: N vertical slices,
    * uniform in longitude, placed at x = cx + R·sin(φ).
    */
   function sphereMap(ctx, tex, cx, cy, R, rot, N) {
-    N = N || 44;
+    N = N || 48;
     const base = fract(rot) * TEX_W;
     const sw = TEX_W / 2 / N;
     for (let i = 0; i < N; i++) {
       const p0 = -Math.PI / 2 + (Math.PI * i) / N, p1 = p0 + Math.PI / N;
       const x0 = cx + R * Math.sin(p0), x1 = cx + R * Math.sin(p1);
       const sx = (base + sw * i) % TEX_W;
-      ctx.drawImage(tex, sx, 0, sw, TEX_H, x0, cy - R, x1 - x0 + 0.6, R * 2);
+      ctx.drawImage(tex, sx, 0, sw, TEX_H, x0, cy - R, x1 - x0 + 0.7, R * 2);
     }
   }
-  /** Per-pixel lambert + soft terminator + rose terminator scattering, as a dark overlay. */
-  function shadeImg(R, L, key) {
-    return layer('shade:' + key, R * 2, R * 2, (g, w, h, c) => {
-      const S = c.width, id = g.createImageData(S, S), d = id.data;
-      const night = [3, 2, 9], term = [120, 34, 52];
-      for (let py = 0; py < S; py++) for (let px = 0; px < S; px++) {
-        const nx = ((px + 0.5) / S) * 2 - 1, ny = ((py + 0.5) / S) * 2 - 1, d2 = nx * nx + ny * ny;
-        if (d2 >= 1) continue;
-        const nz = Math.sqrt(1 - d2);
-        const lam = nx * L[0] + ny * L[1] + nz * L[2];
-        const day = sstep(-0.1, 0.42, lam);
-        const tz = Math.exp(-Math.pow((lam - 0.02) / 0.11, 2));
-        const limb = (1 - nz) * 0.35;
-        const col = mixc(night, term, tz * 0.85);
-        const a = clamp01((1 - day) * 0.985 + limb * day + tz * 0.12);
-        const i = (py * S + px) * 4;
-        d[i] = col[0]; d[i + 1] = col[1]; d[i + 2] = col[2]; d[i + 3] = a * 255;
-      }
-      g.putImageData(id, 0, 0);
-    });
+  /** Per-pixel lambert + soft terminator + faint rose scattering, as a dark overlay. */
+  function paintShade(g, R, L, ox, oy, s) {
+    const S = Math.round(R * 2 * s), id = g.createImageData(S, S), d = id.data;
+    const night = [3, 2, 9], term = [110, 40, 60];
+    for (let py = 0; py < S; py++) for (let px = 0; px < S; px++) {
+      const nx = ((px + 0.5) / S) * 2 - 1, ny = ((py + 0.5) / S) * 2 - 1, d2 = nx * nx + ny * ny;
+      if (d2 >= 1) continue;
+      const nz = Math.sqrt(1 - d2);
+      const lam = nx * L[0] + ny * L[1] + nz * L[2];
+      const day = sstep(-0.06, 0.45, lam);
+      const tz = Math.exp(-Math.pow((lam - 0.06) / 0.1, 2));
+      const col = mixc(night, term, tz * 0.6);
+      const a = clamp01((1 - day) * 0.985 + (1 - nz) * 0.3 * day + tz * 0.06);
+      const i = (py * S + px) * 4;
+      d[i] = col[0]; d[i + 1] = col[1]; d[i + 2] = col[2]; d[i + 3] = a * 255;
+    }
+    const tmp = document.createElement('canvas'); tmp.width = S; tmp.height = S;
+    tmp.getContext('2d').putImageData(id, 0, 0);
+    g.drawImage(tmp, ox - R, oy - R, R * 2, R * 2);
   }
-  /** Additive atmosphere: thin bright limb + soft outer halo on the sunlit side. */
-  function atmoImg(R, L, key, col) {
-    const E = R * 1.32;
-    return layer('atmo:' + key, E * 2, E * 2, (g, w, h, c) => {
-      const S = c.width, id = g.createImageData(S, S), d = id.data;
-      const lx = L[0], ly = L[1], ll = Math.hypot(lx, ly) || 1;
-      for (let py = 0; py < S; py++) for (let px = 0; px < S; px++) {
-        const x = (((px + 0.5) / S) * 2 - 1) * 1.32, y = (((py + 0.5) / S) * 2 - 1) * 1.32;
-        const rho = Math.hypot(x, y);
-        const lit = clamp01(0.2 + ((x / (rho || 1)) * lx + (y / (rho || 1)) * ly) / ll * 0.95);
-        let a;
-        if (rho > 1) a = (Math.exp(-(rho - 1) / 0.028) * 0.95 + Math.exp(-(rho - 1) / 0.11) * 0.3) * lit;
-        else a = Math.pow(rho, 14) * 0.85 * lit + Math.pow(rho, 4) * 0.08 * lit;
-        const k = clamp01((rho - 0.96) * 6);
-        const cc = mixc([255, 214, 170], col, k);
-        const i = (py * S + px) * 4;
-        d[i] = cc[0]; d[i + 1] = cc[1]; d[i + 2] = cc[2]; d[i + 3] = clamp01(a) * 255;
-      }
-      g.putImageData(id, 0, 0);
-    });
+  /** Additive-looking atmosphere: thin bright limb + soft outer halo on the sunlit side. */
+  function paintAtmo(g, R, L, ox, oy, s, col) {
+    const E = R * 1.3, S = Math.round(E * 2 * s), id = g.createImageData(S, S), d = id.data;
+    const lx = L[0], ly = L[1], ll = Math.hypot(lx, ly) || 1;
+    for (let py = 0; py < S; py++) for (let px = 0; px < S; px++) {
+      const x = (((px + 0.5) / S) * 2 - 1) * 1.3, y = (((py + 0.5) / S) * 2 - 1) * 1.3;
+      const rho = Math.hypot(x, y) || 1e-6;
+      const lit = clamp01(0.12 + ((x / rho) * lx + (y / rho) * ly) / ll);
+      let a;
+      if (rho > 1) a = (Math.exp(-(rho - 1) / 0.022) * 0.9 + Math.exp(-(rho - 1) / 0.1) * 0.28) * lit;
+      else a = Math.pow(rho, 16) * 0.7 * lit + Math.pow(rho, 5) * 0.1 * lit;
+      const cc = mixc([255, 222, 186], col, clamp01((rho - 0.97) * 5));
+      const i = (py * S + px) * 4;
+      d[i] = cc[0]; d[i + 1] = cc[1]; d[i + 2] = cc[2]; d[i + 3] = clamp01(a) * 255;
+    }
+    const tmp = document.createElement('canvas'); tmp.width = S; tmp.height = S;
+    tmp.getContext('2d').putImageData(id, 0, 0);
+    g.save(); g.globalCompositeOperation = 'lighter'; g.drawImage(tmp, ox - E, oy - E, E * 2, E * 2); g.restore();
   }
-  /** Tessera's dusty ring (axis-aligned; rotated + split front/back when drawn). */
-  function ringImg(R, ratio, key) {
-    const ro = R * 2.05, ri = R * 1.3, w = ro * 2 + 8, h = ro * ratio * 2 + 8;
-    return layer('ring:' + key, w, h, (g) => {
-      const N = 110, n = noises()[1];
-      for (let i = 0; i < N; i++) {
-        const f = i / (N - 1), rad = lerp(ri, ro, f);
-        const gap = f > 0.6 && f < 0.665 ? 0.08 : 1;
-        const a = (0.15 + 0.75 * fbm(n, f * 18, 3.3, 3)) * gap * sstep(0, 0.1, f) * (1 - sstep(0.85, 1, f));
-        g.strokeStyle = rgba(mixc([246, 214, 186], [214, 150, 140], fract(f * 3.1) * 0.6), a * 0.85);
-        g.lineWidth = ((ro - ri) / N) * 1.7;
-        g.beginPath(); g.ellipse(w / 2, h / 2, rad, rad * ratio, 0, 0, TAU); g.stroke();
-      }
-    });
-  }
-  function drawRingHalf(ctx, img, cx, cy, tilt, front, alpha) {
-    ctx.save(); ctx.translate(cx, cy); ctx.rotate(tilt);
-    ctx.beginPath();
-    if (front) ctx.rect(-img.lw / 2 - 2, 0, img.lw + 4, img.lh / 2 + 4);
-    else ctx.rect(-img.lw / 2 - 2, -img.lh / 2 - 4, img.lw + 4, img.lh / 2 + 4);
-    ctx.clip();
-    ctx.globalAlpha = alpha == null ? 1 : alpha;
-    ctx.drawImage(img, -img.lw / 2, -img.lh / 2, img.lw, img.lh);
-    ctx.restore();
+  /** Dusty ring strands into g, centred at (cx, cy), rotated by tilt; half = 'back'|'front'. */
+  function paintRing(g, R, ratio, cx, cy, tilt, half, alpha) {
+    const ro = R * 2.0, ri = R * 1.32, N = 120, n = noises()[1];
+    g.save(); g.translate(cx, cy); g.rotate(tilt);
+    g.beginPath();
+    if (half === 'front') g.rect(-ro - 4, 0, ro * 2 + 8, ro); else g.rect(-ro - 4, -ro, ro * 2 + 8, ro);
+    g.clip();
+    for (let i = 0; i < N; i++) {
+      const f = i / (N - 1), rad = lerp(ri, ro, f);
+      const gap = f > 0.6 && f < 0.66 ? 0.06 : 1;
+      const a = (0.12 + 0.8 * fbm(n, f * 22, 3.3, 3)) * gap * sstep(0, 0.1, f) * (1 - sstep(0.82, 1, f));
+      g.strokeStyle = rgba(mixc([240, 212, 190], [200, 140, 136], fract(f * 3.1) * 0.6), a * alpha);
+      g.lineWidth = ((ro - ri) / N) * 1.6;
+      g.beginPath(); g.ellipse(0, 0, rad, rad * ratio, 0, 0, TAU); g.stroke();
+    }
+    g.restore();
   }
   /**
-   * The full planet: back ring half → rotating surface + clouds → shading → ring shadow
-   * → front ring half → additive atmosphere.
-   * p: {x, y, R, L, key, tilt, ratio, rot, crot, ring}
+   * The planet, split for speed: `back` (ring far half — bake into the backdrop),
+   * per-frame rotating surface, and `overlay` (shade, ring shadow, near ring half,
+   * atmosphere) cached as one layer and blitted 1:1.
+   * p: {x, y, R, L, key, tilt, ratio, rot, ringA}
    */
-  function drawTessera(ctx, p) {
-    const ring = p.ring !== false ? ringImg(p.R, p.ratio, p.key) : null;
-    if (ring) drawRingHalf(ctx, ring, p.x, p.y, p.tilt, false, 0.9);
+  function tesseraBack(g, p) { if (p.ratio) paintRing(g, p.R, p.ratio, p.x, p.y, p.tilt, 'back', (p.ringA || 1) * 0.85); }
+  function tesseraOverlay(p) {
+    const E = p.R * 2.1;
+    return layerAt('tess-ov:' + p.key, Math.floor(p.x - E), Math.floor(p.y - E), Math.ceil(E * 2), Math.ceil(E * 2), (g, w, h, c) => {
+      const s = c.width / w;
+      g.save(); g.beginPath(); g.arc(p.x, p.y, p.R, 0, TAU); g.clip();
+      if (p.ratio) {
+        g.save(); g.translate(p.x, p.y + p.R * 0.1); g.rotate(p.tilt);
+        g.strokeStyle = 'rgba(14,4,14,0.28)'; g.lineWidth = p.R * 0.26;
+        g.beginPath(); g.ellipse(0, 0, p.R * 1.62, p.R * 1.62 * p.ratio, 0, 0, Math.PI); g.stroke();
+        g.restore();
+      }
+      paintShade(g, p.R, p.L, p.x, p.y, s);
+      g.restore();
+      if (p.ratio) paintRing(g, p.R, p.ratio, p.x, p.y, p.tilt, 'front', p.ringA || 1);
+      paintAtmo(g, p.R, p.L, p.x, p.y, s, [255, 120, 136]);
+    });
+  }
+  function drawTesseraSurface(ctx, p) {
     ctx.save();
     ctx.beginPath(); ctx.arc(p.x, p.y, p.R, 0, TAU); ctx.clip();
     sphereMap(ctx, planetTex(), p.x, p.y, p.R, p.rot);
-    ctx.globalAlpha = 0.92;
-    sphereMap(ctx, cloudTex(), p.x, p.y, p.R, p.crot);
-    ctx.globalAlpha = 1;
-    if (ring) { // ring shadow cast onto the disc
-      ctx.save(); ctx.translate(p.x, p.y + p.R * 0.12); ctx.rotate(p.tilt);
-      ctx.strokeStyle = 'rgba(10,4,12,0.35)'; ctx.lineWidth = p.R * 0.3;
-      ctx.beginPath(); ctx.ellipse(0, 0, p.R * 1.62, p.R * 1.62 * p.ratio, 0, 0, Math.PI); ctx.stroke();
-      ctx.restore();
+    ctx.restore();
+  }
+  /** Cratered moon sphere lit from L (painted straight into g at x, y). */
+  function paintMoon(g, x, y, R, L, base, seed, haloC, haloA) {
+    const s = Math.max(1, res()), S = Math.ceil(R * 2 * s) + 2, id = g.createImageData(S, S), d = id.data;
+    const n = noises()[2], n2 = noises()[3], rr = (R * s), cc = S / 2;
+    for (let py = 0; py < S; py++) for (let px = 0; px < S; px++) {
+      const nx = (px + 0.5 - cc) / rr, ny = (py + 0.5 - cc) / rr, d2 = nx * nx + ny * ny;
+      if (d2 >= 1.0) continue;
+      const nz = Math.sqrt(1 - d2);
+      const m = fbm(n, nx * 2.2 + seed, ny * 2.2 + seed, 5);
+      const cr = fbm(n2, nx * 6 + seed, ny * 6, 3);
+      const alb = 0.68 + (m - 0.5) * 0.9 - sstep(0.62, 0.7, cr) * 0.18 + sstep(0.7, 0.74, cr) * 0.12;
+      const lam = nx * L[0] + ny * L[1] + nz * L[2];
+      const lit = Math.pow(clamp01(lam), 0.8) * 1.08 + 0.035;
+      const edge = clamp01((1 - Math.sqrt(d2)) * rr * 0.9);
+      const i = (py * S + px) * 4;
+      d[i] = base[0] * alb * lit; d[i + 1] = base[1] * alb * lit; d[i + 2] = base[2] * alb * lit; d[i + 3] = 255 * edge;
     }
-    ctx.drawImage(shadeImg(p.R, p.L, p.key), p.x - p.R, p.y - p.R, p.R * 2, p.R * 2);
-    ctx.restore();
-    if (ring) drawRingHalf(ctx, ring, p.x, p.y, p.tilt, true, 1);
-    const atmo = atmoImg(p.R, p.L, p.key, [255, 120, 130]);
-    ctx.save(); ctx.globalCompositeOperation = 'lighter';
-    ctx.drawImage(atmo, p.x - atmo.lw / 2, p.y - atmo.lh / 2, atmo.lw, atmo.lh);
-    ctx.restore();
-  }
-  /** Cratered moon sphere lit from L. */
-  function moonImg(key, R, L, base, seed) {
-    return layer('moon:' + key, R * 2 + 4, R * 2 + 4, (g, w, h, c) => {
-      const S = c.width, id = g.createImageData(S, S), d = id.data, n = noises()[2], n2 = noises()[3];
-      const rr = (S - 4 * (S / (R * 2 + 4))) / 2, cc = S / 2;
-      for (let py = 0; py < S; py++) for (let px = 0; px < S; px++) {
-        const nx = (px + 0.5 - cc) / rr, ny = (py + 0.5 - cc) / rr, d2 = nx * nx + ny * ny;
-        if (d2 >= 1.0) continue;
-        const nz = Math.sqrt(1 - d2);
-        const m = fbm(n, nx * 2.2 + seed, ny * 2.2 + seed, 5);
-        const cr = fbm(n2, nx * 6 + seed, ny * 6, 3);
-        const alb = 0.68 + (m - 0.5) * 0.9 - sstep(0.62, 0.7, cr) * 0.18 + sstep(0.7, 0.74, cr) * 0.12;
-        const lam = nx * L[0] + ny * L[1] + nz * L[2];
-        const lit = Math.pow(clamp01(lam), 0.8) * 1.08 + 0.035;
-        const edge = clamp01((1 - Math.sqrt(d2)) * rr * 0.9);
-        const i = (py * S + px) * 4;
-        d[i] = base[0] * alb * lit; d[i + 1] = base[1] * alb * lit; d[i + 2] = base[2] * alb * lit; d[i + 3] = 255 * edge;
-      }
-      g.putImageData(id, 0, 0);
-    });
-  }
-  function drawMoon(ctx, img, x, y, haloC, haloA) {
-    if (haloC) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; glow(ctx, x, y, img.lw * 1.4, haloC, haloA); ctx.restore(); }
-    ctx.drawImage(img, x - img.lw / 2, y - img.lh / 2, img.lw, img.lh);
+    if (haloC) { g.save(); g.globalCompositeOperation = 'lighter'; glow(g, x, y, R * 2.8, haloC, haloA); g.restore(); }
+    const tmp = document.createElement('canvas'); tmp.width = S; tmp.height = S;
+    tmp.getContext('2d').putImageData(id, 0, 0);
+    g.drawImage(tmp, x - S / s / 2, y - S / s / 2, S / s, S / s);
   }
 
   // ════════════════════════════════════════════════════════════════════ the Spire
