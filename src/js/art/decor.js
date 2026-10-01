@@ -386,7 +386,7 @@
             g.fillRect(sgm[0] + 1, by + 1, 30, 14);
             g.fillStyle = rgba(R.rim, 0.16); g.fillRect(sgm[0] + 1.5, by + 1, 29, 1);
             if (h2(sgm[0], by, 22) < 0.25) { g.fillStyle = rgba(R.line, 0.4); g.beginPath(); g.moveTo(sgm[0] + 1, by + 1); g.lineTo(sgm[0] + 6, by + 1); g.lineTo(sgm[0] + 1, by + 5); g.fill(); }
-            if (dep <= 3 && h2(sgm[0], by, 23) < (S.variant === 'overgrown' ? 0.06 : 0.1)) glyphMark(g, sgm[0] + 16, by + 8, h2(sgm[0], by, 24) * 1e9, R.detail, 0.8);
+            if (dep <= 3 && h2(sgm[0], by, 23) < (dep <= 1 ? 0.12 : 0.04)) glyphMark(g, sgm[0] + 16, by + 8, h2(sgm[0], by, 24) * 1e9, R.detail, 0.8);
           }
           if (!(k === 0 && !nb.u)) { g.fillStyle = rgba(R.line, 0.75); g.fillRect(x, by - 0.5, T, 1.2); }
           g.fillStyle = rgba(R.line, 0.75);
@@ -1938,7 +1938,7 @@
     const img = g.createImageData(64, 256), d = img.data, rgb = Pal.rgbOf(col);
     for (let y = 0; y < 256; y++) for (let x = 0; x < 64; x++) {
       const u = (x - 31.5) / 32, v = y / 256;
-      const a = Math.exp(-u * u * 4.5) * (1 - u * u) * Math.pow(1 - v, 1.4) * (0.75 + 0.25 * Math.sin(v * 9 + x * 0.3));
+      const a = Math.exp(-u * u * 4.5) * (1 - u * u) * Math.pow(1 - v, 1.4) * Math.min(1, v * 7) * (0.75 + 0.25 * Math.sin(v * 9 + x * 0.3));
       const i = (y * 64 + x) * 4;
       d[i] = rgb[0]; d[i + 1] = rgb[1]; d[i + 2] = rgb[2]; d[i + 3] = Math.max(0, a) * 255;
     }
@@ -2237,7 +2237,7 @@
           ctx.fillStyle = gr; ctx.fillRect(0, 0, W, H);
         }
       } else if (S.biome === 'caves') {
-        ctx.drawImage(vfade('#7aff4a'), 0, H - 90, W, 90);
+        ctx.globalAlpha = 0.12; ctx.drawImage(vfade('#4affc0'), 0, H - 60, W, 60); ctx.globalAlpha = 1;
       } else if (S.biome === 'tower') {
         const b = lightning(t).b;
         if (b > 0.01) { ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = `rgba(170,190,255,${0.16 * b})`; ctx.fillRect(0, 0, W, H); ctx.globalCompositeOperation = 'source-over'; }
@@ -2604,9 +2604,10 @@
         ctx.globalCompositeOperation = 'lighter';
         ctx.save(); ctx.translate(0, -9);
         const c = Math.cos(a);
-        ctx.globalAlpha = 0.18 * (0.5 + 0.5 * Math.abs(c));
-        ctx.fillStyle = '#ff3040';
-        ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(c * 140, -30); ctx.lineTo(c * 140, 30); ctx.closePath(); ctx.fill();
+        ctx.globalAlpha = 0.22 * Math.abs(c);
+        const cg = ctx.createLinearGradient(0, 0, c * 120, 0); cg.addColorStop(0, 'rgba(255,48,64,1)'); cg.addColorStop(1, 'rgba(255,48,64,0)');
+        ctx.fillStyle = cg;
+        ctx.beginPath(); ctx.moveTo(0, -1); ctx.lineTo(c * 120, -22); ctx.lineTo(c * 120, 22); ctx.lineTo(0, 1); ctx.closePath(); ctx.fill();
         ctx.restore();
         glow(ctx, '#ff3040', 0, -9, 24, 0.5 + 0.4 * Math.abs(Math.sin(a)));
         glow(ctx, '#ffd0d0', c * 4, -9, 5, 0.9);

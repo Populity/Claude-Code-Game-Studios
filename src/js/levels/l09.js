@@ -4,7 +4,7 @@
  * is caught on the last checkpoint's tier — never more than one section lost.
  * ROUTE (QA):
  *  Z1 (row 96→74): walk right into shaft A (x13-16, walls x12/x17), wall-jump to the top, step left onto
- *     the ledge (x6-12,row83) → crumbling X (x2-4,row80) → ledge (x6-10,row77) → up through '=' → C1 (8,73).
+ *     the ledge (x6-12,row85) → X (x2-4,row82) → ledge (x6-10,row79) → X (x12-14,row76) → up through = → C1 (8,73).
  *  Z2 (74→55): X x13-15 → X x18-20 → REST x23-26 (row66). Lasers x29 & x35 pulse 2.4s (1.0 on), in
  *     anti-phase: go the moment laser x29 switches off → X x28-31 (row63) → X x34-36 (row60) → rest x38-42
  *     → up through '=' at x37-39 → C2 (40,54).
@@ -15,7 +15,7 @@
  *     climb out through '=' → C4 (16,19).
  *  Z5 (20→6): X x21-23 → X x25-27 → REST x28-30 (row12) + C5 (29,11). Saw x32 (rows 5↔10) – run X x31-34 when it is up,
  *     board lift M3 (x35-36, rows 12↔7, pauses 1.4s at both ends) → summit → l09_top → exit (40,5).
- * SHARDS: (20,82) nook right of shaft A's top; (29,60) above crumble c inside laser x29's beam;
+ * SHARDS: (3,79) above the crumbling stair X x2-4 (a miss drops you to the ground); (29,60) above crumble c inside laser x29's beam;
  *  (6,25) pocket behind the left wall of shaft B, beside the row-23 laser.
  * Dialogue: l09_start (start), l09_storm (trigger, wind + shake), l09_halfway (C2 tier), l09_top (summit).
  */
@@ -105,16 +105,16 @@ G.registerLevel({
     '#.......C..................................#', // 73
     '#======###=================================#', // 74
     '#..........................................#', // 75
-    '#..........................................#', // 76
-    '#.....#####................................#', // 77
+    '#...........XXX............................#', // 76
+    '#..........................................#', // 77
     '#..........................................#', // 78
-    '#..........................................#', // 79
-    '#.XXX............##........................#', // 80
-    '#................##........................#', // 81
-    '#................##.*......................#', // 82
-    '#.....#######....######....................#', // 83
-    '#...........#....###########################', // 84
-    '#...........#....###########################', // 85
+    '#..*..#####................................#', // 79
+    '#..........................................#', // 80
+    '#..........................................#', // 81
+    '#.XXX......................................#', // 82
+    '#..........................................#', // 83
+    '#................###########################', // 84
+    '#.....#######....###########################', // 85
     '#...........#....###########################', // 86
     '#...........#....###########################', // 87
     '#...........#....###########################', // 88
@@ -161,7 +161,7 @@ G.registerLevel({
   decor: [
     { kind: 'glyph_wall', x: 6, y: 95 },
     { kind: 'cable_bundle', x: 10, y: 95 },
-    { kind: 'antenna', x: 22, y: 83 },
+    { kind: 'antenna', x: 24, y: 83 },
     { kind: 'storm_rod', x: 3, y: 73 },
     { kind: 'cable_bundle', x: 11, y: 73 },
     { kind: 'storm_rod', x: 25, y: 65 },

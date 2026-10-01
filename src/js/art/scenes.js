@@ -918,7 +918,7 @@
       puff(ctx, x + dx * len * u + px * w, y + dy * len * u + py * w, width * (0.8 + u * 1.6), C.smoke, 0.22 * k * (1 - u / 1.25));
     }
     ctx.globalCompositeOperation = 'lighter';
-    const n = 12;
+    const n = 10;
     for (let i = 0; i < n; i++) {
       const u = i / n;
       const fl = hash(seed * 97 + i, Math.floor(t * 24));
@@ -1267,7 +1267,7 @@
   function drawSwirl(ctx, t, AX, AY) {
     const N = 230, PER = 11, RMAX = 560, RMIN = 52, tilt = -0.18, flat = 0.5;
     const ct = Math.cos(tilt), st = Math.sin(tilt);
-    const buckets = [[], [], [], []];
+    const buckets = [[], []];
     for (let i = 0; i < N; i++) {
       const life = fract(t / (PER * (0.7 + 0.6 * hash(i, 3))) + hash(i, 1));
       const cyc = Math.floor(t / (PER * (0.7 + 0.6 * hash(i, 3))) + hash(i, 1));
@@ -1276,20 +1276,18 @@
       const om = 0.5 + 27 * life * life; // angular rate grows as it falls in
       const len = Math.min(1.4, om * 0.035 + 0.02);
       const a = sstep(0, 0.12, life) * (1 - sstep(0.9, 1, life));
-      const b = Math.min(3, (a * (0.35 + 0.65 * hash(i, 5)) * 4) | 0);
+      const b = a * (0.35 + 0.65 * hash(i, 5)) > 0.55 ? 1 : 0;
       buckets[b].push([r, th, len]);
     }
     ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.lineCap = 'round';
-    const cols = [[150, 170, 255], [190, 200, 255], [230, 220, 255], [255, 230, 220]];
+    const cols = [[170, 180, 255], [250, 230, 235]];
+    const P = (r, a) => { const x = Math.cos(a) * r, y = Math.sin(a) * r * flat; return [AX + x * ct - y * st, AY + x * st + y * ct]; };
     buckets.forEach((list, b) => {
-      ctx.strokeStyle = rgba(cols[b], 0.12 + b * 0.18); ctx.lineWidth = 0.8 + b * 0.35;
+      ctx.strokeStyle = rgba(cols[b], b ? 0.6 : 0.28); ctx.lineWidth = b ? 1.4 : 1;
       ctx.beginPath();
-      for (const [r, th, len] of list) {
-        const x0 = Math.cos(th - len) * r, y0 = Math.sin(th - len) * r * flat;
-        ctx.moveTo(AX + x0 * ct - y0 * st, AY + x0 * st + y0 * ct);
-        ctx.ellipse(AX, AY, r, r * flat, tilt, th - len, th);
+      for (const [r, th, len] of list) { // 3-point chord approximation of the arc
+        const p0 = P(r, th - len), p1 = P(r, th - len / 2), p2 = P(r, th);
+        ctx.moveTo(p0[0], p0[1]); ctx.lineTo(p1[0], p1[1]); ctx.lineTo(p2[0], p2[1]);
       }
       ctx.stroke();
     });
@@ -1460,7 +1458,7 @@
     }
     // embers + small fragments shedding off
     ctx.save(); ctx.globalCompositeOperation = 'lighter';
-    for (let i = 0; i < 30; i++) {
+    for (let i = 0; i < 21; i++) {
       const p = pieces[i % 3];
       const life = fract(t * (0.25 + hash(i, 71) * 0.4) + hash(i, 72));
       const x = p.x + (hash(i, 73) - 0.5) * 80 + life * 340 * dx + (hash(i, 74) - 0.5) * 60 * life;
@@ -2015,9 +2013,9 @@
     drawSpire(ctx, BX, 436, 436 - BY, '#04050a', 'rgba(126,249,255,0.2)', t, 0.9, C.cyan);
     ctx.restore();
     // the clearing: last storm wisps dissolving outward
-    const clear = 1 - sstep(0, 6, t);
+    const clear = 1 - sstep(0, 4.5, t);
     if (clear > 0) {
-      for (let i = 0; i < 4; i++) {
+      for (let i = 0; i < 3; i++) {
         const img = cloudImg('storm' + (i % 4), 680, 240, 1500 + (i % 4), [70, 70, 100], [12, 12, 24], 80, false);
         const s = i % 2 ? 1 : -1;
         ctx.globalAlpha = clear * 0.9;
