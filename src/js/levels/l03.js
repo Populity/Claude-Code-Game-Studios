@@ -66,16 +66,16 @@ G.registerLevel({
   ],
   entities: [
     // A/B — lifts
-    { type: 'mplatform', x: 8, y: 26, w: 3, path: [[8, 22]], speed: 1.5, pause: 1 },
-    { type: 'mplatform', x: 21, y: 22, w: 3, path: [[33, 22]], speed: 2, pause: 0.8 },
+    { type: 'mplatform', x: 8, y: 26, w: 3, path: [[8, 22]], speed: 2, pause: 0.7 },
+    { type: 'mplatform', x: 21, y: 22, w: 3, path: [[33, 22]], speed: 2.5, pause: 0.7 },
     { type: 'sign', x: 5, y: 26, title: 'Плита у подъёмника', text: 'Резьба Зодчих: человечек стоит на плите,\nплита поднимается к звёздам. Ну, или к уступу.' },
     // C — saws
     { type: 'saw', x: 45, y: 14, path: [[45, 20]], speed: 3, pause: 0.8 },
     { type: 'saw', x: 51, y: 21, path: [[57, 21]], speed: 2.5, pause: 0.3 },
     { type: 'hint', x: 49, y: 18, text: 'Пилу на земле можно перепрыгнуть', range: 3 },
     // E — gorge puzzle
-    { type: 'mplatform', x: 80, y: 10, w: 2, path: [[80, 17]], speed: 1.5, pause: 1 },
-    { type: 'mplatform', id: 'lift3', x: 90, y: 17, w: 3, path: [[97, 10]], speed: 2, pause: 0.8 },
+    { type: 'mplatform', x: 80, y: 10, w: 2, path: [[80, 17]], speed: 2, pause: 0.8 },
+    { type: 'mplatform', id: 'lift3', x: 90, y: 17, w: 3, path: [[97, 10]], speed: 2.5, pause: 0.8 },
     { type: 'saw', id: 'saw_lever', x: 83, y: 15, path: [[86, 15]], speed: 2, pause: 0.4 },
     { type: 'lever', x: 88, y: 16, targets: ['lift3', 'saw_lever'] },
     { type: 'sign', x: 78, y: 9, title: 'Знаки у обрыва', text: 'Мост спит. Его будит рычаг внизу.\n(ЛЮМ: «Бип. Перевод приблизительный».)' },
