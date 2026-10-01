@@ -782,10 +782,24 @@
     const X0 = tx0 * T - PAD, Y0 = ty0 * T - PAD, SZ = CPX + PAD * 2;
     const scat = S.scatter.filter((s) => s.x1 > X0 && s.x0 < X0 + SZ && s.y1 > Y0 && s.y0 < Y0 + SZ);
     if (!scat.length && !chunkHasContent(cx, cy)) return null;
+    // crop the canvas to the content bounding box (tiles + overhang + scatter): sparse chunks stay small
+    let bx0 = 1e9, by0 = 1e9, bx1 = -1e9, by1 = -1e9;
+    const OV = 14;
+    for (let ty = Math.max(0, ty0 - 1); ty <= Math.min(S.h - 1, ty0 + CHUNK); ty++) {
+      for (let tx = Math.max(0, tx0 - 1); tx <= Math.min(S.w - 1, tx0 + CHUNK); tx++) {
+        const code = S.grid[ty * S.w + tx];
+        if (code === TC.SOLID || code === TC.ONEWAY || code === TC.SPIKE_UP || code === TC.SPIKE_DOWN) {
+          bx0 = Math.min(bx0, tx * T - OV); by0 = Math.min(by0, ty * T - OV); bx1 = Math.max(bx1, tx * T + T + OV); by1 = Math.max(by1, ty * T + T + OV);
+        }
+      }
+    }
+    for (const sc of scat) { bx0 = Math.min(bx0, sc.x0); by0 = Math.min(by0, sc.y0); bx1 = Math.max(bx1, sc.x1); by1 = Math.max(by1, sc.y1); }
+    bx0 = Math.max(X0, Math.floor(bx0)); by0 = Math.max(Y0, Math.floor(by0)); bx1 = Math.min(X0 + SZ, Math.ceil(bx1)); by1 = Math.min(Y0 + SZ, Math.ceil(by1));
+    if (bx1 <= bx0 || by1 <= by0) return null;
     const cs = S.cs;
-    const c = mk(SZ * cs, SZ * cs), g = c.getContext('2d');
-    g.scale(cs, cs); g.translate(-X0, -Y0);
-    g.beginPath(); g.rect(X0, Y0, SZ, SZ); g.clip();
+    const c = mk((bx1 - bx0) * cs, (by1 - by0) * cs), g = c.getContext('2d');
+    g.scale(cs, cs); g.translate(-bx0, -by0);
+    g.beginPath(); g.rect(bx0, by0, bx1 - bx0, by1 - by0); g.clip();
     const st = S.st, R = S.pal.rock;
     const sol = [], misc = [];
     const mx0 = Math.max(0, tx0 - 1), mx1 = Math.min(S.w - 1, tx0 + CHUNK), my0 = Math.max(0, ty0 - 1), my1 = Math.min(S.h - 1, ty0 + CHUNK);
@@ -849,9 +863,11 @@
     }
     // F: static scatter
     for (const s of scat) drawScatterStatic(g, s);
-    return c;
+    return { c, x: bx0, y: by0, w: bx1 - bx0, h: by1 - by0 };
   }
 
+  /** Chunk cache resolution: 2x only on genuinely HiDPI output, 1.5x for mid scales, 1x otherwise. */
+  function chunkScale() { const rs = G.renderScale || 1; return rs >= 1.75 ? 2 : rs > 1.1 ? 1.5 : 1; }
   function getChunk(cx, cy) {
     const key = cx + ',' + cy;
     let e = S.chunks.get(key);
@@ -2047,7 +2063,7 @@
       S.key = S.variant ? S.biome + '_' + S.variant : S.biome;
       S.st = STYLES[S.biome];
       S.seed = G.hash(level.id);
-      S.cs = (G.renderScale || 1) > 1.15 ? 2 : 1;
+      S.cs = chunkScale();
       S.lastRS = G.renderScale || 1;
       S.w = level.w; S.h = level.h;
       S.grid = new Uint8Array(level.tiles);
@@ -2143,14 +2159,14 @@
     drawTiles(ctx, view, level, t) {
       if (S.level !== level) Decor.init(level);
       const rs = G.renderScale || 1;
-      if (Math.abs(rs - S.lastRS) > 0.01) { S.lastRS = rs; const ncs = rs > 1.15 ? 2 : 1; if (ncs !== S.cs) { S.cs = ncs; S.chunks.clear(); buildCrumbleSprites(); } }
+      if (Math.abs(rs - S.lastRS) > 0.01) { S.lastRS = rs; const ncs = chunkScale(); if (ncs !== S.cs) { S.cs = ncs; S.chunks.clear(); buildCrumbleSprites(); } }
       const cx0 = Math.max(0, Math.floor(view.x / CPX)), cx1 = Math.floor((view.x + W) / CPX);
       const cy0 = Math.max(0, Math.floor(view.y / CPX)), cy1 = Math.floor((view.y + H) / CPX);
       for (let cy = cy0; cy <= cy1; cy++) {
         for (let cx = cx0; cx <= cx1; cx++) {
           if (cx * CHUNK >= S.w + 1 || cy * CHUNK >= S.h + 1) continue;
           const c = getChunk(cx, cy);
-          if (c) ctx.drawImage(c, cx * CPX - PAD, cy * CPX - PAD, CPX + PAD * 2, CPX + PAD * 2);
+          if (c) ctx.drawImage(c.c, c.x, c.y, c.w, c.h);
         }
       }
       const tx0 = Math.max(0, Math.floor(view.x / T) - 1), tx1 = Math.min(S.w - 1, Math.floor((view.x + W) / T) + 1);
@@ -2258,7 +2274,7 @@
     debrisColor(level) { return Pal.get(level).debris; },
 
     /** Debug / QA: cache statistics. */
-    stats() { return { chunks: [...S.chunks.values()].filter((e) => e.c).length, scatter: S.scatter.length, anim: S.anim.length, initMs: S.initMs, cs: S.cs }; },
+    stats() { const cv = [...S.chunks.values()].filter((e) => e.c); return { chunks: cv.length, chunkMB: +(cv.reduce((a, e) => a + e.c.c.width * e.c.c.height * 4, 0) / 1048576).toFixed(1), scatter: S.scatter.length, anim: S.anim.length, initMs: S.initMs, cs: S.cs }; },
   };
   const P0 = () => S.pal;
   Object.defineProperty(Decor, '_state', { value: S, enumerable: false }); // QA only
