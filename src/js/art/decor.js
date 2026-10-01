@@ -1051,7 +1051,7 @@
     switch (s.k) {
       case 'lampc': glow(ctx, '#bfefff', x, y + 4, 26, 0.32 + 0.04 * Math.sin(t * 7 + ph)); break;
       case 'striplight': { const fl = frac(t * 0.13 + s.r) < 0.02 ? 0.1 : 1; glow(ctx, P.accent, x + (s.dir > 0 ? 2 : -2), y + 4, 18, 0.35 * fl); break; }
-      case 'flower': { const a = 0.55 + 0.35 * Math.sin(t * 1.6 + ph); const col = s.r < 0.5 ? P.accent2 : P.accent; const fx = x + (s.r - 0.5) * 4 + Math.sin(t * 1.3 + ph) * 0.8, fy = y - 8 - s.r * 4; glow(ctx, col, fx, fy, 9, a * 0.7); ctx.globalAlpha = 1; ctx.fillStyle = '#ffffff'; ctx.fillRect(fx - 0.8, fy - 0.8, 1.6, 1.6); break; }
+      case 'flower': { const a = 0.55 + 0.35 * Math.sin(t * 1.6 + ph); const col = s.r < 0.5 ? P.accent2 : P.accent; const fx = x + (s.r - 0.5) * 4 + Math.sin(t * 1.3 + ph) * 0.8, fy = y - 8 - s.r * 4; ctx.globalAlpha = Math.min(1, a); ctx.drawImage(sporeSprite(col), fx - 8, fy - 8, 16, 16); break; }
       case 'glyphw': glow(ctx, P.rock.detail, x + s.dir * -7, y + 4, 16, 0.25 + 0.2 * Math.sin(t * 1.2 + ph)); break;
       case 'mossglow': case 'mossw': { const a = 0.3 + 0.2 * Math.sin(t * 0.9 + ph); glow(ctx, P.rock.capLight, s.k === 'mossw' ? x - s.dir * 2 : x, y, 14, a); break; }
       case 'mushS': glow(ctx, P.accent, x, y - 5, 12, 0.35 + 0.2 * Math.sin(t * 1.4 + ph)); break;
@@ -2161,12 +2161,15 @@
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
       const vx0 = view.x - 40, vx1 = view.x + W + 40, vy0 = view.y - 80, vy1 = view.y + H + 80;
+      // two batches (additive glows, then normal-blend drips) so the blend mode is not toggled per item
+      const normal = [];
       for (const s of S.anim) {
         if (s.x < vx0 || s.x > vx1 || s.y < vy0 || s.y > vy1) continue;
-        const additive = !(s.k === 'stalac' || s.k === 'drip' || s.k === 'sanddrip' || s.k === 'puddle');
-        ctx.globalCompositeOperation = additive ? 'lighter' : 'source-over';
+        if (s.k === 'stalac' || s.k === 'drip' || s.k === 'sanddrip' || s.k === 'puddle') { normal.push(s); continue; }
         drawScatterAnim(ctx, s, t);
       }
+      ctx.globalCompositeOperation = 'source-over';
+      for (const s of normal) drawScatterAnim(ctx, s, t);
       ctx.restore();
       // pre-build one neighbouring chunk ahead of the camera when the frame is cheap
       prefetch(view);

@@ -14,8 +14,9 @@
  * Checkpoint (102,9). Drop to the canyon floor, checkpoint (113,26). GREAT SHAFT x=122-124
  * (3 wide, walls x=121 / x=125): walk under the left wall, climb to the rest notch (125-127,
  * row 15, checkpoint). Upper stage (right wall only rows 7-10):
- * full jump LEFT out of the notch to the wall, zig-zag up, kick right onto the vista (row 6). Checkpoint (129,6), l03_tower_sight. Final gorge x=161-174: horizontal
- * lift (161→167, row 7) → transfer to the vertical lift (172-174, rows 12↔5) → exit
+ * full jump LEFT out of the notch to the wall, zig-zag up, kick right onto the vista (row 6).
+ * Checkpoint (129,6), l03_tower_sight. Final gorge x=161-174: horizontal lift (161→167, row 7) → transfer to the vertical lift (172-174, rows 12↔5;
+ * jump while it is at rows 5-10) → exit
  * plateau (175+, row 6) → l03_end → exit (186,6).
  * SHARDS: #1 (28,18) full jump from the chasm lift; #2 (90,13) full jump from the end of
  * the lever ledge (land back, or on lift3); #3 (162,3) full jump off the vista edge (land on the
@@ -80,7 +81,7 @@ G.registerLevel({
     { type: 'sign', x: 78, y: 9, title: 'Знаки у обрыва', text: 'Мост спит. Его будит рычаг внизу.\n(ЛЮМ: «Бип. Перевод приблизительный».)' },
     // F — the great shaft
     // G — final gorge
-    { type: 'mplatform', x: 161, y: 7, w: 3, path: [[167, 7]], speed: 2, pause: 0.6 },
+    { type: 'mplatform', x: 161, y: 7, w: 3, path: [[167, 7]], speed: 2, pause: 1.2 },
     { type: 'mplatform', x: 172, y: 12, w: 3, path: [[172, 5]], speed: 2, pause: 0.6 },
   ],
   triggers: [
