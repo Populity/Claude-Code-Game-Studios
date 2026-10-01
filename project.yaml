@@ -25,3 +25,10 @@ framework:
 # here. `/settings --local <key>=<value>` writes there; `/settings <key>=<value>`
 # edits this file. See `.claude/docs/config-resolution.md` for the full
 # precedence order.
+
+project:
+  stage: Concept
+
+modes:
+  rigor: minimal
+  automation: guided
