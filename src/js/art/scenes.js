@@ -216,7 +216,8 @@
         const top = h * (0.92 - 0.72 * env * (flat ? 0.6 : 1));
         const cy = lerp(top + h * 0.12, h * 0.86, Math.pow(r(), 0.8));
         const rad = h * (0.1 + 0.2 * r()) * (0.5 + 0.8 * env);
-        blobs.push([u * w, cy, rad, clamp01((cy - top) / (h * 0.86 - top + 1))]);
+        const rr = Math.min(rad, u * w - 1, w - u * w - 1, cy - 1, h - cy - 1);
+        if (rr > 2) blobs.push([u * w, cy, rr, clamp01((cy - top) / (h * 0.86 - top + 1))]);
       }
       blobs.sort((a, b) => b[1] - a[1]);
       for (const [x, y, rad, k] of blobs) {
@@ -327,18 +328,6 @@
     const gr = g.createLinearGradient(0, top, 0, Math.min(h, o.y + o.amp * 1.5 + 60));
     gr.addColorStop(0, rgba(o.top, 1)); gr.addColorStop(1, rgba(o.bottom, 1));
     g.fillStyle = gr; g.fill();
-    // lee-side shading: darker wedge under each crest on the side away from the sun
-    if (o.shade) {
-      g.save(); g.clip();
-      g.fillStyle = rgba(o.shade, o.shadeA || 0.35);
-      g.beginPath();
-      for (let i = 1; i < ys.length - 1; i++) {
-        const facing = o.sunRight ? ys[i + 1] - ys[i] : ys[i - 1] - ys[i];
-        if (facing < -0.15) { const x = i * step; g.rect(x, ys[i], step + 0.6, 26 + o.amp * 0.6); }
-      }
-      g.fill();
-      g.restore();
-    }
     if (o.rim) {
       g.lineWidth = o.rimW || 1.4; g.strokeStyle = rgba(o.rim, o.rimA || 0.6); g.beginPath();
       for (let i = 0; i < ys.length - 1; i++) {
@@ -364,7 +353,10 @@
       const gap = 30 + r() * 120; x += gap; g.lineTo(x, y + 2);
       if (r() < 0.55) {
         const w = 30 + r() * 110, hh = (0.3 + r() * 0.7) * hmax;
-        g.lineTo(x + w * 0.12, y - hh); g.lineTo(x + w * 0.88, y - hh * (0.9 + r() * 0.15)); g.lineTo(x + w, y + 2); x += w;
+        const steps = 3 + ((r() * 4) | 0);
+        g.lineTo(x + w * 0.06, y - hh * 0.55); g.lineTo(x + w * 0.14, y - hh);
+        for (let k = 1; k < steps; k++) g.lineTo(x + w * (0.14 + 0.72 * k / steps), y - hh * (0.86 + r() * 0.2));
+        g.lineTo(x + w * 0.88, y - hh * 0.95); g.lineTo(x + w * 0.93, y - hh * 0.5); g.lineTo(x + w, y + 2); x += w;
       }
     }
     g.lineTo(DW, y + 4); g.lineTo(DW, y + 30); g.lineTo(0, y + 30); g.closePath(); g.fill();
@@ -790,6 +782,7 @@
     else { ctx.lineTo(SHIP.W + 20, SHIP.H + 20); ctx.lineTo(SHIP.W + 20, -20); }
     ctx.closePath(); ctx.clip();
   }
+  const PART_SPAN = { aft: [0, SHIP.CUT_A + 16], cryo: [SHIP.CUT_A - 16, SHIP.CUT_B + 16], fore: [SHIP.CUT_B - 16, SHIP.W], aftcryo: [0, SHIP.CUT_B + 16] };
   const PART_PIVOT = { all: 500, aft: 190, cryo: 478, fore: 800, aftcryo: 320 };
   /**
    * Draw the ship (or a section) centred on (x, y).
@@ -800,10 +793,13 @@
     const part = o.part || 'all';
     ctx.save();
     ctx.translate(x, y); ctx.rotate(rot); ctx.scale(s, s); ctx.translate(-PART_PIVOT[part], -SHIP.CY);
-    ctx.save();
-    if (part !== 'all') clipPart(ctx, part);
-    ctx.drawImage(o.img || shipImg(), 0, 0, SHIP.W, SHIP.H);
-    ctx.restore();
+    const img = o.img || shipImg();
+    if (part !== 'all') {
+      const span = PART_SPAN[part], k = img.width / SHIP.W;
+      ctx.save(); clipPart(ctx, part);
+      ctx.drawImage(img, span[0] * k, 0, (span[1] - span[0]) * k, img.height, span[0], 0, span[1] - span[0], SHIP.H);
+      ctx.restore();
+    } else ctx.drawImage(img, 0, 0, SHIP.W, SHIP.H);
     ctx.globalCompositeOperation = 'lighter';
     const hasAft = part === 'all' || part === 'aft' || part === 'aftcryo';
     const hasFore = part === 'all' || part === 'fore';
@@ -853,7 +849,7 @@
     for (const [x, seed] of lines) {
       if (part === 'fore' && x === SHIP.CUT_A) continue;
       if (part === 'aft' && x === SHIP.CUT_B) continue;
-      const pts = jag(x, seed);
+      const pts = jag(x, seed).filter((p) => p[1] > 108 && p[1] < 174);
       const fl = 0.75 + 0.25 * Math.sin(t * 17 + x);
       const n = Math.max(2, Math.round(pts.length * clamp01(k * 1.3)));
       const mid = (pts.length / 2) | 0;
@@ -861,15 +857,15 @@
       ctx.strokeStyle = rgba(C.fire, 0.55 * k * fl); ctx.lineWidth = 5;
       ctx.beginPath(); for (let i = from; i < to; i++) (i === from ? ctx.moveTo(pts[i][0], pts[i][1]) : ctx.lineTo(pts[i][0], pts[i][1])); ctx.stroke();
       ctx.strokeStyle = rgba(C.warm, 0.9 * k * fl); ctx.lineWidth = 1.6; ctx.stroke();
-      for (let i = from; i < to; i += 2) glow(ctx, pts[i][0], pts[i][1], 22, C.orange, 0.35 * k * fl);
+      for (let i = from; i < to; i += 2) glow(ctx, pts[i][0], pts[i][1], 26, C.orange, 0.45 * k * fl);
       // branching fractures
       ctx.strokeStyle = rgba(C.amber, 0.6 * k * fl); ctx.lineWidth = 1;
       ctx.beginPath();
-      for (let b = 0; b < 6; b++) {
+      for (let b = 0; b < 4; b++) {
         const p = pts[(from + ((b * 7) % Math.max(1, to - from))) % pts.length];
         let bx = p[0], by = p[1];
         ctx.moveTo(bx, by);
-        for (let s = 0; s < 4; s++) { bx += (hash(seed + b, s) - 0.5) * 30 + (b % 2 ? 9 : -9); by += (hash(seed + b, s + 9) - 0.5) * 22; ctx.lineTo(bx, by); }
+        for (let s = 0; s < 4; s++) { bx += (hash(seed + b, s) - 0.5) * 18 + (b % 2 ? 7 : -7); by += (hash(seed + b, s + 9) - 0.5) * 10; ctx.lineTo(bx, by); }
       }
       ctx.stroke();
     }
@@ -902,7 +898,10 @@
       glowE(ctx, 22, 0, 26, 40, 0, C.orange, 0.55 * h);
       glow(ctx, 14, 0, 60, C.orange, 0.25 * h);
     }
-    if (o.burnt) { ctx.globalCompositeOperation = 'source-atop'; ctx.fillStyle = 'rgba(30,16,10,0.45)'; ctx.fillRect(-25, -15, 40, 30); }
+    if (o.burnt) { // scorched hull
+      ctx.fillStyle = 'rgba(30,16,10,0.5)';
+      ctx.beginPath(); ctx.moveTo(9, -12); ctx.lineTo(-6, -8.5); ctx.lineTo(-6, 8.5); ctx.lineTo(9, 12); ctx.closePath(); ctx.fill();
+    }
     ctx.restore();
   }
 
@@ -913,13 +912,13 @@
   function fireTrail(ctx, x, y, dx, dy, len, width, t, seed, k) {
     const px = -dy, py = dx;
     ctx.globalCompositeOperation = 'source-over';
-    for (let i = 0; i < 9; i++) { // smoke first (behind)
-      const u = 0.35 + (i / 9) * 0.9;
+    for (let i = 0; i < 7; i++) { // smoke first (behind)
+      const u = 0.35 + (i / 7) * 0.9;
       const w = Math.sin(t * 3 + i * 1.7 + seed) * width * 0.4 * u;
       puff(ctx, x + dx * len * u + px * w, y + dy * len * u + py * w, width * (0.8 + u * 1.6), C.smoke, 0.22 * k * (1 - u / 1.25));
     }
     ctx.globalCompositeOperation = 'lighter';
-    const n = 16;
+    const n = 12;
     for (let i = 0; i < n; i++) {
       const u = i / n;
       const fl = hash(seed * 97 + i, Math.floor(t * 24));
@@ -1005,7 +1004,7 @@
       const age = fract(t / period + k / 3) * period;
       const rad = 8 + age * 150, a = Math.pow(1 - age / period, 2);
       ctx.beginPath(); ctx.ellipse(bx, by, rad, rad * 0.82, -0.2, 0, TAU);
-      ctx.strokeStyle = rgba(C.cyan, 0.05 * a); ctx.lineWidth = 9; ctx.stroke();
+      ctx.strokeStyle = rgba(C.cyan, 0.06 * a); ctx.lineWidth = 4; ctx.stroke();
       ctx.strokeStyle = rgba(C.cyan, 0.24 * a); ctx.lineWidth = 1.2; ctx.stroke();
     }
     const beat = Math.exp(-fract(t / (period / 3)) * 6);
@@ -1094,9 +1093,9 @@
         const age = t - (base * SIG_P + o);
         if (age < 0 || age > 4.5) continue;
         const rad = 12 + Math.pow(age, 0.85) * 170, a = Math.pow(1 - age / 4.5, 2) * (o === 1.42 ? 1 : 0.65);
-        ctx.strokeStyle = rgba([190, 160, 255], 0.5 * a); ctx.lineWidth = 1.3;
-        ctx.beginPath(); ctx.arc(SX, SY, rad, 0, TAU); ctx.stroke();
-        ctx.strokeStyle = rgba(C.violet, 0.1 * a); ctx.lineWidth = 12; ctx.stroke();
+        ctx.beginPath(); ctx.arc(SX, SY, rad, 0, TAU);
+        if (o === 1.42) { ctx.strokeStyle = rgba(C.violet, 0.12 * a); ctx.lineWidth = 5; ctx.stroke(); }
+        ctx.strokeStyle = rgba([190, 160, 255], 0.55 * a); ctx.lineWidth = 1.3; ctx.stroke();
       }
     }
     ctx.restore();
@@ -1229,10 +1228,10 @@
     drawDebris(ctx, t, AX, AY);
     // gravity ripples contracting inward
     ctx.save(); ctx.globalCompositeOperation = 'lighter';
-    for (let i = 0; i < 4; i++) {
-      const f = 1 - fract(t * 0.22 + i / 4), rad = 60 + f * 520;
-      ctx.strokeStyle = rgba([180, 160, 255], 0.09 * Math.sin(Math.PI * f));
-      ctx.lineWidth = 2 + 10 * f; ctx.beginPath(); ctx.ellipse(AX, AY, rad, rad * 0.62, -0.18, 0, TAU); ctx.stroke();
+    for (let i = 0; i < 3; i++) {
+      const f = 1 - fract(t * 0.22 + i / 3), rad = 60 + f * 520;
+      ctx.strokeStyle = rgba([180, 160, 255], 0.14 * Math.sin(Math.PI * f));
+      ctx.lineWidth = 1.5; ctx.beginPath(); ctx.ellipse(AX, AY, rad, rad * 0.62, -0.18, 0, TAU); ctx.stroke();
     }
     ctx.restore();
     ctx.restore();
@@ -1266,7 +1265,7 @@
   }
   /** Infalling star-streaks along a tilted disk (lifecycle-based so any t is safe). */
   function drawSwirl(ctx, t, AX, AY) {
-    const N = 300, PER = 11, RMAX = 560, RMIN = 52, tilt = -0.18, flat = 0.5;
+    const N = 230, PER = 11, RMAX = 560, RMIN = 52, tilt = -0.18, flat = 0.5;
     const ct = Math.cos(tilt), st = Math.sin(tilt);
     const buckets = [[], [], [], []];
     for (let i = 0; i < N; i++) {
@@ -1320,6 +1319,8 @@
     const cx = 520, cy = 1540, R = 1180;
     g.save(); g.beginPath(); g.arc(cx, cy, R, 0, TAU); g.clip();
     sphereMap(g, planetTex(), cx, cy, R, 0.12, 90);
+    g.globalCompositeOperation = 'multiply'; g.fillStyle = 'rgb(236,150,120)'; g.fillRect(0, 0, DW, DH);
+    g.globalCompositeOperation = 'source-over';
     const sh = g.createLinearGradient(0, cy - R, 0, cy - R + 260);
     sh.addColorStop(0, 'rgba(60,20,30,0)'); sh.addColorStop(1, 'rgba(10,4,12,0.8)');
     g.fillStyle = sh; g.fillRect(0, cy - R, DW, 400);
@@ -1381,11 +1382,11 @@
       const p = settle(Math.max(0, tp), 2.6);
       const x = bayX + p * 330 + Math.sin(t * 0.7) * 4, y = bayY + p * 160 + Math.sin(t * 0.9) * 3;
       const s = 0.5 + 1.6 * p;
-      const rot = 0.48 + Math.PI;
+      const rot = 0.46;
       ctx.save(); ctx.globalCompositeOperation = 'lighter';
       // exhaust trail back to the bay
-      for (let i = 0; i < 20; i++) {
-        const u = i / 20, tx = lerp(x, bayX, u), ty = lerp(y, bayY, u);
+      for (let i = 0; i < 12; i++) {
+        const u = i / 12, tx = lerp(x, bayX, u), ty = lerp(y, bayY, u);
         glow(ctx, tx, ty, 6 + 22 * u, C.blue, 0.22 * (1 - u) * sstep(0, 0.3, tp));
       }
       if (tp < 0.6 && tp > -0.2) glow(ctx, bayX, bayY, 90, C.white, 0.8 * (1 - Math.abs(tp - 0.1) / 0.5));
@@ -1443,24 +1444,23 @@
     cam(ctx, 1 + 0.1 * k, 480, 230, jx, jy);
     const u = settle(t, 7);
     const pieces = [
-      { part: 'aft', x: 330 - 150 * u, y: 180 + 70 * u, r: -0.3 - 0.45 * u, len: 300, w: 22, seed: 1 },
-      { part: 'fore', x: 640 + 110 * u, y: 150 + 30 * u, r: -0.25 + 0.4 * u, len: 260, w: 20, seed: 2 },
-      { part: 'cryo', x: 480 - 20 * u, y: 210 + 150 * u, r: -0.2 + 0.25 * u, len: 360, w: 26, seed: 3 },
+      { part: 'aft', x: 330 - 150 * u, y: 180 + 70 * u, r: -0.3 - 0.45 * u, len: 300, w: 17, seed: 1 },
+      { part: 'fore', x: 640 + 110 * u, y: 150 + 30 * u, r: -0.25 + 0.4 * u, len: 260, w: 16, seed: 2 },
+      { part: 'cryo', x: 480 - 20 * u, y: 210 + 150 * u, r: -0.2 + 0.25 * u, len: 360, w: 20, seed: 3 },
     ];
     const dx = 0.5, dy = -0.866;
     for (const p of pieces) {
       ctx.save();
-      fireTrail(ctx, p.x - 30, p.y + 30, dx, dy, p.len, p.w, t, p.seed, 0.9);
+      fireTrail(ctx, p.x - 30, p.y + 30, dx, dy, p.len, p.w, t, p.seed, 1);
       ctx.restore();
       drawShip(ctx, p.x, p.y, 0.48, p.r, t, { part: p.part, heat: 1, crack: 1, lights: p.part === 'cryo', engine: 0 });
       ctx.save(); ctx.globalCompositeOperation = 'lighter';
       glowE(ctx, p.x - 40, p.y + 34, 110, 26, -0.5, C.warm, 0.45 + 0.1 * Math.sin(t * 20 + p.seed));
-      glowE(ctx, p.x - 30, p.y + 30, 160, 60, -0.5, C.orange, 0.3);
       ctx.restore();
     }
     // embers + small fragments shedding off
     ctx.save(); ctx.globalCompositeOperation = 'lighter';
-    for (let i = 0; i < 50; i++) {
+    for (let i = 0; i < 30; i++) {
       const p = pieces[i % 3];
       const life = fract(t * (0.25 + hash(i, 71) * 0.4) + hash(i, 72));
       const x = p.x + (hash(i, 73) - 0.5) * 80 + life * 340 * dx + (hash(i, 74) - 0.5) * 60 * life;
@@ -1489,7 +1489,7 @@
   }
   function dayGround() {
     return layer('day-ground', DW, DH, (g) => {
-      paintMesas(g, 396, 41, [180, 112, 100], 18);
+      paintMesas(g, 396, 41, [180, 112, 100], 11);
       paintHaze(g, 360, 420, [252, 214, 170], 0.5);
       paintDunes(g, DW, DH, { y: 430, amp: 18, seed: 3, top: [214, 146, 98], bottom: [170, 100, 80], rim: [255, 230, 190], rimA: 0.5, freq: 1.8 });
       paintHaze(g, 410, 470, [250, 206, 160], 0.45);
@@ -1524,11 +1524,11 @@
     }
     ctx.globalAlpha = 1;
     // speed streaks
-    ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.strokeStyle = 'rgba(255,240,220,0.12)'; ctx.lineWidth = 1;
+    ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.strokeStyle = 'rgba(255,240,220,0.06)'; ctx.lineWidth = 1;
     ctx.beginPath();
     for (let i = 0; i < 26; i++) {
       const x = hash(i, 30) * DW, y = DH + 100 - fract(hash(i, 31) + t * (1.2 + hash(i, 32))) * (DH + 300);
-      ctx.moveTo(x, y); ctx.lineTo(x + 6, y + 70 + hash(i, 33) * 80);
+      ctx.moveTo(x, y); ctx.lineTo(x + 3, y + 30 + hash(i, 33) * 40);
     }
     ctx.stroke(); ctx.restore();
     // the pod
@@ -1625,9 +1625,14 @@
     }
     blit(ctx, duskFront());
     // dust explosion: billowing puffs that expand, then settle and drift with the wind
-    if (ti > 0) {
-      const settleK = sstep(1.5, 8, ti), fadeK = 1 - 0.75 * sstep(3, 14, ti);
-      for (let i = 0; i < 16; i++) {
+    if (ti > 2) { // the settled haze that remains
+      ctx.save(); ctx.globalAlpha = 0.5 * sstep(2, 6, ti);
+      ctx.drawImage(puffImg([150, 96, 72]), IX - 360 + Math.min(ti, 20) * 6, IY - 120, 720, 200);
+      ctx.restore();
+    }
+    if (ti > 0 && ti < 11) {
+      const settleK = sstep(1.5, 8, ti), fadeK = 1 - sstep(2.5, 11, ti);
+      for (let i = 0; i < 12; i++) {
         const a = Math.PI + 0.12 + hash(i, 101) * (Math.PI - 0.24);
         const reach = (60 + hash(i, 102) * 220) * (0.6 + 0.6 * Math.abs(Math.cos(a)));
         const ex = easeOut(ti / (1.1 + hash(i, 103)));
@@ -1642,13 +1647,13 @@
     // flying debris (ballistic, settles on the sand)
     if (ti > 0) {
       ctx.save();
-      for (let i = 0; i < 26; i++) {
+      for (let i = 0; i < 18; i++) {
         const vx = (hash(i, 111) - 0.5) * 520, vy = -(160 + hash(i, 112) * 360);
         const tt = Math.min(ti, (-2 * vy) / 700 + 0.2);
         const x = IX + vx * tt, y = Math.min(IY + 30 * hash(i, 113), IY + vy * tt + 350 * tt * tt);
         const hot = i % 3 === 0;
         if (hot) { ctx.globalCompositeOperation = 'lighter'; glow(ctx, x, y, 6, C.fire, Math.max(0, 1 - ti * 0.3)); ctx.globalCompositeOperation = 'source-over'; }
-        ctx.globalAlpha = 1; ctx.fillStyle = '#2a1a18'; ctx.fillRect(x - 1.5, y - 1.5, 3 + hash(i, 114) * 3, 2.5);
+        ctx.globalAlpha = 1 - sstep(2, 5, ti); ctx.fillStyle = '#2a1a18'; ctx.fillRect(x - 1, y - 1, 2 + hash(i, 114) * 2, 2);
       }
       ctx.restore();
     }
@@ -1710,8 +1715,8 @@
     // storm cloud banks parting around the beam
     const cl = [[0, -1], [1, 1], [2, -1], [3, 1]];
     for (const [i, s] of cl) {
-      const img = cloudImg('storm' + i, 680, 240, 1500 + i, [70, 70, 100], [12, 12, 24], 80, false);
-      const off = s * (40 + 380 * open) * (i < 2 ? 1 : 0.7);
+      const img = cloudImg('storm' + i, 680, 240, 1500 + i, [92, 96, 130], [14, 14, 28], 80, false);
+      const off = s * (20 + 230 * open) * (i < 2 ? 1 : 0.7);
       const x = (s < 0 ? -120 : 460) + off + Math.sin(t * 0.2 + i) * 6;
       const y = 30 + (i >> 1) * 70;
       ctx.globalAlpha = 0.95; blit(ctx, img, x, y);
@@ -1719,7 +1724,7 @@
     ctx.globalAlpha = 1;
     // beam-lit cloud undersides
     ctx.save(); ctx.globalCompositeOperation = 'lighter';
-    glowE(ctx, TX, 230, 420, 120, 0, [120, 220, 255], 0.3 * fire);
+    glowE(ctx, TX, 220, 360, 100, 0, [120, 220, 255], 0.3 * fire);
     glowE(ctx, TX, 140, 260, 60, 0, C.beam, 0.25 * fire);
     // lightning in the storm
     const lc = Math.floor(t / 2.9), lt = fract(t / 2.9) * 2.9;
@@ -1760,7 +1765,7 @@
       const rx = 20 + Math.pow(age / 2.4, 0.7) * 820, a = Math.pow(1 - age / 2.4, 2);
       ctx.strokeStyle = rgba(C.beam, 0.55 * a); ctx.lineWidth = 2;
       ctx.beginPath(); ctx.ellipse(TX, TY, rx, rx * 0.16, 0, 0, TAU); ctx.stroke();
-      ctx.strokeStyle = rgba(C.cyan, 0.12 * a); ctx.lineWidth = 16; ctx.stroke();
+      ctx.strokeStyle = rgba(C.cyan, 0.1 * a); ctx.lineWidth = 6; ctx.stroke();
       ctx.strokeStyle = rgba(C.cyan, 0.25 * a); ctx.lineWidth = 2;
       ctx.beginPath(); ctx.ellipse(TX, 150, rx * 0.9, rx * 0.1, 0, 0, TAU); ctx.stroke();
     }
@@ -1809,7 +1814,15 @@
       head();
       g.strokeStyle = 'rgba(200,150,255,0.85)'; g.lineWidth = 2; g.stroke();
       g.strokeStyle = 'rgba(170,110,255,0.25)'; g.lineWidth = 9; g.stroke();
-    }, 1);
+      // fringe + bob tips catch the rim light
+      g.strokeStyle = 'rgba(210,170,255,0.55)'; g.lineWidth = 1.4; g.beginPath();
+      g.moveTo(150, 120); g.quadraticCurveTo(190, 100, 214, 128); g.quadraticCurveTo(240, 104, 286, 118);
+      g.moveTo(128, 200); g.quadraticCurveTo(136, 222, 150, 216); g.moveTo(298, 196); g.quadraticCurveTo(292, 222, 276, 222); g.stroke();
+      g.globalCompositeOperation = 'destination-out';
+      const fade = g.createLinearGradient(0, 360, 0, 440); fade.addColorStop(0, 'rgba(0,0,0,0)'); fade.addColorStop(1, 'rgba(0,0,0,1)');
+      g.fillStyle = fade; g.fillRect(0, 360, 420, 80);
+      g.globalCompositeOperation = 'source-over';
+    });
   }
   function noiseImg(i) {
     return layer('static' + i, 240, 135, (g, w, h, c) => {
@@ -1818,21 +1831,32 @@
       g.putImageData(id, 0, 0);
     }, 1);
   }
+  /** voice — near-black; a violet glitch silhouette of a woman with short hair forms from static. */
   function sceneVoice(ctx, t) {
     ctx.fillStyle = '#030206'; ctx.fillRect(0, 0, DW, DH);
     const f = Math.floor(t * 24);
-    // static
-    ctx.save();
+    ctx.save(); // static (nearest-neighbour upscale is both cheap and right for TV snow)
     ctx.imageSmoothingEnabled = false;
     ctx.globalAlpha = 0.1 + 0.07 * hash(f, 1) + 0.25 * Math.exp(-t * 1.5);
     ctx.drawImage(noiseImg(f % 4), 0, 0, DW, DH);
     ctx.restore();
     const form = sstep(0.4, 6, t);
-    const sil = silhouetteImg();
     const SX = 270, SY = 40;
-    const strip = 6, rows = Math.ceil(sil.lh / strip);
+    ctx.globalAlpha = 0.4 + 0.6 * form;
+    blit(ctx, layerAt('voice-halo', 0, 0, DW, DH, (g) => {
+      g.globalCompositeOperation = 'lighter';
+      glow(g, SX + 217, SY + 200, 240, C.violet, 0.12);
+      glowE(g, 480, 330, 340, 26, 0, C.magenta, 0.16);
+    }));
+    ctx.globalAlpha = 1;
+    // silhouette in horizontal strips, each displaced (snapped to device pixels → 1:1 blits)
+    const sil = silhouetteImg();
+    const m = ctx.getTransform(), sc = sil.width / sil.lw;
+    const strip = 6, rows = Math.ceil(sil.lh / strip), sp = Math.round(strip * sc);
     const glitchBurst = fract(t / 2.3) < 0.12 ? 1 : 0;
     ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    const ox = Math.round(m.e + m.a * SX), oy = Math.round(m.f + m.d * SY);
     for (let i = 0; i < rows; i++) {
       const hr = hash(i, f);
       const amp = (1 - form) * 70 + 4 + glitchBurst * 30 * hash(i, f + 3);
@@ -1840,28 +1864,25 @@
       const vis = hash(i, f + 7) < 0.25 + form * 0.8 ? 1 : 0.15;
       const a = vis * (0.15 + 0.85 * form) * (0.85 + 0.15 * Math.sin(t * 3 + i * 0.3));
       if (a < 0.02) continue;
+      const sy = i * sp, sh = Math.min(sp, sil.height - sy);
+      if (sh <= 0) break;
       ctx.globalAlpha = a;
-      ctx.drawImage(sil, 0, i * strip * (sil.width / sil.lw), sil.width, strip * (sil.width / sil.lw), SX + dx, SY + i * strip, sil.lw, strip);
+      ctx.drawImage(sil, 0, sy, sil.width, sh, ox + Math.round(dx * m.a), oy + sy, sil.width, sh);
     }
-    // chromatic ghosts
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.globalAlpha = 0.12 + 0.1 * glitchBurst;
-    ctx.drawImage(sil, SX - 5 - glitchBurst * 8, SY, sil.lw, sil.lh);
-    ctx.globalAlpha = 0.08;
-    ctx.drawImage(sil, SX + 5, SY + 1, sil.lw, sil.lh);
+    ctx.globalCompositeOperation = 'lighter'; // chromatic ghost
+    ctx.globalAlpha = 0.1 + 0.12 * glitchBurst;
+    ctx.drawImage(sil, ox - Math.round((5 + glitchBurst * 8) * m.a), oy);
     ctx.restore();
     // eyes — faint, appearing late
     ctx.save(); ctx.globalCompositeOperation = 'lighter';
     const eyes = sstep(3, 7, t) * (fract(t / 5.3) > 0.97 ? 0.1 : 1);
     glowE(ctx, SX + 186, SY + 168, 10, 3, 0, [200, 160, 255], 0.7 * eyes);
     glowE(ctx, SX + 248, SY + 168, 10, 3, 0, [200, 160, 255], 0.7 * eyes);
-    glow(ctx, SX + 217, SY + 200, 220, C.violet, 0.1 * form);
     ctx.restore();
     // the waveform — her voice
     ctx.save(); ctx.globalCompositeOperation = 'lighter';
-    const wy = 330;
+    const wy = 330, N = 200;
     ctx.beginPath();
-    const N = 240;
     for (let i = 0; i <= N; i++) {
       const x = (DW * i) / N;
       const env = Math.exp(-Math.pow((x - 480) / 210, 2)) * (0.3 + 0.7 * Math.abs(Math.sin(t * 2.3) * Math.sin(t * 0.9 + 1)));
@@ -1869,23 +1890,23 @@
       const y = wy + v * env * 46 * (0.3 + 0.7 * form) + (hash(i >> 3, f) > 0.94 ? (hash(i, f + 1) - 0.5) * 30 : 0);
       i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
     }
-    ctx.strokeStyle = rgba(C.violet, 0.22); ctx.lineWidth = 7; ctx.stroke();
+    ctx.strokeStyle = rgba(C.violet, 0.22); ctx.lineWidth = 6; ctx.stroke();
     ctx.strokeStyle = rgba([220, 190, 255], 0.9); ctx.lineWidth = 1.4; ctx.stroke();
-    glowE(ctx, 480, wy, 340, 26, 0, C.magenta, 0.18);
     ctx.restore();
     // glitch bars
-    ctx.save();
     for (let i = 0; i < 5; i++) {
       if (hash(i, f) > 0.35 + glitchBurst * 0.4) continue;
-      const y = hash(i, f + 11) * DH, h = 1 + hash(i, f + 12) * 6;
       ctx.fillStyle = i % 2 ? 'rgba(170,110,255,0.25)' : 'rgba(126,249,255,0.12)';
-      ctx.fillRect(hash(i, f + 13) * 400, y, 200 + hash(i, f + 14) * 600, h);
+      ctx.fillRect(hash(i, f + 13) * 400, hash(i, f + 11) * DH, 200 + hash(i, f + 14) * 600, 1 + hash(i, f + 12) * 6);
     }
-    // scanlines
-    ctx.globalAlpha = 0.35;
-    blit(ctx, layer('scan', DW, DH, (g) => { g.fillStyle = 'rgba(0,0,0,0.6)'; for (let y = 0; y < DH; y += 3) g.fillRect(0, y, DW, 1); }, 1));
-    ctx.restore();
-    vignette(ctx, 0.9);
+    // scanlines + vignette, one cached overlay
+    blit(ctx, layer('voice-overlay', DW, DH, (g) => {
+      g.fillStyle = 'rgba(0,0,0,0.22)'; for (let y = 0; y < DH; y += 3) g.fillRect(0, y, DW, 1);
+      g.save(); g.scale(DW / 256, DH / 256);
+      const gr = g.createRadialGradient(128, 128, 52, 128, 128, 184);
+      gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(0.55, 'rgba(0,0,0,0.32)'); gr.addColorStop(1, 'rgba(0,0,0,0.92)');
+      g.fillStyle = gr; g.fillRect(0, 0, 256, 256); g.restore();
+    }));
   }
 
   /** Night sky over Tessera (cached): milky band, ring, airglow. */
