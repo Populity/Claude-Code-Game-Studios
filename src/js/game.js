@@ -463,7 +463,8 @@
       if (Decor.drawAtmosphere) Decor.drawAtmosphere(ctx, view, L, time);
 
       this.drawHUD(ctx, t);
-      this.dialogue.draw(ctx, t);
+      const pScreenY = this.player.y + this.player.h - this.cam.y;
+      this.dialogue.draw(ctx, t, { top: pScreenY > H - 190 });
       if (this.sign) drawSign(ctx, this.sign);
       if (this.puzzle) this.puzzle.draw(ctx, t);
       if (this.paused) {
@@ -482,7 +483,7 @@
     drawHUD(ctx, t) {
       const def = this.def;
       // level banner
-      if (this.bannerT < 4.5) {
+      if (this.bannerT < 4.5 && !this.dialogue.active) {
         const a = Math.min(1, this.bannerT * 2, (4.5 - this.bannerT) * 1.5);
         ctx.save(); ctx.globalAlpha = Math.max(0, a);
         ctx.textAlign = 'center';

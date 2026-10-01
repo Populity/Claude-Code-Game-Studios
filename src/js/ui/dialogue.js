@@ -86,8 +86,8 @@
       }
     }
 
-    /** Draw the dialogue box in VIEW space. */
-    draw(ctx, t) {
+    /** Draw the dialogue box in VIEW space. opts.top: place at the top (player is low on screen). */
+    draw(ctx, t, opts) {
       if (!this.active) return;
       const line = this.line;
       if (!line) return;
@@ -95,7 +95,7 @@
       const bark = this.active.mode === 'bark';
       const k = G.easeOutCubic(this.openT);
       const bw = bark ? 560 : 820, bh = bark ? 84 : 132;
-      const bx = (W - bw) / 2, by = H - bh - (bark ? 18 : 22) + (1 - k) * 30;
+      const bx = (W - bw) / 2, by = opts && opts.top ? (bark ? 76 : 70) - (1 - k) * 30 : H - bh - (bark ? 18 : 22) + (1 - k) * 30;
       ctx.save();
       ctx.globalAlpha = k;
       // panel
