@@ -225,7 +225,7 @@
         gr.addColorStop(0, rgba(mixc(c, lit, 0.35), 0.75)); gr.addColorStop(0.55, rgba(c, 0.5)); gr.addColorStop(1, rgba(c, 0));
         g.fillStyle = gr; g.fillRect(x - rad, y - rad, rad * 2, rad * 2);
       }
-    }, 0.5);
+    });
   }
 
   // ════════════════════════════════════════════════════════════════════ painters
@@ -907,13 +907,13 @@
   function fireTrail(ctx, x, y, dx, dy, len, width, t, seed, k) {
     const px = -dy, py = dx;
     ctx.globalCompositeOperation = 'source-over';
-    for (let i = 0; i < 16; i++) { // smoke first (behind)
-      const u = 0.35 + (i / 16) * 0.9;
+    for (let i = 0; i < 9; i++) { // smoke first (behind)
+      const u = 0.35 + (i / 9) * 0.9;
       const w = Math.sin(t * 3 + i * 1.7 + seed) * width * 0.4 * u;
       puff(ctx, x + dx * len * u + px * w, y + dy * len * u + py * w, width * (0.8 + u * 1.6), C.smoke, 0.22 * k * (1 - u / 1.25));
     }
     ctx.globalCompositeOperation = 'lighter';
-    const n = 26;
+    const n = 16;
     for (let i = 0; i < n; i++) {
       const u = i / n;
       const fl = hash(seed * 97 + i, Math.floor(t * 24));
@@ -933,14 +933,14 @@
       vfill(g, 0, DH, [[0, top || [3, 4, 10]], [1, bot || [7, 5, 16]]]);
       paintNebula(g, seed, blobs);
       if (lanes) paintDustLanes(g, seed + 1, lanes);
-    }, 0.5);
+    });
   }
   function starLayer(key, seed, n, o) { return layer('stars:' + key, DW, DH, (g) => paintStars(g, DW, DH, seed, n, o)); }
   /** Draw a horizontally tiling layer scrolled by ox. */
   function tileX(ctx, img, ox, y) {
     const x = ((ox % DW) + DW) % DW;
-    ctx.drawImage(img, x - DW, y || 0, DW, DH);
-    ctx.drawImage(img, x, y || 0, DW, DH);
+    blit(ctx, img, x - DW, y || 0);
+    blit(ctx, img, x, y || 0);
   }
   /** Out-of-focus foreground motes drifting by (cinematic depth cue). */
   function bokeh(ctx, t, n, vx, vy, c, a, seed) {
@@ -1059,12 +1059,15 @@
   function sceneSignal(ctx, t) {
     const SX = 640, SY = 196;
     const k = easeInOut(Math.min(t, 18) / 18);
-    cam(ctx, 1 + 0.14 * k, SX, SY);
+    const z = 1 + 0.35 * k; // sensor zoom: the system grows, the stars stay at infinity
     blit(ctx, spaceNebula('signal', 51, [
       { x: 640, y: 196, sx: 160, sy: 90, r: 200, c: [80, 40, 160], a: 0.12, n: 12 },
       { x: 300, y: 300, sx: 500, sy: 200, r: 260, c: [20, 50, 110], a: 0.08, n: 12 },
-    ], [{ x0: 100, y0: 380, x1: 900, y1: 260, r: 80, a: 0.4, j: 60, n: 18 }], [2, 2, 8], [5, 4, 14]));
-    blit(ctx, starLayer('signal-far', 505, 1500, { pow: 3.3, size: 1.1 }));
+    ], [{ x0: 100, y0: 380, x1: 900, y1: 260, r: 80, a: 0.4, j: 60, n: 18 }], [2, 2, 8], [5, 4, 14],
+    (g) => paintStars(g, DW, DH, 505, 1500, { pow: 3.3, size: 1.1 })));
+    blit(ctx, layer('bridge-frame', DW, DH, paintBridge));
+    ctx.save(); ctx.beginPath(); ctx.moveTo(118, 52); ctx.lineTo(DW - 118, 52); ctx.lineTo(DW - 74, 400); ctx.lineTo(74, 400); ctx.closePath(); ctx.clip();
+    cam(ctx, z, SX, SY);
     // the unknown system: a dim red star with faint orbits
     ctx.save(); ctx.globalCompositeOperation = 'lighter';
     let flash = 0;
@@ -1096,8 +1099,7 @@
     }
     ctx.restore();
     ctx.restore();
-    // bridge frame in front (fixed): the parallax against the zoom sells the depth
-    blit(ctx, layer('bridge-frame', DW, DH, paintBridge));
+    ctx.restore();
     ctx.save(); ctx.globalCompositeOperation = 'lighter'; // glass reflections
     glowE(ctx, 250, 200, 260, 30, -0.9, C.ice, 0.035);
     glowE(ctx, 760, 330, 180, 16, -0.9, C.ice, 0.03);
@@ -1149,12 +1151,13 @@
     for (let i = 0; i < 4; i++) { ctx.rotate(Math.PI / 2); ctx.beginPath(); ctx.arc(0, 0, rr, -0.35, 0.35); ctx.stroke(); }
     ctx.restore();
     ctx.strokeStyle = rgba(cyan, 0.35); ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(SX + rr * 0.8, SY - rr * 0.8); ctx.lineTo(SX + 110, SY - 92); ctx.lineTo(SX + 250, SY - 92); ctx.stroke();
+    const lx = SX - 340, ly = SY + 124;
+    ctx.beginPath(); ctx.moveTo(SX - rr * 0.72, SY + rr * 0.72); ctx.lineTo(SX - 120, ly); ctx.lineTo(lx, ly); ctx.stroke();
     ctx.font = '14px ' + MONO; ctx.textBaseline = 'bottom'; ctx.fillStyle = rgba(cyan, 0.85);
-    ctx.fillText('ИСТОЧНИК НЕ КАТАЛОГИЗИРОВАН', SX + 114, SY - 96);
+    ctx.fillText('ИСТОЧНИК НЕ КАТАЛОГИЗИРОВАН', lx, ly - 4);
     ctx.font = '12px ' + MONO; ctx.fillStyle = rgba(cyan, 0.55); ctx.textBaseline = 'top';
-    ctx.fillText('α 14ч 29м 43с · δ −62° 40′', SX + 114, SY - 88);
-    ctx.fillText('ДИСТ. ≈ 0.8 пк · ИСКУССТВ.: 97%', SX + 114, SY - 72);
+    ctx.fillText('α 14ч 29м 43с · δ −62° 40′', lx, ly + 6);
+    ctx.fillText('ДИСТ. ≈ 0.8 пк · ИСКУССТВ.: 97%', lx, ly + 22);
     // waveform panel
     const px = 150, py = 70, pw = 330, ph = 92;
     ctx.globalCompositeOperation = 'source-over';
@@ -1196,17 +1199,16 @@
     const k = easeInOut(Math.min(t, 14) / 14);
     const sh = 1.5 + 2.5 * k;
     const jx = (hash(Math.floor(t * 30), 1) - 0.5) * sh, jy = (hash(Math.floor(t * 30), 2) - 0.5) * sh;
-    cam(ctx, 1 + 0.08 * k, AX, AY, jx, jy, -0.03 * k);
     blit(ctx, spaceNebula('anomaly', 61, [
       { x: 660, y: 190, sx: 300, sy: 160, r: 260, c: [60, 50, 160], a: 0.1, n: 14 },
       { x: 200, y: 400, sx: 300, sy: 200, r: 240, c: [120, 30, 60], a: 0.08, n: 10 },
-    ], null, [2, 2, 7], [6, 3, 10]));
-    // differentially rotating starfield annuli = lensing swirl
-    const stars = starLayer('anomaly-stars', 606, 1700, { pow: 3.2, size: 1.2 });
-    ctx.save(); ctx.drawImage(stars, 0, 0, DW, DH); ctx.restore();
-    const darkG = ctx.createRadialGradient(AX, AY, 30, AX, AY, 300);
-    darkG.addColorStop(0, 'rgba(0,0,0,0.95)'); darkG.addColorStop(0.3, 'rgba(0,0,0,0.6)'); darkG.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = darkG; ctx.fillRect(AX - 300, AY - 300, 600, 600);
+    ], null, [2, 2, 7], [6, 3, 10], (g) => {
+      paintStars(g, DW, DH, 606, 1700, { pow: 3.2, size: 1.2 });
+      const darkG = g.createRadialGradient(AX, AY, 30, AX, AY, 300);
+      darkG.addColorStop(0, 'rgba(0,0,0,0.95)'); darkG.addColorStop(0.3, 'rgba(0,0,0,0.6)'); darkG.addColorStop(1, 'rgba(0,0,0,0)');
+      g.fillStyle = darkG; g.fillRect(AX - 300, AY - 300, 600, 600);
+    }), jx, jy);
+    cam(ctx, 1 + 0.08 * k, AX, AY, jx, jy, -0.03 * k);
     drawSwirl(ctx, t, AX, AY);
     // the dark core + photon ring
     ctx.save();
@@ -1258,8 +1260,7 @@
     // red alarm grade
     const pulse = Math.pow(0.5 + 0.5 * Math.sin(t * TAU * 0.9), 2);
     ctx.fillStyle = `rgba(150,8,16,${0.08 + 0.12 * pulse})`; ctx.fillRect(0, 0, DW, DH);
-    vignette(ctx, 0.55 + 0.35 * pulse, [90, 0, 6]);
-    vignette(ctx, 0.5);
+    vignette(ctx, 0.6 + 0.4 * pulse, [70, 0, 6]);
   }
   /** Infalling star-streaks along a tilted disk (lifecycle-based so any t is safe). */
   function drawSwirl(ctx, t, AX, AY) {
@@ -1342,13 +1343,10 @@
     let shake = 0;
     for (const b of boom) { const d = t - b; if (d > 0 && d < 0.8) shake += (1 - d / 0.8) * 5; }
     const jx = (hash(Math.floor(t * 40), 11) - 0.5) * shake, jy = (hash(Math.floor(t * 40), 12) - 0.5) * shake;
-    cam(ctx, 1 + 0.02 * k, 480, 270, jx * 0.3, jy * 0.3);
-    blit(ctx, spaceNebula('pod', 71, [{ x: 200, y: 120, sx: 400, sy: 160, r: 260, c: [60, 30, 120], a: 0.08, n: 10 }]));
-    blit(ctx, starLayer('pod-stars', 707, 1200, { pow: 3.2, size: 1.1 }));
-    ctx.restore();
-    cam(ctx, 1 + 0.04 * k, 480, 400);
-    blit(ctx, limbLayer());
-    ctx.restore();
+    blit(ctx, spaceNebula('pod', 71, [{ x: 200, y: 120, sx: 400, sy: 160, r: 260, c: [60, 30, 120], a: 0.08, n: 10 }], null, null, null, (g) => {
+      paintStars(g, DW, DH, 707, 1200, { pow: 3.2, size: 1.1 });
+      paintLimb(g);
+    }), jx * 0.3, jy * 0.3);
     // the ship, cracking
     cam(ctx, 1 + 0.08 * k, 400, 200, jx, jy);
     const crack = sstep(0.3, 5, t);
@@ -1367,7 +1365,7 @@
       const x = 380 + (lx - PART_PIVOT.aftcryo) * S * Math.cos(R0) - (ly - 140) * S * Math.sin(R0);
       const y = 176 + (lx - PART_PIVOT.aftcryo) * S * Math.sin(R0) + (ly - 140) * S * Math.cos(R0);
       const f = Math.exp(-d * 2.4);
-      glow(ctx, x, y, 40 + d * 90, C.fire, 0.9 * f);
+      glow(ctx, x, y, 40 + d * 50, C.fire, 0.9 * f);
       glow(ctx, x, y, 18 + d * 30, C.white, f);
       for (let p = 0; p < 14; p++) {
         const a = hash(i * 31 + p, 3) * TAU, v = 40 + hash(i * 31 + p, 4) * 120;
@@ -1413,29 +1411,34 @@
   function sceneBreakup(ctx, t) {
     const k = easeInOut(Math.min(t, 14) / 14);
     const jx = (hash(Math.floor(t * 30), 21) - 0.5) * 2.5, jy = (hash(Math.floor(t * 30), 22) - 0.5) * 2.5;
-    cam(ctx, 1 + 0.03 * k, 480, 300);
     blit(ctx, layer('breakup-sky', DW, DH, (g) => {
       vfill(g, 0, DH, [[0, [6, 6, 20]], [0.3, [40, 22, 56]], [0.55, [140, 60, 70]], [0.74, [236, 140, 80]], [0.8, [252, 206, 150]], [1, [180, 110, 80]]]);
       paintStars(g, DW, 200, 818, 300, { pow: 3, size: 1, alpha: 0.6 });
-      // curved horizon glow band
-      g.globalCompositeOperation = 'lighter';
+      g.globalCompositeOperation = 'lighter'; // curved horizon glow band + low sun
       for (let i = 0; i < 5; i++) {
         g.strokeStyle = rgba([255, 200, 150], [0.3, 0.16, 0.08, 0.04, 0.02][i]); g.lineWidth = [2, 6, 14, 30, 60][i];
         g.beginPath(); g.ellipse(480, 2400, 2600, 2000, 0, Math.PI * 1.3, Math.PI * 1.7); g.stroke();
       }
+      glow(g, 900, 420, 500, [255, 160, 100], 0.18);
       g.globalCompositeOperation = 'source-over';
       g.beginPath(); g.ellipse(480, 2400, 2600, 2000, 0, 0, TAU); g.save(); g.clip();
       vfill(g, 400, DH, [[0, [214, 150, 110]], [1, [120, 70, 70]]]);
       g.restore();
-    }, 0.75));
-    // cloud deck
-    for (let i = 0; i < 9; i++) {
-      const img = cloudImg('deck' + (i % 3), 460, 120, 900 + (i % 3), [255, 222, 186], [150, 86, 86], 60, true);
-      const x = fract(hash(i, 90) + t * 0.004 * (1 + (i % 3))) * 1400 - 300;
-      ctx.globalAlpha = 0.85; ctx.drawImage(img, x, 380 + (i % 3) * 30 + hash(i, 91) * 20, 460 + (i % 3) * 60, 120);
-    }
-    ctx.globalAlpha = 1;
-    ctx.restore();
+      for (let i = 0; i < 12; i++) { // far, static cloud deck
+        const img = cloudImg('deck' + (i % 3), 460, 120, 900 + (i % 3), [255, 222, 186], [150, 86, 86], 60, true);
+        g.globalAlpha = 0.8; g.drawImage(img, i * 90 - 120 + hash(i, 3) * 40, 392 + (i % 3) * 22 + hash(i, 91) * 16, 460, 110);
+      }
+      g.globalAlpha = 1;
+      bakeGrain(g, DW, DH, 0.1);
+    }));
+    // nearer cloud deck drifting (tiling strip, 1:1 blits)
+    tileX(ctx, layerAt('breakup-deck', 0, 420, DW, 120, (g) => {
+      for (let i = 0; i < 9; i++) {
+        const img = cloudImg('deck' + (i % 3), 460, 120, 900 + (i % 3), [255, 226, 196], [140, 76, 80], 60, true);
+        const x = i * 120 - 60;
+        for (const xx of [x, x - DW, x + DW]) g.drawImage(img, xx, 430 + (i % 2) * 22, 460, 110);
+      }
+    }), -t * 9);
     // pieces
     cam(ctx, 1 + 0.1 * k, 480, 230, jx, jy);
     const u = settle(t, 7);
@@ -1466,9 +1469,6 @@
     }
     ctx.restore();
     ctx.restore();
-    ctx.save(); ctx.globalCompositeOperation = 'lighter';
-    glow(ctx, 900, 420, 500, [255, 160, 100], 0.15);
-    ctx.restore();
     vignette(ctx, 0.75);
   }
 
@@ -1485,7 +1485,7 @@
       // the ring's shadowed segment
       g.strokeStyle = 'rgba(80,30,50,0.25)'; g.lineWidth = 50;
       g.beginPath(); g.ellipse(600, 940, 1060, 860, -0.18, Math.PI * 1.62, Math.PI * 1.78); g.stroke();
-    }, 0.75);
+    });
   }
   function dayGround() {
     return layer('day-ground', DW, DH, (g) => {
@@ -1494,7 +1494,7 @@
       paintDunes(g, DW, DH, { y: 430, amp: 18, seed: 3, top: [214, 146, 98], bottom: [170, 100, 80], rim: [255, 230, 190], rimA: 0.5, freq: 1.8 });
       paintHaze(g, 410, 470, [250, 206, 160], 0.45);
       paintDunes(g, DW, DH, { y: 488, amp: 30, seed: 4, top: [196, 124, 84], bottom: [120, 66, 60], rim: [255, 220, 170], rimA: 0.5, shade: [90, 40, 50], shadeA: 0.25, freq: 1.2 });
-    }, 0.75);
+    });
   }
 
   /** descent — the pod falls through Tessera's amber sky; clouds rush past. */
@@ -1569,12 +1569,12 @@
       paintDunes(g, DW, DH, { y: 392, amp: 22, seed: 7, top: [170, 86, 70], bottom: [120, 56, 56], rim: [255, 200, 150], rimA: 0.7, sunRight: true, freq: 1.4 });
       paintHaze(g, 380, 420, [255, 180, 130], 0.3);
       paintDunes(g, DW, DH, { y: 420, amp: 40, seed: 8, top: [140, 64, 58], bottom: [70, 32, 40], rim: [255, 190, 130], rimA: 0.8, shade: [40, 14, 30], shadeA: 0.35, sunRight: true, freq: 1 });
-    }, 0.75);
+    });
   }
   function duskFront() {
     return layer('dusk-front', DW, DH, (g) => {
       paintDunes(g, DW, DH, { y: 520, amp: 60, seed: 9, top: [86, 36, 40], bottom: [30, 12, 22], rim: [255, 170, 110], rimA: 0.75, rimW: 2, shade: [20, 6, 16], shadeA: 0.4, sunRight: true, freq: 0.8 });
-    }, 0.75);
+    });
   }
   function dustSprite(i) {
     return cloudImg('dust' + i, 220, 160, 1200 + i, [238, 186, 132], [110, 62, 52], 50, false);
@@ -1903,7 +1903,7 @@
       paintHaze(g, 395, 440, [60, 40, 80], 0.35);
       paintDunes(g, DW, DH, { y: 446, amp: 22, seed: seed + 1, top: [34, 30, 54], bottom: [14, 12, 24], rim: rim, rimA: 0.35, freq: 1.3 });
       paintDunes(g, DW, DH, { y: 528, amp: 56, seed: seed + 2, top: [24, 22, 40], bottom: [6, 6, 12], rim: rim, rimA: 0.3, rimW: 1.8, shade: [4, 4, 10], shadeA: 0.4, freq: 0.8 });
-    }, 0.75);
+    });
   }
 
   /** Deterministic wreck layout along three orbital shells. */

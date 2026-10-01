@@ -73,24 +73,27 @@
   const rgba = (c, a) => Pal.alpha(c, a);
 
   const glowCache = new Map();
-  /** Soft radial glow sprite (64x64) for a colour. */
-  function glowSprite(col) {
-    let c = glowCache.get(col);
+  /** Soft radial glow sprite for a colour, bucketed by size so small glows blit near 1:1 (cheap). */
+  function glowSprite(col, size) {
+    const sz = size || 64;
+    const key = col + sz;
+    let c = glowCache.get(key);
     if (c) return c;
-    c = mk(64, 64);
-    const g = c.getContext('2d');
-    const gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+    c = mk(sz, sz);
+    const g = c.getContext('2d'), h = sz / 2;
+    const gr = g.createRadialGradient(h, h, 0, h, h, h);
     gr.addColorStop(0, rgba(col, 1)); gr.addColorStop(0.22, rgba(col, 0.5));
     gr.addColorStop(0.55, rgba(col, 0.14)); gr.addColorStop(1, rgba(col, 0));
-    g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
-    glowCache.set(col, c);
+    g.fillStyle = gr; g.fillRect(0, 0, sz, sz);
+    glowCache.set(key, c);
     return c;
   }
   /** Draw a glow (caller sets 'lighter' composite). */
   function glow(ctx, col, x, y, r, a) {
     if (a <= 0.004 || r <= 0.5) return;
     ctx.globalAlpha = Math.min(1, a);
-    ctx.drawImage(glowSprite(col), x - r, y - r, r * 2, r * 2);
+    const d = r * 2 * (G.renderScale || 1);
+    ctx.drawImage(glowSprite(col, d <= 20 ? 16 : d <= 44 ? 32 : d <= 100 ? 64 : 128), x - r, y - r, r * 2, r * 2);
   }
   const vgradCache = new Map();
   /** Vertical fade sprite (1x64): colour at the bottom fading to transparent at the top. */
