@@ -578,6 +578,12 @@
     g.drawImage(tmp, x - S / s / 2, y - S / s / 2, S / s, S / s);
   }
 
+  /** A moon as a small cropped layer at (x, y) — blitted 1:1. */
+  function moonAt(key, x, y, R, L, base, seed, haloC, haloA) {
+    const E = Math.ceil(R * 3);
+    return layerAt('moon:' + key, Math.floor(x - E), Math.floor(y - E), E * 2, E * 2, (g) => paintMoon(g, x, y, R, L, base, seed, haloC, haloA));
+  }
+
   // ════════════════════════════════════════════════════════════════════ the Spire
   /** Architect Spire silhouette: terraced base, tapering shaft, floating rings, needle. */
   function drawSpire(ctx, x, by, h, fill, rim, t, lightA, lightC) {
@@ -928,11 +934,17 @@
   }
 
   // ════════════════════════════════════════════════════════════════════ shared backdrops
-  function spaceNebula(key, seed, blobs, lanes, top, bot) {
+  /**
+   * Full-screen space backdrop at device resolution: gradient, nebula, dust lanes, plus
+   * `extra(g)` for anything static (far stars, suns, planets, moons). Grain is baked in.
+   */
+  function spaceNebula(key, seed, blobs, lanes, top, bot, extra) {
     return layer('neb:' + key, DW, DH, (g) => {
       vfill(g, 0, DH, [[0, top || [3, 4, 10]], [1, bot || [7, 5, 16]]]);
       paintNebula(g, seed, blobs);
       if (lanes) paintDustLanes(g, seed + 1, lanes);
+      if (extra) extra(g);
+      bakeGrain(g, DW, DH, 0.1);
     });
   }
   function starLayer(key, seed, n, o) { return layer('stars:' + key, DW, DH, (g) => paintStars(g, DW, DH, seed, n, o)); }
@@ -958,91 +970,81 @@
   const TITLE_L = norm3([0.62, -0.66, 0.38]);
 
   /** title — Tessera with ring + moons, drifting stars, the planet's pulsing signal. Loops. */
+  const TITLE_P = { x: 828, y: 432, R: 238, L: norm3([0.62, -0.66, 0.38]), key: 'title', tilt: -0.32, ratio: 0.22, ringA: 0.75 };
   function sceneTitle(ctx, t) {
-    const P = { x: 828, y: 432, R: 238 };
+    const P = TITLE_P;
     blit(ctx, spaceNebula('title', 31, [
       { x: 900, y: 200, sx: 260, sy: 220, r: 300, c: [150, 50, 90], a: 0.11, n: 14 },
       { x: 840, y: 520, sx: 300, sy: 120, r: 240, c: [190, 96, 40], a: 0.08, n: 10 },
       { x: 200, y: 400, sx: 300, sy: 200, r: 260, c: [60, 36, 130], a: 0.08, n: 12 },
       { x: 90, y: 90, sx: 200, sy: 120, r: 200, c: [20, 90, 120], a: 0.06, n: 8 },
-    ], [{ x0: 0, y0: 470, x1: 520, y1: 300, r: 90, a: 0.35, j: 70, n: 16 }]));
-    blit(ctx, starLayer('title-far', 101, 1500, { pow: 3.4, size: 1.1, alpha: 0.85, band: { y0: 250, k: -0.5, spread: 120, frac: 0.45 } }));
+    ], [{ x0: 0, y0: 470, x1: 520, y1: 300, r: 90, a: 0.35, j: 70, n: 16 }], null, null, (g) => {
+      paintStars(g, DW, DH, 101, 1500, { pow: 3.4, size: 1.1, alpha: 0.85, band: { y0: 250, k: -0.5, spread: 120, frac: 0.45 } });
+      g.globalCompositeOperation = 'lighter';
+      glow(g, 1010, 60, 420, [255, 170, 140], 0.16);
+      glow(g, 1000, 40, 140, C.warm, 0.25);
+      g.globalCompositeOperation = 'source-over';
+      tesseraBack(g, P);
+    }));
     tileX(ctx, starLayer('title-near', 202, 150, { pow: 2.1, size: 2.0, wrap: true }), -t * 3.2);
-    // twinkling hero stars
     ctx.save(); ctx.globalCompositeOperation = 'lighter';
-    for (let i = 0; i < 9; i++) {
-      const x = fract(hash(77, i) - t * 3.2 / DW) * DW, y = 40 + hash(78, i) * 300;
+    for (let i = 0; i < 9; i++) { // twinkling hero stars
+      const x = fract(hash(77, i) - (t * 3.2) / DW) * DW, y = 40 + hash(78, i) * 300;
       const tw = Math.pow(0.5 + 0.5 * Math.sin(t * (0.6 + hash(79, i)) + i * 2), 3);
-      flare(ctx, x, y, 10 + 10 * hash(80, i), STAR_COLS[i % 6], 0.25 + 0.5 * tw);
+      flare(ctx, x, y, 10 + 10 * hash(80, i), STAR_COLS[i % 6], 0.2 + 0.5 * tw);
     }
     ctx.restore();
-    // sun glare off the top-right edge
+    blit(ctx, moonAt('t1', 142, 118, 30, norm3([0.7, -0.4, 0.45]), [236, 214, 200], 3.1, C.rose, 0.12));
+    blit(ctx, moonAt('t2', 902, 92, 11, norm3([0.75, -0.5, 0.4]), [210, 196, 230], 7.7, C.ice, 0.1));
+    drawTesseraSurface(ctx, Object.assign({ rot: t * 0.0028 }, P));
+    blit(ctx, tesseraOverlay(P));
+    // the signal: a pulsing point on the night side + rings spreading out across space
+    const bx = 704, by = 520, period = 4.2;
     ctx.save(); ctx.globalCompositeOperation = 'lighter';
-    glow(ctx, 1010, 60, 420, [255, 170, 140], 0.16);
-    glow(ctx, 1000, 40, 140, C.warm, 0.25);
-    ctx.restore();
-    // moons
-    drawMoon(ctx, moonImg('m1', 30, norm3([0.7, -0.4, 0.45]), [236, 214, 200], 3.1), 142, 118, C.rose, 0.12);
-    drawMoon(ctx, moonImg('m2', 11, norm3([0.75, -0.5, 0.4]), [210, 196, 230], 7.7), 902, 92, C.ice, 0.1);
-    // the planet
-    drawTessera(ctx, { x: P.x, y: P.y, R: P.R, L: TITLE_L, key: 'title', tilt: -0.32, ratio: 0.22, rot: t * 0.0032, crot: t * 0.0055 + 0.3 });
-    // the signal: a pulsing point on the night side + rings spreading across space
-    const bx = 704, by = 520;
-    ctx.save(); ctx.globalCompositeOperation = 'lighter';
-    const period = 4.2;
     for (let k = 0; k < 3; k++) {
       const age = fract(t / period + k / 3) * period;
       const rad = 8 + age * 150, a = Math.pow(1 - age / period, 2);
-      ctx.strokeStyle = rgba(C.cyan, 0.22 * a); ctx.lineWidth = 1.2;
-      ctx.beginPath(); ctx.ellipse(bx, by, rad, rad * 0.82, -0.2, 0, TAU); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(bx, by, rad, rad * 0.82, -0.2, 0, TAU);
       ctx.strokeStyle = rgba(C.cyan, 0.05 * a); ctx.lineWidth = 9; ctx.stroke();
+      ctx.strokeStyle = rgba(C.cyan, 0.24 * a); ctx.lineWidth = 1.2; ctx.stroke();
     }
     const beat = Math.exp(-fract(t / (period / 3)) * 6);
     glow(ctx, bx, by, 26 + 20 * beat, C.cyan, 0.35 + 0.5 * beat);
     glow(ctx, bx, by, 4, C.white, 0.9);
     ctx.restore();
-    bokeh(ctx, t, 8, -14, -4, C.gold, 0.05, 5);
-    // keep the logo + menu column moody and readable
-    ctx.save();
-    const gr = ctx.createRadialGradient(480, 280, 40, 480, 280, 430);
-    gr.addColorStop(0, 'rgba(2,3,8,0.55)'); gr.addColorStop(0.6, 'rgba(2,3,8,0.3)'); gr.addColorStop(1, 'rgba(2,3,8,0)');
-    ctx.fillStyle = gr; ctx.fillRect(0, 0, DW, DH);
-    ctx.restore();
-    vignette(ctx, 0.75);
+    bokeh(ctx, t, 7, -14, -4, C.gold, 0.05, 5);
+    vignette(ctx, 1, null, 0.5);
   }
 
-  /** space — «Ковчег-7» gliding through deep space; slow push-in. */
+  /** space — «Ковчег-7» gliding through deep space; slow push-in (stars stay at infinity). */
   function sceneSpace(ctx, t) {
     const k = easeInOut(Math.min(t, 18) / 18);
-    cam(ctx, 1 + 0.03 * k, 480, 240);
+    const sx = 120, sy = 86;
     blit(ctx, spaceNebula('space', 41, [
       { x: 700, y: 140, sx: 500, sy: 160, r: 260, c: [30, 110, 140], a: 0.09, n: 16 },
       { x: 300, y: 380, sx: 420, sy: 160, r: 280, c: [90, 40, 140], a: 0.09, n: 14 },
       { x: 860, y: 420, sx: 200, sy: 160, r: 220, c: [170, 90, 50], a: 0.06, n: 8 },
-    ], [{ x0: 200, y0: 120, x1: 900, y1: 330, r: 80, a: 0.4, j: 60, n: 20 }]));
-    blit(ctx, starLayer('space-far', 303, 1700, { pow: 3.3, size: 1.1, band: { y0: 260, k: 0.25, spread: 90, frac: 0.5 } }));
-    ctx.restore();
-    cam(ctx, 1 + 0.06 * k, 480, 240);
+    ], [{ x0: 200, y0: 120, x1: 900, y1: 330, r: 80, a: 0.4, j: 60, n: 20 }], null, null, (g) => {
+      paintStars(g, DW, DH, 303, 1700, { pow: 3.3, size: 1.1, band: { y0: 260, k: 0.25, spread: 90, frac: 0.5 } });
+      g.globalCompositeOperation = 'lighter';
+      glow(g, sx, sy, 300, [255, 190, 140], 0.18);
+      glow(g, sx, sy, 60, C.warm, 0.5);
+      lensFlare(g, sx, sy, 0.85);
+      g.globalCompositeOperation = 'source-over';
+    }));
     tileX(ctx, starLayer('space-near', 404, 120, { pow: 2, size: 1.9, wrap: true }), -t * 6);
-    ctx.restore();
-    // distant sun with anamorphic flare
     ctx.save(); ctx.globalCompositeOperation = 'lighter';
-    const sx = 120, sy = 86;
-    glow(ctx, sx, sy, 300, [255, 190, 140], 0.18);
-    glow(ctx, sx, sy, 60, C.warm, 0.55);
-    glow(ctx, sx, sy, 10, C.white, 1);
-    lensFlare(ctx, sx, sy, 0.8 + 0.1 * Math.sin(t * 0.7));
+    glow(ctx, sx, sy, 18, C.white, 0.9 + 0.1 * Math.sin(t * 3));
     ctx.restore();
-    // the ship
     cam(ctx, 1 + 0.12 * k, 500, 236);
     const shx = 420 + 140 * settle(t, 16), shy = 236 + Math.sin(t * 0.35) * 3;
     drawShip(ctx, shx, shy, 0.66, -0.035, t, { engine: 1 });
-    ctx.save(); ctx.globalCompositeOperation = 'lighter'; // sun rim light sweeping the bow
-    glowE(ctx, shx + 150, shy - 40, 200, 20, -0.04, C.warm, 0.08 + 0.04 * Math.sin(t * 0.5));
+    ctx.save(); ctx.globalCompositeOperation = 'lighter'; // sun glint sweeping the bow
+    glowE(ctx, shx + 150, shy - 40, 200, 16, -0.04, C.warm, 0.07 + 0.04 * Math.sin(t * 0.5));
     ctx.restore();
     ctx.restore();
-    bokeh(ctx, t, 10, -40, 0, C.ice, 0.06, 9);
-    vignette(ctx, 0.8);
+    bokeh(ctx, t, 8, -40, 0, C.ice, 0.06, 9);
+    vignette(ctx, 0.85);
   }
 
   /** signal — bridge viewport, a rhythmic signal pulsing out of an uncharted system. */
@@ -1313,27 +1315,25 @@
     ctx.globalAlpha = 1;
   }
 
-  /** Close planet limb seen from orbit (cached; used by pod_launch). */
-  function limbLayer() {
-    return layer('limb', DW, DH, (g) => {
-      const cx = 520, cy = 1540, R = 1180;
-      g.save(); g.beginPath(); g.arc(cx, cy, R, 0, TAU); g.clip();
-      sphereMap(g, planetTex(), cx, cy, R, 0.12, 90);
-      g.globalAlpha = 0.9; sphereMap(g, cloudTex(), cx, cy, R, 0.31, 90); g.globalAlpha = 1;
-      const sh = g.createLinearGradient(0, cy - R, 0, cy - R + 260);
-      sh.addColorStop(0, 'rgba(60,20,30,0)'); sh.addColorStop(1, 'rgba(10,4,12,0.75)');
-      g.fillStyle = sh; g.fillRect(0, cy - R, DW, 400);
-      const side = g.createLinearGradient(0, 0, DW, 0);
-      side.addColorStop(0, 'rgba(6,2,10,0.75)'); side.addColorStop(0.55, 'rgba(6,2,10,0)');
-      g.fillStyle = side; g.fillRect(0, 0, DW, DH);
-      g.restore();
-      g.globalCompositeOperation = 'lighter';
-      for (let i = 0; i < 6; i++) {
-        g.strokeStyle = rgba(i < 2 ? [255, 220, 180] : [255, 130, 120], [0.75, 0.4, 0.18, 0.1, 0.05, 0.03][i]);
-        g.lineWidth = [1.5, 3, 7, 14, 26, 44][i];
-        g.beginPath(); g.arc(cx, cy, R + [0, 1, 3, 7, 13, 22][i], -Math.PI * 0.85, -Math.PI * 0.15); g.stroke();
-      }
-    });
+  /** Close planet limb seen from orbit, painted into a backdrop (pod_launch). */
+  function paintLimb(g) {
+    const cx = 520, cy = 1540, R = 1180;
+    g.save(); g.beginPath(); g.arc(cx, cy, R, 0, TAU); g.clip();
+    sphereMap(g, planetTex(), cx, cy, R, 0.12, 90);
+    const sh = g.createLinearGradient(0, cy - R, 0, cy - R + 260);
+    sh.addColorStop(0, 'rgba(60,20,30,0)'); sh.addColorStop(1, 'rgba(10,4,12,0.8)');
+    g.fillStyle = sh; g.fillRect(0, cy - R, DW, 400);
+    const side = g.createLinearGradient(0, 0, DW, 0);
+    side.addColorStop(0, 'rgba(6,2,10,0.8)'); side.addColorStop(0.55, 'rgba(6,2,10,0)');
+    g.fillStyle = side; g.fillRect(0, 0, DW, DH);
+    g.restore();
+    g.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < 6; i++) {
+      g.strokeStyle = rgba(i < 2 ? [255, 220, 180] : [255, 130, 120], [0.75, 0.4, 0.18, 0.1, 0.05, 0.03][i]);
+      g.lineWidth = [1.5, 3, 7, 14, 26, 44][i];
+      g.beginPath(); g.arc(cx, cy, R + [0, 1, 3, 7, 13, 22][i], -Math.PI * 0.85, -Math.PI * 0.15); g.stroke();
+    }
+    g.globalCompositeOperation = 'source-over';
   }
 
   /** pod_launch — the escape pod blasts away as the hull cracks behind it. */
@@ -1889,7 +1889,7 @@
   }
 
   /** Night sky over Tessera (cached): milky band, ring, airglow. */
-  function nightSky(key, seed) {
+  function nightSky(key, seed, extra) {
     return layer('night-sky:' + key, DW, DH, (g) => {
       vfill(g, 0, DH, [[0, [2, 3, 10]], [0.55, [10, 12, 30]], [0.75, [34, 24, 52]], [0.82, [60, 36, 60]], [1, [10, 8, 16]]]);
       paintNebula(g, seed, [
@@ -1899,6 +1899,8 @@
       paintDustLanes(g, seed + 3, [{ x0: 100, y0: 320, x1: 900, y1: 60, r: 40, a: 0.35, j: 40, n: 22 }]);
       paintStars(g, DW, 440, seed, 2600, { pow: 3.6, size: 1.3, band: { y0: 190, k: -0.3, spread: 70, frac: 0.55 } });
       paintSkyRing(g, 420, 1080, 1120, 960, 0.1, Math.PI * 1.05, Math.PI * 1.95, 40, [200, 210, 240], 0.2);
+      if (extra) extra(g);
+      bakeGrain(g, DW, DH, 0.1);
     });
   }
   function nightGround(key, seed, rim) {
@@ -2008,9 +2010,9 @@
   /** credits — calm desert night; ring, moons, the dim Spire, drifting sand. Loops. */
   function sceneCredits(ctx, t) {
     blit(ctx, nightSky('credits', 2424));
-    tileX(ctx, starLayer('credits-near', 2525, 90, { pow: 2.2, size: 1.6, wrap: true, alpha: 0.8 }), -t * 1.5);
-    drawMoon(ctx, moonImg('nm1', 36, norm3([-0.6, -0.2, 0.75]), [236, 226, 240], 3.1), 210, 120 + Math.sin(t * 0.05) * 6, C.ice, 0.12);
-    drawMoon(ctx, moonImg('nm2', 12, norm3([-0.6, -0.2, 0.75]), [240, 210, 200], 7.7), 760, 84, C.rose, 0.08);
+    tileX(ctx, starLayer('credits-near', 2525, 70, { pow: 2.2, size: 1.6, wrap: true, alpha: 0.8, yMax: 360 }), -t * 1.5);
+    blit(ctx, moonAt('n1', 210, 120, 36, norm3([-0.6, -0.2, 0.75]), [236, 226, 240], 3.1, C.ice, 0.12));
+    blit(ctx, moonAt('n2', 760, 84, 12, norm3([-0.6, -0.2, 0.75]), [240, 210, 200], 7.7, C.rose, 0.08));
     // shooting star
     const sc = Math.floor(t / 11), sp = fract(t / 11) * 11;
     if (sp < 0.9) {
@@ -2038,14 +2040,15 @@
     vignette(ctx, 0.6);
   }
 
-  /** Fallback for unknown ids: elegant dark gradient with a soft glow. */
+  /** Fallback for unknown ids: elegant dark gradient with a soft low glow. */
   function sceneFallback(ctx, t) {
-    const g = ctx.createLinearGradient(0, 0, 0, DH);
-    g.addColorStop(0, '#05060d'); g.addColorStop(0.6, '#0d0b1c'); g.addColorStop(1, '#170d22');
-    ctx.fillStyle = g; ctx.fillRect(0, 0, DW, DH);
-    ctx.save(); ctx.globalCompositeOperation = 'lighter';
-    glowE(ctx, DW / 2, DH * 0.72, 520, 140, 0, [90, 60, 140], 0.25 + 0.05 * Math.sin(t * 0.8));
-    ctx.restore();
+    blit(ctx, layer('fallback', DW, DH, (g) => {
+      vfill(g, 0, DH, [[0, '#05060d'], [0.6, '#0d0b1c'], [1, '#170d22']]);
+      g.globalCompositeOperation = 'lighter';
+      glowE(g, DW / 2, DH * 0.72, 520, 140, 0, [90, 60, 140], 0.28);
+      g.globalCompositeOperation = 'source-over';
+      bakeGrain(g, DW, DH, 0.1);
+    }));
     vignette(ctx, 0.7);
   }
 
