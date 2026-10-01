@@ -1932,19 +1932,6 @@
   };
 
   // ================================================================== atmosphere setup
-  function buildOverlay() {
-    const P = S.pal;
-    const c = mk(480, 270), g = c.getContext('2d');
-    g.scale(0.5, 0.5);
-    const gr = g.createLinearGradient(0, 0, 0, H);
-    gr.addColorStop(0, P.grade.top); gr.addColorStop(1, P.grade.bottom);
-    g.fillStyle = gr; g.fillRect(0, 0, W, H);
-    const vg = g.createRadialGradient(W / 2, H * 0.48, H * 0.35, W / 2, H * 0.5, W * 0.62);
-    vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, `rgba(0,0,0,${P.vignette})`);
-    g.fillStyle = vg; g.fillRect(0, 0, W, H);
-    S.overlay = c;
-  }
-
   const shaftCache = new Map();
   function shaftSprite(col) {
     let c = shaftCache.get(col);
@@ -2081,7 +2068,7 @@
       // (not draw count) is what blows the frame budget on weak GPUs / software raster.
       S.sky = downscale(bg.sky, 0.75);
       S.layers = bg.layers.map((L, i) => Object.assign(L, { c: downscale(L.c, L.q || [0.5, 0.65, 0.8, 0.8][Math.min(3, i)]) }));
-      buildOverlay();
+      S.gradeG = null; S.bgKey = ''; S.bgAccents = [];
       buildShafts();
       buildMotes();
       buildForeground();
@@ -2099,58 +2086,28 @@
     drawBackground(ctx, view, level, t) {
       if (S.level !== level) Decor.init(level);
       const rs = G.renderScale || 1;
-      const snap = (v) => Math.round(v * rs) / rs;
-      const refY = Math.max(0, level.pxH - H);
-      const dY = refY - view.y; // >= 0, grows as the camera climbs
-      const maxX = Math.max(1, level.pxW - W);
-      // sky (non-tiled, tiny parallax)
-      const sx = -((view.x / maxX) * (SKY_W - W));
-      const sy = -(SKY_H - H) + G.clamp(dY * 0.03, 0, SKY_H - H);
-      ctx.drawImage(S.sky, snap(sx), snap(sy), SKY_W, SKY_H);
-      if (S.biome === 'tower') drawLightningSky(ctx, t);
-      for (const L of S.layers) {
-        const lw = L.c._lw, lh = L.c._lh;
-        let x = -mod(view.x * L.fx, lw);
-        x = snap(x);
-        if (L.sea) {
-          const hk = G.clamp(dY / 1400, 0, 1);
-          const y = snap(H + 40 - hk * 300);
-          if (y >= H) continue;
-          for (let xx = x; xx < W; xx += lw) ctx.drawImage(L.c, xx, y, lw, lh);
-          if (y + lh < H) { ctx.fillStyle = L.below; ctx.fillRect(0, y + lh - 1, W, H - y - lh + 1); }
-          continue;
-        }
-        if (L.tileY) {
-          const y = snap(-mod(-(L.y0 + dY * L.fy), lh));
-          for (let yy = y; yy < H; yy += lh) for (let xx = x; xx < W; xx += lw) ctx.drawImage(L.c, xx, yy, lw, lh);
-        } else {
-          const y = snap(L.y0 + (L.topAnchor ? 0 : dY * L.fy));
-          if (y < H) {
-            for (let xx = x; xx < W; xx += lw) ctx.drawImage(L.c, xx, y, lw, lh);
-            if (L.below && y + lh < H) { ctx.fillStyle = L.below; ctx.fillRect(0, y + lh - 1, W, H - (y + lh) + 1); }
-          }
-          if (L.above && y > 0) { ctx.fillStyle = L.above; ctx.fillRect(0, 0, W, y + 1); }
-        }
-        // per-layer animated accents
-        if (L.meta && L.meta.spire) {
-          const [px, py] = L.meta.spire;
-          const y = snap(L.y0 + dY * L.fy) + py;
-          const a = 0.55 + 0.45 * Math.sin(t * 2.4);
-          ctx.globalCompositeOperation = 'lighter';
-          for (let xx = x + px; xx < W + 40; xx += lw) if (xx > -40) { glow(ctx, '#7ef9ff', xx, y, 22, a * 0.8); glow(ctx, '#ffffff', xx, y, 5, a); }
-          ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
-        }
-        if (L.meta && L.meta.alarms) {
-          const a = Math.max(0, Math.sin(t * 2.6)) ** 2;
-          if (a > 0.02) {
-            const y0 = -mod(-(L.y0 + dY * L.fy), lh);
-            ctx.globalCompositeOperation = 'lighter';
-            for (const [ax, ay] of L.meta.alarms) for (let xx = x + ax; xx < W + 60; xx += lw) for (let yy = y0 + ay; yy < H + 60; yy += lh) if (xx > -60) { glow(ctx, P0().accent2, xx, yy, 40, a * 0.6); glow(ctx, '#ffc0c0', xx, yy, 6, a); }
-            ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
-          }
-        }
+      // Composite sky + parallax into one half-resolution buffer (backgrounds are soft anyway), and only
+      // re-render it when the camera has actually moved: one full-screen blit per frame instead of 4-8.
+      const q = rs * 0.5;
+      const bw = Math.max(1, Math.round(W * q)), bh = Math.max(1, Math.round(H * q));
+      if (!S.bgBuf || S.bgBuf.width !== bw || S.bgBuf.height !== bh) { S.bgBuf = mk(bw, bh); S.bgKey = ''; }
+      const key = (Math.round(view.x * q * 4) / 4) + ',' + (Math.round(view.y * q * 4) / 4) + ',' + level.id;
+      if (key !== S.bgKey) {
+        S.bgKey = key;
+        const b = S.bgBuf.getContext('2d');
+        b.setTransform(q, 0, 0, q, 0, 0);
+        S.bgAccents = renderLayers(b, view, level, q);
       }
-      ctx.globalAlpha = 1;
+      ctx.drawImage(S.bgBuf, 0, 0, W, H);
+      // animated accents on top (cheap, small)
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      if (S.biome === 'tower') drawLightningSky(ctx, t);
+      for (const a of S.bgAccents) {
+        if (a.k === 'spire') { const v = 0.55 + 0.45 * Math.sin(t * 2.4); glow(ctx, '#7ef9ff', a.x, a.y, 22, v * 0.8); glow(ctx, '#ffffff', a.x, a.y, 5, v); }
+        else if (a.k === 'alarm') { const v = Math.max(0, Math.sin(t * 2.6)) ** 2; if (v > 0.02) { glow(ctx, S.pal.accent2, a.x, a.y, 40, v * 0.6); glow(ctx, '#ffc0c0', a.x, a.y, 6, v); } }
+      }
+      ctx.restore();
     },
 
     /**
@@ -2263,8 +2220,17 @@
       } else if (S.biome === 'desert' || S.biome === 'wreck') {
         ctx.globalAlpha = 0.5; ctx.drawImage(vfade(S.pal.haze), 0, H - 70, W, 70); ctx.globalAlpha = 1;
       }
-      // grade + vignette
-      ctx.drawImage(S.overlay, 0, 0, W, H);
+      // grade + vignette as gradient fills (no full-screen image blit). Kept gentle so the
+      // player and hazards in the middle of the view are never darkened much.
+      if (!S.gradeG) {
+        const P = S.pal;
+        S.gradeG = ctx.createLinearGradient(0, 0, 0, H);
+        S.gradeG.addColorStop(0, P.grade.top); S.gradeG.addColorStop(0.55, 'rgba(0,0,0,0)'); S.gradeG.addColorStop(1, P.grade.bottom);
+        S.vigG = ctx.createRadialGradient(W / 2, H * 0.5, H * 0.5, W / 2, H * 0.5, W * 0.62);
+        S.vigG.addColorStop(0, 'rgba(0,0,0,0)'); S.vigG.addColorStop(1, `rgba(0,0,0,${P.vignette * 0.85})`);
+      }
+      ctx.globalAlpha = 0.75; ctx.fillStyle = S.gradeG; ctx.fillRect(0, 0, W, H);
+      ctx.globalAlpha = 1; ctx.fillStyle = S.vigG; ctx.fillRect(0, 0, W, H);
       ctx.restore();
     },
 
@@ -2276,7 +2242,6 @@
     /** Debug / QA: cache statistics. */
     stats() { const cv = [...S.chunks.values()].filter((e) => e.c); return { chunks: cv.length, chunkMB: +(cv.reduce((a, e) => a + e.c.c.width * e.c.c.height * 4, 0) / 1048576).toFixed(1), scatter: S.scatter.length, anim: S.anim.length, initMs: S.initMs, cs: S.cs }; },
   };
-  const P0 = () => S.pal;
   Object.defineProperty(Decor, '_state', { value: S, enumerable: false }); // QA only
 
   function prefetch(view) {
@@ -2290,6 +2255,45 @@
       getChunk(cx, cy);
       return; // at most one per frame
     }
+  }
+
+
+  /** Paint sky + parallax layers for a view into ctx (logical 960x540 space); returns accent positions. */
+  function renderLayers(ctx, view, level, q) {
+    const snap = (v) => Math.round(v * q) / q;
+    const refY = Math.max(0, level.pxH - H);
+    const dY = refY - view.y;
+    const maxX = Math.max(1, level.pxW - W);
+    const accents = [];
+    const sx = -((view.x / maxX) * (SKY_W - W));
+    const sy = -(SKY_H - H) + G.clamp(dY * 0.03, 0, SKY_H - H);
+    ctx.drawImage(S.sky, snap(sx), snap(sy), SKY_W, SKY_H);
+    for (const L of S.layers) {
+      const lw = L.c._lw, lh = L.c._lh;
+      const x = snap(-mod(view.x * L.fx, lw));
+      if (L.sea) {
+        const hk = G.clamp(dY / 1400, 0, 1);
+        const y = snap(H + 40 - hk * 300);
+        if (y >= H) continue;
+        for (let xx = x; xx < W; xx += lw) ctx.drawImage(L.c, xx, y, lw, lh);
+        if (y + lh < H) { ctx.fillStyle = L.below; ctx.fillRect(0, y + lh - 1, W, H - y - lh + 1); }
+        continue;
+      }
+      if (L.tileY) {
+        const y = snap(-mod(-(L.y0 + dY * L.fy), lh));
+        for (let yy = y; yy < H; yy += lh) for (let xx = x; xx < W; xx += lw) ctx.drawImage(L.c, xx, yy, lw, lh);
+        if (L.meta && L.meta.alarms) for (const [ax, ay] of L.meta.alarms) for (let xx = x + ax; xx < W + 60; xx += lw) for (let yy = y + ay - lh; yy < H + 60; yy += lh) if (xx > -60 && yy > -60) accents.push({ k: 'alarm', x: xx, y: yy });
+      } else {
+        const y = snap(L.y0 + (L.topAnchor ? 0 : dY * L.fy));
+        if (y < H) {
+          for (let xx = x; xx < W; xx += lw) ctx.drawImage(L.c, xx, y, lw, lh);
+          if (L.below && y + lh < H) { ctx.fillStyle = L.below; ctx.fillRect(0, y + lh - 1, W, H - (y + lh) + 1); }
+        }
+        if (L.above && y > 0) { ctx.fillStyle = L.above; ctx.fillRect(0, 0, W, y + 1); }
+        if (L.meta && L.meta.spire) for (let xx = x + L.meta.spire[0]; xx < W + 40; xx += lw) if (xx > -40) accents.push({ k: 'spire', x: xx, y: y + L.meta.spire[1] });
+      }
+    }
+    return accents;
   }
 
   // ================================================================== acid
