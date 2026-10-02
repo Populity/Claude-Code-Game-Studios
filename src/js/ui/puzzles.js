@@ -44,13 +44,13 @@
     ctx.globalAlpha = 0.05; ctx.fillStyle = CYAN;
     for (let y = PY + ((t * 30) % 4); y < PY + PH; y += 4) ctx.fillRect(PX, y, PW, 1);
     ctx.restore();
-    // header rule
-    ctx.fillStyle = 'rgba(126,249,255,0.12)'; ctx.fillRect(PX + 26, PY + 70, PW - 52, 1);
     ctx.fillStyle = CYAN; ctx.font = `700 20px ${FONT}`; ctx.textBaseline = 'top'; ctx.textAlign = 'left';
     ctx.fillText(title, PX + 26, PY + 18);
     if (sub) {
       ctx.fillStyle = 'rgba(210,235,255,0.8)'; ctx.font = `400 14px ${FONT}`;
-      G.wrapText(ctx, sub, PX + 26, PY + 46, PW - 110, 18, sub);
+      const n = G.wrapText(ctx, sub, PX + 26, PY + 46, PW - 96, 18, sub);
+      // header rule (only when the subtitle is a single line; two lines use the space)
+      if (n === 1) { ctx.fillStyle = 'rgba(126,249,255,0.12)'; ctx.fillRect(PX + 26, PY + 72, PW - 52, 1); }
     }
     if (rules) {
       ctx.fillStyle = 'rgba(126,249,255,0.75)'; ctx.font = `500 13px ${FONT}`; ctx.textAlign = 'center';
@@ -299,14 +299,18 @@
       if (!silent) { st.moves++; G.Audio.play('toggle'); }
     },
     layout(st) {
-      const size = Math.min(84, Math.floor((PH - 170) / st.n));
-      return { size, gx: PX + (PW - size * st.n) / 2, gy: PY + 100 };
+      const size = Math.min(84, Math.floor((PH - 180) / st.n));
+      return { size, gx: PX + (PW - size * st.n) / 2, gy: PY + 88 };
+    },
+    cellAt(st, p) {
+      const L = Lights.layout(st);
+      const cx = Math.floor((p.x - L.gx) / L.size), cy = Math.floor((p.y - L.gy) / L.size);
+      return cx >= 0 && cy >= 0 && cx < st.n && cy < st.n ? { x: cx, y: cy } : null;
     },
     input(st, inp) {
-      const L = Lights.layout(st);
       if (inp.pointer.clicked) {
-        const cx = Math.floor((inp.pointer.x - L.gx) / L.size), cy = Math.floor((inp.pointer.y - L.gy) / L.size);
-        if (cx >= 0 && cy >= 0 && cx < st.n && cy < st.n) { st.cursor = { x: cx, y: cy }; Lights.press(st, cy * st.n + cx); }
+        const c = Lights.cellAt(st, inp.pointer);
+        if (c) { st.cursor = c; Lights.press(st, c.y * st.n + c.x); }
       }
       if (inp.pressed('left')) st.cursor.x = (st.cursor.x + st.n - 1) % st.n;
       if (inp.pressed('right')) st.cursor.x = (st.cursor.x + 1) % st.n;
@@ -316,33 +320,54 @@
       if (inp.pressed('restart')) { st.on = st.initial.slice(); st.moves = 0; G.Audio.play('ui'); }
       return st.on.every(Boolean);
     },
+    tick(st, dt) { for (let i = 0; i < st.flash.length; i++) st.flash[i] = Math.max(0, st.flash[i] - dt * 4.8); },
     draw(ctx, st, t) {
       const L = Lights.layout(st);
-      for (let i = 0; i < st.flash.length; i++) st.flash[i] = Math.max(0, st.flash[i] - 0.08);
+      // which cell would a press affect? (mouse hover, or the keyboard/gamepad cursor)
+      const target = ui.mouse ? Lights.cellAt(st, G.input.pointer) : (G.input.lastDevice !== 'touch' ? st.cursor : null);
+      const affected = new Set();
+      if (target) for (const [dx, dy] of [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = target.x + dx, ny = target.y + dy;
+        if (nx >= 0 && ny >= 0 && nx < st.n && ny < st.n) affected.add(ny * st.n + nx);
+      }
       for (let y = 0; y < st.n; y++) for (let x = 0; x < st.n; x++) {
         const i = y * st.n + x;
         const cx = L.gx + x * L.size + L.size / 2, cy = L.gy + y * L.size + L.size / 2;
         const r = L.size * 0.36;
+        const hex = (rr) => { ctx.beginPath(); for (let k = 0; k < 6; k++) { const a = Math.PI / 6 + k * Math.PI / 3; ctx.lineTo(cx + Math.cos(a) * rr, cy + Math.sin(a) * rr); } ctx.closePath(); };
+        // preview halo on the cells this press will flip
+        if (affected.has(i)) {
+          ctx.fillStyle = 'rgba(126,249,255,0.10)';
+          G.roundRect(ctx, cx - L.size / 2 + 4, cy - L.size / 2 + 4, L.size - 8, L.size - 8, 10); ctx.fill();
+        }
         ctx.save();
         if (st.on[i]) { ctx.shadowColor = AMBER; ctx.shadowBlur = 22; }
         const g = ctx.createRadialGradient(cx - r * 0.3, cy - r * 0.3, 2, cx, cy, r);
         g.addColorStop(0, st.on[i] ? '#fff6d0' : '#2a3a4c');
         g.addColorStop(1, st.on[i] ? '#d98a1c' : '#121c28');
         ctx.fillStyle = g;
-        // hexagonal crystal cell (Architect glyph look)
-        ctx.beginPath();
-        for (let k = 0; k < 6; k++) { const a = Math.PI / 6 + k * Math.PI / 3; ctx.lineTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r); }
-        ctx.closePath(); ctx.fill();
+        hex(r); ctx.fill();
         ctx.restore();
-        ctx.strokeStyle = st.flash[i] > 0 ? `rgba(255,255,255,${st.flash[i]})` : 'rgba(126,249,255,0.35)';
-        ctx.lineWidth = 2; ctx.stroke();
-        if (st.cursor.x === x && st.cursor.y === y && G.input.lastDevice !== 'mouse' && G.input.lastDevice !== 'touch') {
-          ctx.strokeStyle = CYAN; ctx.lineWidth = 2;
-          ctx.strokeRect(cx - L.size / 2 + 3, cy - L.size / 2 + 3, L.size - 6, L.size - 6);
+        hex(r);
+        ctx.strokeStyle = st.flash[i] > 0 ? `rgba(255,255,255,${st.flash[i]})` : affected.has(i) ? 'rgba(126,249,255,0.85)' : 'rgba(126,249,255,0.35)';
+        ctx.lineWidth = affected.has(i) ? 2.5 : 2; ctx.stroke();
+        if (affected.has(i)) {
+          // small "will flip" marker: the cell's future state as a dot
+          ctx.fillStyle = st.on[i] ? '#2a3a4c' : AMBER;
+          ctx.beginPath(); ctx.arc(cx, cy, Math.max(3, r * 0.16), 0, 7); ctx.fill();
+          ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 1; ctx.stroke();
+        }
+        if (target && st.cursor.x === x && st.cursor.y === y && showCursor()) {
+          ctx.strokeStyle = AMBER; ctx.lineWidth = 2.5;
+          G.roundRect(ctx, cx - L.size / 2 + 3, cy - L.size / 2 + 3, L.size - 6, L.size - 6, 10); ctx.stroke();
         }
       }
-      ctx.fillStyle = 'rgba(200,230,255,0.7)'; ctx.font = `500 14px ${FONT}`; ctx.textAlign = 'right';
-      ctx.fillText('Ходов: ' + st.moves, PX + PW - 30, PY + 60);
+      const lit = st.on.filter(Boolean).length;
+      ctx.textBaseline = 'top';
+      ctx.fillStyle = 'rgba(200,230,255,0.75)'; ctx.font = `500 14px ${FONT}`; ctx.textAlign = 'right';
+      ctx.fillText('Ходов: ' + st.moves, PX + PW - 30, PY + 84);
+      ctx.fillStyle = lit === st.on.length ? GREEN : AMBER;
+      ctx.fillText(`Горит: ${lit} / ${st.on.length}`, PX + PW - 30, PY + 104);
       ctx.textAlign = 'left';
     },
   };
@@ -351,10 +376,16 @@
   const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'C', '0', 'OK'];
   const Code = {
     create(def) {
-      return { type: 'code', code: String(def.code), entry: '', err: 0, cursor: 0, hint: def.hint || '' };
+      return { type: 'code', code: String(def.code), entry: '', err: 0, cursor: 0, hint: def.hint || '', pressT: new Array(12).fill(0) };
     },
-    layout() { const s = 58; return { s, gx: PX + PW / 2 - s * 1.5 - 8, gy: PY + 170 }; },
+    layout() {
+      const s = 76, h = 48, gap = 8;
+      return { s, h, gap, gx: PX + PW / 2 - (s * 3 + gap * 2) / 2, gy: PY + 176 };
+    },
+    keyRect(L, i) { return { x: L.gx + (i % 3) * (L.s + L.gap), y: L.gy + Math.floor(i / 3) * (L.h + L.gap), w: L.s, h: L.h }; },
     keyPress(st, k) {
+      const ki = KEYS.indexOf(k);
+      if (ki >= 0 && st.pressT) st.pressT[ki] = 1;
       if (k === 'C') { st.entry = ''; G.Audio.play('ui'); return false; }
       if (k === 'OK') {
         if (st.entry === st.code) return true;
@@ -371,41 +402,77 @@
       const L = Code.layout();
       if (inp.pointer.clicked) {
         for (let i = 0; i < 12; i++) {
-          const r = { x: L.gx + (i % 3) * (L.s + 8), y: L.gy + Math.floor(i / 3) * (L.s * 0.72 + 8), w: L.s, h: L.s * 0.72 };
-          if (inRect(inp.pointer, r)) { st.cursor = i; if (Code.keyPress(st, KEYS[i])) return true; }
+          if (inRect(inp.pointer, Code.keyRect(L, i))) { st.cursor = i; if (Code.keyPress(st, KEYS[i])) return true; }
         }
       }
+      if (inp.typed) for (const ch of inp.typed) { if (/[0-9]/.test(ch) && Code.keyPress(st, ch)) return true; }
       if (inp.pressed('left')) st.cursor = (st.cursor + 11) % 12;
       if (inp.pressed('right')) st.cursor = (st.cursor + 1) % 12;
       if (inp.pressed('up')) st.cursor = (st.cursor + 9) % 12;
       if (inp.pressed('down')) st.cursor = (st.cursor + 3) % 12;
+      // Enter (confirm without jump) submits; Space / E / pad-A press the highlighted key
+      if (inp.pressed('confirm') && !inp.pressed('jump')) {
+        if (st.entry.length) return Code.keyPress(st, 'OK');
+        return false;
+      }
       if (inp.pressed('jump') || inp.pressed('action')) { if (Code.keyPress(st, KEYS[st.cursor])) return true; }
-      if (inp.typed) for (const ch of inp.typed) { if (/[0-9]/.test(ch) && Code.keyPress(st, ch)) return true; }
       return false;
     },
+    /** Backspace: delete the last digit. Returns false when there is nothing to delete. */
+    backspace(st) {
+      if (!st.entry.length) return false;
+      st.entry = st.entry.slice(0, -1); G.Audio.play('ui'); return true;
+    },
+    tick(st, dt) {
+      st.err = Math.max(0, st.err - dt * 2.4);
+      if (st.pressT) for (let i = 0; i < 12; i++) st.pressT[i] = Math.max(0, st.pressT[i] - dt * 6);
+    },
     draw(ctx, st, t) {
-      st.err = Math.max(0, st.err - 0.04);
       const L = Code.layout();
       const shake = st.err > 0 ? Math.sin(t * 80) * 8 * st.err : 0;
-      // display
-      const dw = 260, dx = PX + PW / 2 - dw / 2 + shake, dy = PY + 108;
-      ctx.fillStyle = '#02070d'; G.roundRect(ctx, dx, dy, dw, 48, 8); ctx.fill();
-      ctx.strokeStyle = st.err > 0 ? RED : CYAN; ctx.lineWidth = 2; ctx.stroke();
-      ctx.font = `700 30px "Share Tech Mono", monospace`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      let s = '';
-      for (let i = 0; i < st.code.length; i++) s += (st.entry[i] || '_') + (i < st.code.length - 1 ? ' ' : '');
-      ctx.fillStyle = st.err > 0 ? RED : AMBER;
-      ctx.fillText(s, PX + PW / 2 + shake, dy + 25);
-      ctx.font = `600 18px ${FONT}`;
+      // digit slots
+      const n = st.code.length, sw = 44, sg = 12;
+      const total = n * sw + (n - 1) * sg;
+      const dx0 = PX + PW / 2 - total / 2 + shake, dy = PY + 96;
+      ctx.fillStyle = '#02070d'; G.roundRect(ctx, dx0 - 16, dy - 8, total + 32, 64, 10); ctx.fill();
+      ctx.strokeStyle = st.err > 0 ? RED : 'rgba(126,249,255,0.55)'; ctx.lineWidth = 2; ctx.stroke();
+      ctx.font = `700 32px "Share Tech Mono", monospace`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      for (let i = 0; i < n; i++) {
+        const x = dx0 + i * (sw + sg);
+        const filled = i < st.entry.length, next = i === st.entry.length;
+        ctx.fillStyle = filled ? 'rgba(255,207,107,0.10)' : 'rgba(126,249,255,0.05)';
+        G.roundRect(ctx, x, dy, sw, 48, 6); ctx.fill();
+        ctx.fillStyle = st.err > 0 ? RED : next && Math.sin(t * 8) > 0 ? CYAN : 'rgba(126,249,255,0.35)';
+        ctx.fillRect(x + 8, dy + 40, sw - 16, 3);
+        if (filled) { ctx.fillStyle = AMBER; ctx.fillText(st.entry[i], x + sw / 2, dy + 23); }
+      }
+      // riddle hint card (left of the keypad)
+      if (st.hint) {
+        const cx = PX + 30, cw = L.gx - PX - 60, cy = L.gy;
+        ctx.font = `400 14px ${FONT}`;
+        const lines = G.splitLines(ctx, st.hint, cw - 24);
+        const ch = 40 + lines.length * 19;
+        ctx.fillStyle = 'rgba(255,207,107,0.07)'; G.roundRect(ctx, cx, cy, cw, ch, 10); ctx.fill();
+        ctx.strokeStyle = 'rgba(255,207,107,0.45)'; ctx.lineWidth = 1; ctx.stroke();
+        ctx.fillStyle = AMBER; ctx.fillRect(cx, cy + 10, 3, ch - 20);
+        ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+        ctx.font = `700 11px ${FONT}`; ctx.fillText('ПОДСКАЗКА', cx + 14, cy + 12);
+        ctx.fillStyle = '#f4ead8'; ctx.font = `400 14px ${FONT}`;
+        lines.forEach((l, i) => ctx.fillText(l, cx + 14, cy + 32 + i * 19));
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      }
+      // keypad
       for (let i = 0; i < 12; i++) {
-        const r = { x: L.gx + (i % 3) * (L.s + 8), y: L.gy + Math.floor(i / 3) * (L.s * 0.72 + 8), w: L.s, h: L.s * 0.72 };
-        const hover = inRect(G.input.pointer, r);
-        ctx.fillStyle = hover ? 'rgba(126,249,255,0.18)' : 'rgba(126,249,255,0.07)';
-        G.roundRect(ctx, r.x, r.y, r.w, r.h, 8); ctx.fill();
-        const sel = st.cursor === i && G.input.lastDevice !== 'mouse' && G.input.lastDevice !== 'touch';
-        ctx.strokeStyle = sel ? AMBER : 'rgba(126,249,255,0.3)'; ctx.lineWidth = sel ? 2 : 1; ctx.stroke();
+        const r = Code.keyRect(L, i);
+        const hover = ui.mouse && inRect(G.input.pointer, r);
+        const pk = st.pressT ? st.pressT[i] : 0;
+        ctx.fillStyle = pk > 0 ? `rgba(126,249,255,${0.12 + 0.3 * pk})` : hover ? 'rgba(126,249,255,0.18)' : 'rgba(126,249,255,0.07)';
+        G.roundRect(ctx, r.x, r.y + pk * 2, r.w, r.h, 8); ctx.fill();
+        const sel = st.cursor === i && showCursor();
+        ctx.strokeStyle = sel ? AMBER : 'rgba(126,249,255,0.3)'; ctx.lineWidth = sel ? 2.5 : 1; ctx.stroke();
         ctx.fillStyle = KEYS[i] === 'OK' ? GREEN : KEYS[i] === 'C' ? RED : '#dff6ff';
-        ctx.fillText(KEYS[i], r.x + r.w / 2, r.y + r.h / 2 + 1);
+        ctx.font = KEYS[i] === 'C' ? `700 13px ${FONT}` : `600 20px ${FONT}`;
+        ctx.fillText(KEYS[i] === 'C' ? 'СБРОС' : KEYS[i], r.x + r.w / 2, r.y + r.h / 2 + 1 + pk * 2);
       }
       ctx.textAlign = 'left'; ctx.textBaseline = 'top';
     },
@@ -431,10 +498,24 @@
   function prettyExpr(src) {
     return src.replace(/\s+/g, '').replace(/&/g, ' И ').replace(/\|/g, ' ИЛИ ').replace(/\^/g, ' ИСКЛ-ИЛИ ').replace(/!/g, 'НЕ ');
   }
+  /** Per-variable colours so each switch can be traced into the expressions. */
+  const VAR_COL = ['#7ef9ff', '#ff9ad5', '#b4ff8a', '#c8a8ff', '#ffd28a', '#8ab4ff'];
+  /** Russian ЙЦУКЕН keys that sit where A–F are, so letters work without switching layout. */
+  const RU_LAT = { 'ф': 'A', 'и': 'B', 'с': 'C', 'в': 'D', 'у': 'E', 'а': 'F' };
+  /** Tokenise an expression for coloured rendering: [{t:'var'|'op'|'paren', s}]. */
+  function tokens(src) {
+    const out = [];
+    for (const ch of src.replace(/\s+/g, '')) {
+      if (/[A-Z]/.test(ch)) out.push({ t: 'var', s: ch });
+      else if (ch === '(' || ch === ')') out.push({ t: 'paren', s: ch });
+      else out.push({ t: 'op', s: { '&': 'И', '|': 'ИЛИ', '^': 'ИСКЛ-ИЛИ', '!': 'НЕ' }[ch] || ch });
+    }
+    return out;
+  }
   const Logic = {
     create(def, seed) {
       const inputs = def.inputs || ['A', 'B', 'C'];
-      const outputs = (def.outputs || [{ label: 'Выход', expr: def.expr || 'A&B' }]).map((o) => ({ label: o.label, expr: o.expr, fn: parseExpr(o.expr), text: prettyExpr(o.expr) }));
+      const outputs = (def.outputs || [{ label: 'Выход', expr: def.expr || 'A&B' }]).map((o) => ({ label: o.label, expr: o.expr, fn: parseExpr(o.expr), text: prettyExpr(o.expr), tokens: tokens(o.expr) }));
       const rnd = G.rng(seed);
       const env = {};
       for (const k of inputs) env[k] = rnd() < 0.5;
@@ -447,63 +528,101 @@
     solved(st) { return st.outputs.every((o) => o.fn(st.env)); },
     layout(st) {
       const n = st.inputs.length;
-      const sw = 70, gap = 14;
+      const sw = 78, gap = 16, sh = 92;
       const total = n * sw + (n - 1) * gap;
-      return { sw, gap, gx: PX + (PW - total) / 2, gy: PY + PH - 150 };
+      return { sw, sh, gap, gx: PX + (PW - total) / 2, gy: PY + PH - 168 };
     },
     toggle(st, i) { const k = st.inputs[i]; st.env[k] = !st.env[k]; st.flash[k] = 1; G.Audio.play('toggle'); },
     input(st, inp) {
       const L = Logic.layout(st);
+      // typed letters first: A/D/E are also move/action keys, so a matched letter consumes the frame
+      if (inp.typed) {
+        let hit = false;
+        for (const raw of inp.typed) {
+          const ch = RU_LAT[raw.toLowerCase()] || raw.toUpperCase();
+          const i = st.inputs.indexOf(ch);
+          if (i >= 0) { st.cursor = i; Logic.toggle(st, i); hit = true; }
+        }
+        if (hit) return Logic.solved(st);
+      }
       if (inp.pointer.clicked) {
         st.inputs.forEach((k, i) => {
-          const r = { x: L.gx + i * (L.sw + L.gap), y: L.gy, w: L.sw, h: 86 };
+          const r = { x: L.gx + i * (L.sw + L.gap), y: L.gy, w: L.sw, h: L.sh };
           if (inRect(inp.pointer, r)) { st.cursor = i; Logic.toggle(st, i); }
         });
       }
       if (inp.pressed('left')) st.cursor = (st.cursor + st.inputs.length - 1) % st.inputs.length;
       if (inp.pressed('right')) st.cursor = (st.cursor + 1) % st.inputs.length;
       if (inp.pressed('jump') || inp.pressed('action')) Logic.toggle(st, st.cursor);
-      if (inp.typed) for (const ch of inp.typed) {
-        const i = st.inputs.indexOf(ch.toUpperCase());
-        if (i >= 0) { st.cursor = i; Logic.toggle(st, i); }
-      }
       return Logic.solved(st);
     },
+    tick(st, dt) { for (const k of st.inputs) st.flash[k] = Math.max(0, (st.flash[k] || 0) - dt * 3.6); },
     draw(ctx, st, t) {
       const L = Logic.layout(st);
+      const col = (k) => VAR_COL[Math.max(0, st.inputs.indexOf(k)) % VAR_COL.length];
       // outputs
-      let y = PY + 100;
-      ctx.font = `600 17px ${FONT}`; ctx.textBaseline = 'middle';
+      let y = PY + 104;
+      const rowH = st.outputs.length > 3 ? 42 : 52;
+      ctx.textBaseline = 'middle';
       for (const o of st.outputs) {
         const on = o.fn(st.env);
-        ctx.fillStyle = 'rgba(126,249,255,0.06)'; G.roundRect(ctx, PX + 30, y - 22, PW - 60, 44, 10); ctx.fill();
+        ctx.fillStyle = on ? 'rgba(125,255,168,0.07)' : 'rgba(126,249,255,0.05)';
+        G.roundRect(ctx, PX + 30, y - 20, PW - 60, 40, 10); ctx.fill();
+        ctx.strokeStyle = on ? 'rgba(125,255,168,0.35)' : 'rgba(255,93,108,0.25)'; ctx.lineWidth = 1; ctx.stroke();
         ctx.fillStyle = on ? GREEN : RED;
         ctx.save(); if (on) { ctx.shadowColor = GREEN; ctx.shadowBlur = 14; }
-        ctx.beginPath(); ctx.arc(PX + 56, y, 10, 0, 7); ctx.fill(); ctx.restore();
-        ctx.fillStyle = '#e8f6ff'; ctx.textAlign = 'left';
-        ctx.fillText(o.label + ':', PX + 78, y);
-        const lw = ctx.measureText(o.label + ': ').width;
-        ctx.fillStyle = AMBER; ctx.font = `500 16px "Share Tech Mono", monospace`;
-        ctx.fillText(o.text, PX + 78 + lw, y);
-        ctx.font = `600 17px ${FONT}`;
-        y += 52;
+        ctx.beginPath(); ctx.arc(PX + 54, y, 9, 0, 7); ctx.fill(); ctx.restore();
+        ctx.fillStyle = '#e8f6ff'; ctx.textAlign = 'left'; ctx.font = `600 17px ${FONT}`;
+        ctx.fillText(o.label, PX + 74, y);
+        // expression, right of a fixed label column, each variable in its switch colour
+        let x = PX + 74 + Math.max(130, ctx.measureText(o.label).width + 18);
+        const maxX = PX + PW - 84;
+        let fs = 17;
+        const fontOf = (tk, f) => tk.t === 'op' ? `400 ${f - 2}px "Share Tech Mono", monospace` : `700 ${f}px "Share Tech Mono", monospace`;
+        const gapBefore = (i) => i === 0 || o.tokens[i - 1].s === '(' || o.tokens[i].s === ')' ? 0 : (o.tokens[i - 1].t === 'op' && o.tokens[i - 1].s === 'НЕ' ? 6 : 9);
+        const widthAt = (f) => { let w = 0; o.tokens.forEach((tk, i) => { ctx.font = fontOf(tk, f); w += gapBefore(i) + ctx.measureText(tk.s).width; }); return w; };
+        while (fs > 11 && x + widthAt(fs) > maxX) fs--;
+        o.tokens.forEach((tk, i) => {
+          x += gapBefore(i);
+          ctx.font = fontOf(tk, fs);
+          ctx.fillStyle = tk.t === 'var' ? col(tk.s) : tk.t === 'paren' ? 'rgba(200,230,255,0.5)' : 'rgba(200,230,255,0.72)';
+          ctx.fillText(tk.s, x, y + 0.5);
+          x += ctx.measureText(tk.s).width;
+        });
+        // live verdict
+        ctx.font = `700 13px "Share Tech Mono", monospace`; ctx.textAlign = 'right';
+        ctx.fillStyle = on ? GREEN : RED;
+        ctx.fillText(on ? 'ВКЛ' : 'ВЫКЛ', PX + PW - 46, y + 0.5);
+        ctx.textAlign = 'left';
+        y += rowH;
       }
       // switches
       st.inputs.forEach((k, i) => {
-        st.flash[k] = Math.max(0, (st.flash[k] || 0) - 0.06);
         const x = L.gx + i * (L.sw + L.gap);
         const on = st.env[k];
-        ctx.fillStyle = 'rgba(126,249,255,0.07)'; G.roundRect(ctx, x, L.gy, L.sw, 86, 10); ctx.fill();
-        const sel = st.cursor === i && G.input.lastDevice !== 'mouse' && G.input.lastDevice !== 'touch';
-        ctx.strokeStyle = sel ? AMBER : 'rgba(126,249,255,0.3)'; ctx.lineWidth = sel ? 2 : 1; ctx.stroke();
+        const c = col(k);
+        const r = { x, y: L.gy, w: L.sw, h: L.sh };
+        const hover = ui.mouse && inRect(G.input.pointer, r);
+        const fl = st.flash[k] || 0;
+        ctx.fillStyle = hover ? 'rgba(126,249,255,0.14)' : `rgba(126,249,255,${0.07 + fl * 0.15})`;
+        G.roundRect(ctx, x, L.gy, L.sw, L.sh, 10); ctx.fill();
+        const sel = st.cursor === i && showCursor();
+        ctx.strokeStyle = sel ? AMBER : on ? c : 'rgba(126,249,255,0.3)'; ctx.lineWidth = sel ? 2.5 : 1; ctx.stroke();
         // toggle body
-        const tx = x + L.sw / 2 - 12, ty = L.gy + 12;
-        ctx.fillStyle = '#0b1622'; G.roundRect(ctx, tx, ty, 24, 46, 12); ctx.fill();
-        ctx.fillStyle = on ? CYAN : '#46596b';
-        ctx.save(); if (on) { ctx.shadowColor = CYAN; ctx.shadowBlur = 12; }
-        ctx.beginPath(); ctx.arc(tx + 12, on ? ty + 12 : ty + 34, 9, 0, 7); ctx.fill(); ctx.restore();
-        ctx.fillStyle = '#e8f6ff'; ctx.textAlign = 'center'; ctx.font = `700 15px ${FONT}`;
-        ctx.fillText(k + (on ? ' = 1' : ' = 0'), x + L.sw / 2, L.gy + 74);
+        const tx = x + L.sw / 2 - 13, ty = L.gy + 10;
+        ctx.fillStyle = '#0b1622'; G.roundRect(ctx, tx, ty, 26, 48, 13); ctx.fill();
+        ctx.strokeStyle = 'rgba(126,249,255,0.2)'; ctx.lineWidth = 1; ctx.stroke();
+        ctx.fillStyle = on ? c : '#46596b';
+        ctx.save(); if (on) { ctx.shadowColor = c; ctx.shadowBlur = 12; }
+        ctx.beginPath(); ctx.arc(tx + 13, on ? ty + 13 : ty + 35, 10, 0, 7); ctx.fill(); ctx.restore();
+        ctx.textAlign = 'center';
+        ctx.font = `700 17px "Share Tech Mono", monospace`; ctx.fillStyle = c;
+        const lab = k, val = on ? '1' : '0';
+        const lw = ctx.measureText(lab + ' = ' + val).width;
+        ctx.textAlign = 'left';
+        ctx.fillText(lab, x + L.sw / 2 - lw / 2, L.gy + 76);
+        ctx.fillStyle = on ? '#ffffff' : 'rgba(200,230,255,0.6)';
+        ctx.fillText(' = ' + val, x + L.sw / 2 - lw / 2 + ctx.measureText(lab).width, L.gy + 76);
       });
       ctx.textAlign = 'left'; ctx.textBaseline = 'top';
     },
@@ -511,12 +630,33 @@
 
   const Kinds = { pipes: Pipes, lights: Lights, code: Code, logic: Logic };
   const TITLES = { pipes: 'Силовая магистраль', lights: 'Кристаллическая матрица', code: 'Кодовый замок', logic: 'Логический контур' };
+  /** Rules line per type (shown on top, or above the footer when the level supplies flavour text). */
   const SUBS = {
     pipes: 'Поворачивайте сегменты, чтобы провести энергию от источника к приёмнику.',
-    lights: 'Каждый кристалл переключает себя и соседей крестом. Зажгите все кристаллы.',
+    lights: 'Кристалл переключает себя и соседей крестом. Зажгите все кристаллы.',
     code: 'Введите код доступа.',
     logic: 'Выставьте переключатели так, чтобы ВСЕ выходы загорелись зелёным.',
   };
+
+  /** Controls footer, per puzzle type and the device the player is using right now. */
+  function footerText(type) {
+    const dev = G.input.lastDevice;
+    if (dev === 'touch' || G.input.touchActive && !ui.mouse && dev !== 'keyboard' && dev !== 'gamepad') {
+      return { pipes: 'Касайтесь сегментов, чтобы повернуть', lights: 'Касайтесь кристаллов', code: 'Касайтесь цифр · ОК — ввод', logic: 'Касайтесь переключателей' }[type] + ' · ✕ — выйти';
+    }
+    if (dev === 'gamepad') {
+      return { pipes: 'Крестовина — выбор · A — повернуть', lights: 'Крестовина — выбор · A — нажать · Y — сброс', code: 'Крестовина — выбор · A — нажать', logic: 'Крестовина — выбор · A — переключить' }[type] + ' · B — выйти';
+    }
+    if (ui.mouse) {
+      return { pipes: 'Клик — повернуть сегмент', lights: 'Клик — нажать кристалл · R — сброс', code: 'Клик по клавишам или цифры с клавиатуры', logic: 'Клик — переключить' }[type] + ' · Esc — выйти';
+    }
+    return {
+      pipes: 'Стрелки — выбор · Пробел / E — повернуть',
+      lights: 'Стрелки — выбор · Пробел / E — нажать · R — сброс',
+      code: 'Цифры 0–9 · Enter — ввод · Backspace — стереть',
+      logic: 'Клавиши-буквы или стрелки + Пробел — переключить',
+    }[type] + ' · Esc — выйти';
+  }
 
   /** Modal puzzle overlay controller used by the game scene. */
   class PuzzleOverlay {
@@ -527,25 +667,35 @@
       this.def = def;
       this.kind = Kinds[def.type];
       if (!this.kind) { console.warn('Unknown puzzle type', def.type); this.kind = Pipes; }
+      this.type = Kinds[def.type] ? def.type : 'pipes';
       const seed = def.seed != null ? def.seed : G.hash(game.level.id + ':' + (terminal.id || terminal.tx + ',' + terminal.ty));
       if (!terminal.puzzleState) terminal.puzzleState = this.kind.create(def, seed);
       this.st = terminal.puzzleState;
       this.t = 0; this.openT = 0; this.solvedT = 0;
-      this.closeBtn = null;
+      this.closeBtn = CLOSE;
+      ui.mouse = G.input.lastDevice === 'mouse';
       G.Audio.play('terminalOpen');
     }
     update(dt) {
       this.t += dt;
       this.openT = Math.min(1, this.openT + dt * 5);
       const inp = G.input;
+      // track mouse vs cursor steering (hover previews vs highlighted cursor)
+      if (inp.pointer.moved && G.input.lastDevice !== 'touch') ui.mouse = true;
+      if (inp.pressed('left') || inp.pressed('right') || inp.pressed('up') || inp.pressed('down')) ui.mouse = false;
+      if (inp.pointer.clicked) ui.mouse = G.input.lastDevice === 'mouse';
+      if (this.kind.tick) this.kind.tick(this.st, dt);
       if (this.solvedT > 0) {
         this.solvedT += dt;
-        if (this.solvedT > 1.3 || (this.solvedT > 0.4 && inp.anyPressed())) return 'close';
+        if (this.solvedT > 1.3 || (this.solvedT > 0.4 && (inp.anyPressed() || inp.pointer.clicked))) return 'close';
         return null;
       }
+      if (this.openT < 0.6) return null; // ignore the press that opened the terminal
+      // Backspace ('back' alone) edits the code entry before it closes the panel.
+      // Esc sends back+pause, gamepad B sends back+action: both always close.
+      if (inp.pressed('back') && !inp.pressed('pause') && !inp.pressed('action') && this.kind.backspace && this.kind.backspace(this.st)) return null;
       if (inp.pressed('back') || inp.pressed('pause')) return 'close';
-      if (inp.pointer.clicked && this.closeBtn && inRect(inp.pointer, this.closeBtn)) return 'close';
-      if (inp.pressed('restart') && this.st.type === 'pipes') { /* pipes: no reset needed */ }
+      if (inp.pointer.clicked && inRect(inp.pointer, CLOSE)) return 'close';
       if (this.kind.input(this.st, inp)) {
         this.solvedT = 0.0001;
         this.terminal.onSolved(this.game);
@@ -557,9 +707,15 @@
       const k = G.easeOutBack(this.openT);
       ctx.translate(W / 2, H / 2); ctx.scale(0.9 + 0.1 * k, 0.9 + 0.1 * k); ctx.translate(-W / 2, -H / 2);
       ctx.globalAlpha = Math.min(1, this.openT * 2);
-      const sub = this.def.hint || this.def.subtitle || SUBS[this.def.type];
-      this.closeBtn = panel(ctx, this.def.title || TITLES[this.def.type] || 'Терминал', sub, this.t, this.solvedT);
+      const d = this.def;
+      // flavour text (subtitle) on top; rules move above the footer so they're never lost.
+      // A code puzzle's hint is drawn as its own card by Code.draw.
+      const flavour = d.subtitle || (this.type !== 'code' ? d.hint : null);
+      const top = flavour || SUBS[this.type];
+      const rules = flavour && this.type !== 'code' ? SUBS[this.type] : null;
+      panel(ctx, d.title || TITLES[this.type] || 'Терминал', top, rules, footerText(this.type), this.t, this.solvedT);
       this.kind.draw(ctx, this.st, this.t);
+      if (this.solvedT > 0) solvedBanner(ctx, this.solvedT);
       ctx.restore();
     }
   }

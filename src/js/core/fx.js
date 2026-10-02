@@ -7,6 +7,9 @@
   const parts = [];
   let shakeAmp = 0, shakeT = 0, shakeDur = 1;
 
+  /** Low graphics quality halves particle spawns. */
+  const lowN = (n) => (G.lowGfx && G.lowGfx() ? Math.ceil(n / 2) : n);
+
   const fx = {
     parts,
     /**
@@ -14,7 +17,7 @@
      * opts: count, color, speed, life, size, gravity, drag, glow(bool), shape('circle'|'square'|'spark')
      */
     burst(x, y, o = {}) {
-      const n = o.count || 10;
+      const n = lowN(o.count || 10);
       for (let i = 0; i < n; i++) {
         const a = o.angle != null ? o.angle + (Math.random() - 0.5) * (o.spread || 1) : Math.random() * Math.PI * 2;
         const s = (o.speed || 100) * (0.35 + Math.random() * 0.65);
@@ -31,6 +34,7 @@
     },
     /** Small dust puff at feet. */
     dust(x, y, n = 4) {
+      n = lowN(n);
       const col = (G.Art.Decor && G.Art.Decor.dustColor && G.game && G.game.level) ? G.Art.Decor.dustColor(G.game.level) : 'rgba(210,190,160,0.8)';
       for (let i = 0; i < n; i++) {
         fx.spawn({

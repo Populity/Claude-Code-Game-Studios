@@ -12,7 +12,9 @@
 
   // ------------------------------------------------------------------ save + settings
   G.save = Object.assign({ unlocked: 0, current: 0, shards: {}, deaths: 0, best: {} }, G.store.get(SAVE_KEY, {}));
-  G.settings = Object.assign({ music: 0.6, sfx: 0.8, reduceShake: false, touch: 'auto' }, G.store.get('tessera_settings_v1', {}));
+  G.settings = Object.assign({ music: 0.6, sfx: 0.8, reduceShake: false, touch: 'auto', quality: 'auto', autoLow: false }, G.store.get('tessera_settings_v1', {}));
+  /** Effective low-graphics mode: chosen explicitly, or picked by the auto fallback (main.js frame timer). */
+  G.lowGfx = () => G.settings.quality === 'low' || (G.settings.quality === 'auto' && !!G.settings.autoLow);
   G.persist = () => { G.store.set(SAVE_KEY, G.save); G.store.set('tessera_settings_v1', G.settings); };
   G.applySettings = () => { G.Audio.setVolume('music', G.settings.music); G.Audio.setVolume('sfx', G.settings.sfx); };
 
@@ -174,11 +176,18 @@
 
   function settingsMenu(onBack, y) {
     const pct = (v) => Math.round(v * 100) + '%';
+    const Q = ['auto', 'high', 'low'];
+    const cycleQ = (d) => {
+      G.settings.quality = Q[(Q.indexOf(G.settings.quality) + d + Q.length) % Q.length];
+      if (G.settings.quality === 'auto') G.settings.autoLow = false; // re-measure from scratch
+      G.persist();
+    };
     const step = (k, d) => () => { G.settings[k] = G.clamp(Math.round((G.settings[k] + d) * 10) / 10, 0, 1); G.applySettings(); G.persist(); };
     return new G.Menu([
       { label: 'Музыка', value: () => pct(G.settings.music), left: step('music', -0.1), right: step('music', 0.1), action: step('music', 0.1) },
       { label: 'Звуки', value: () => pct(G.settings.sfx), left: step('sfx', -0.1), right: step('sfx', 0.1), action: step('sfx', 0.1) },
       { label: 'Тряска экрана', value: () => (G.settings.reduceShake ? 'слабая' : 'полная'), action: () => { G.settings.reduceShake = !G.settings.reduceShake; G.persist(); }, left: () => { G.settings.reduceShake = !G.settings.reduceShake; G.persist(); }, right: () => { G.settings.reduceShake = !G.settings.reduceShake; G.persist(); } },
+      { label: 'Графика', value: () => ({ auto: G.settings.autoLow ? 'авто (низкая)' : 'авто', high: 'высокая', low: 'низкая' }[G.settings.quality] || 'авто'), action: () => cycleQ(1), left: () => cycleQ(-1), right: () => cycleQ(1) },
       { label: 'Сенсорные кнопки', value: () => ({ auto: 'авто', on: 'вкл', off: 'выкл' }[G.settings.touch]), action: () => { G.settings.touch = { auto: 'on', on: 'off', off: 'auto' }[G.settings.touch]; G.persist(); } },
       { label: 'Назад', action: onBack },
     ], { y, lh: 44, w: 440 });
@@ -453,14 +462,15 @@
       if (G.Art.Player && G.Art.Player.draw) G.Art.Player.draw(ctx, this.player, time);
       G.fx.draw(ctx);
       for (const e of L.entities) if (e.type === 'deco' && e.layer === 'front' && onScreen(e, 300) && Decor.drawProp) Decor.drawProp(ctx, e, time, L);
-      if (Decor.drawForeground) Decor.drawForeground(ctx, view, L, time);
+      const low = G.lowGfx();
+      if (Decor.drawForeground && !low) Decor.drawForeground(ctx, view, L, time);
 
       // world-space UI: hints + interaction prompt
       for (const e of L.entities) if (e.type === 'hint' && e.alpha > 0.01) drawHint(ctx, e);
       if (this.focus && !this.puzzle) drawPrompt(ctx, this.focus, t);
       ctx.restore();
 
-      if (Decor.drawAtmosphere) Decor.drawAtmosphere(ctx, view, L, time);
+      if (Decor.drawAtmosphere && !low) Decor.drawAtmosphere(ctx, view, L, time);
 
       this.drawHUD(ctx, t);
       const pScreenY = this.player.y + this.player.h - this.cam.y;

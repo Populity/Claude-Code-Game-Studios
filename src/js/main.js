@@ -55,9 +55,23 @@
 
   let last = performance.now();
   G.paused = false;
+  // Adaptive quality: if real frames average > SLOW_MS for SLOW_SECS of gameplay while quality
+  // is 'auto', switch to low graphics (persisted as settings.autoLow; menu «Графика» resets it).
+  const SLOW_MS = 22, SLOW_SECS = 2;
+  let avgMs = 16.7, slowT = 0;
+  function watchFrameTime(rawMs) {
+    const sc = G.App.scene;
+    if (G.settings.quality !== 'auto' || G.settings.autoLow || G.timeScale != null) return;
+    if (!sc || !(sc instanceof G.GameScene) || sc.paused || rawMs > 250) { slowT = 0; return; } // tab switches etc.
+    avgMs += (rawMs - avgMs) * 0.1;
+    slowT = avgMs > SLOW_MS ? slowT + rawMs / 1000 : 0;
+    if (slowT >= SLOW_SECS) { G.settings.autoLow = true; G.persist(); console.info('TESSERA: low graphics enabled (avg frame ' + avgMs.toFixed(1) + ' ms)'); }
+  }
+
   function frame(now) {
     let dt = (now - last) / 1000;
     last = now;
+    watchFrameTime(dt * 1000);
     if (dt > MAX_FRAME) dt = MAX_FRAME;
     if (G.timeScale != null) dt *= G.timeScale;
     if (G.timeScale === 0) { requestAnimationFrame(frame); return; } // QA: driven by G.step()
