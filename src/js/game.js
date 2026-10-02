@@ -465,7 +465,7 @@
       else drawDebugTiles(ctx, view, L);
 
       const Ent = G.Art.Entities;
-      const order = ['exit', 'checkpoint', 'sign', 'terminal', 'socket', 'lever', 'door', 'bridge', 'plate', 'jumppad', 'laser', 'mplatform', 'crate', 'part', 'shard', 'saw'];
+      const order = ['exit', 'checkpoint', 'sign', 'terminal', 'socket', 'lever', 'door', 'bridge', 'plate', 'jumppad', 'laser', 'wind', 'fallplat', 'mplatform', 'crate', 'part', 'shard', 'anchor', 'dashcrystal', 'npc', 'saw', 'sentinel'];
       for (const type of order) {
         for (const e of L.entities) {
           if (e.type !== type) continue;
@@ -476,6 +476,8 @@
       if (this.drone.enabled && G.Art.Drone && G.Art.Drone.draw) G.Art.Drone.draw(ctx, this.drone, time);
       if (G.Art.Player && G.Art.Player.draw) G.Art.Player.draw(ctx, this.player, time);
       G.fx.draw(ctx);
+      // dynamic lights + shadows (world space, after actors, before front props)
+      if (G.Art.Lighting && G.Art.Lighting.draw) G.Art.Lighting.draw(ctx, view, L, time, this);
       for (const e of L.entities) if (e.type === 'deco' && e.layer === 'front' && onScreen(e, 300) && Decor.drawProp) Decor.drawProp(ctx, e, time, L);
       const low = G.lowGfx();
       if (Decor.drawForeground && !low) Decor.drawForeground(ctx, view, L, time);

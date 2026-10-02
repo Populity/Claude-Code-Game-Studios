@@ -14,4 +14,7 @@ G.LEVEL_ORDER = [
   { id: 'l08' },
   { id: 'l09' },
   { id: 'l10', after: 'ending' },
+  { id: 'l11', before: 'ch2_intro' },
+  { id: 'l12' },
+  { id: 'l13', after: 'ch2_end' },
 ].filter((e) => G.levels[e.id]);
