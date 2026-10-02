@@ -157,6 +157,23 @@
       motes: [{ kind: 'spore', n: 40, color: '#9affc8', size: 2.2, vx: 6, vy: -10, depth: 0.8, alpha: 0.7, glow: true },
         { kind: 'spore', n: 12, color: '#ff8ad8', size: 2, vx: -4, vy: -8, depth: 0.9, alpha: 0.6, glow: true }],
     },
+    // Chapter 2, l11: the endless Architect archive. Cold teal light, polished dark stone,
+    // ЭХО's gold (#ffd27a) as the only warm accent.
+    ruins_archive: {
+      sky: [[0, '#01070a'], [0.35, '#041319'], [0.7, '#0a272d'], [1, '#164046']],
+      haze: '#1a4a50', far: '#0f3238', mid: '#0a2228', near: '#03090c',
+      light: '#b8fff6', accent: '#5ef0ff', accent2: '#ffd27a',
+      rock: { base: '#38464c', dark: '#253237', deep: '#10191d', light: '#5a6d76', rim: '#a8e4ec', line: '#050b0d',
+        cap: '#4c6a72', capLight: '#c8f4ff', capDark: '#22363c', detail: '#5ef0ff' },
+      plat: { top: '#8aa4ac', body: '#3c4e56', dark: '#141e22', accent: '#5ef0ff' },
+      spike: { base: '#4c4632', light: '#f4e4b0', dark: '#1a170c', tip: '#ff5040', glow: '#ff4a3a' },
+      acid: { top: '#d0fff8', body: '#3ad8d0', deep: '#0a3a40', glow: '#5af0ff', bubble: '#e0fffc' },
+      crumble: { base: '#48585e', light: '#7a909a', dark: '#1c262a', crack: '#080c0e' },
+      grade: { top: 'rgba(90,220,240,0.08)', bottom: 'rgba(0,25,35,0.30)' }, vignette: 0.62,
+      dust: 'rgba(170,215,220,0.75)', debris: '#5a6c72',
+      motes: [{ kind: 'glyph', n: 22, color: '#7ef9ff', size: 5, vx: 3, vy: -9, depth: 0.75, alpha: 0.75, glow: true },
+        { kind: 'mote', n: 34, color: '#c8fff8', size: 1.3, vx: 2, vy: -4, depth: 0.55, alpha: 0.4, glow: true }],
+    },
     caves: {
       sky: [[0, '#040607'], [0.5, '#081012'], [1, '#0c1a1a']],
       haze: '#122828', far: '#0f1e1e', mid: '#091314', near: '#030607',
@@ -200,6 +217,23 @@
       grade: { top: 'rgba(60,90,160,0.12)', bottom: 'rgba(10,15,40,0.28)' }, vignette: 0.6,
       dust: 'rgba(170,185,210,0.75)', debris: '#4c5462',
       motes: [{ kind: 'rain', n: 130, color: '#b8ccf0', size: 1, vx: -160, vy: 900, depth: 1.0, alpha: 0.32, glow: false }],
+    },
+    // Chapter 2, l13: the Spire's heart. Indoors (no storm): deep violet structure lit by an
+    // amber core; rising embers instead of rain.
+    tower_core: {
+      sky: [[0, '#05020a'], [0.4, '#110822'], [0.75, '#24102e'], [1, '#341826']],
+      haze: '#3a1e4a', far: '#231436', mid: '#150b22', near: '#06030a',
+      light: '#ffcf8a', accent: '#ffb04a', accent2: '#b77aff',
+      rock: { base: '#2c2636', dark: '#1d1925', deep: '#0e0b14', light: '#4a4256', rim: '#d4b0e8', line: '#050309',
+        cap: '#5a4c64', capLight: '#ffdcae', capDark: '#2e2638', detail: '#ffb04a' },
+      plat: { top: '#a898b4', body: '#4a4058', dark: '#1a1522', accent: '#ffb04a' },
+      spike: { base: '#3e3448', light: '#f0e0f4', dark: '#140f1a', tip: '#ff5060', glow: '#ff3a4a' },
+      acid: { top: '#ffe8c0', body: '#ff9a3a', deep: '#5a1a2a', glow: '#ffb04a', bubble: '#fff0d8' },
+      crumble: { base: '#3e3648', light: '#6e6280', dark: '#17121c', crack: '#060408' },
+      grade: { top: 'rgba(150,90,255,0.10)', bottom: 'rgba(60,20,10,0.30)' }, vignette: 0.62,
+      dust: 'rgba(200,170,210,0.75)', debris: '#4e4458',
+      motes: [{ kind: 'mote', n: 40, color: '#ffc070', size: 1.6, vx: 6, vy: -22, depth: 0.85, alpha: 0.55, glow: true },
+        { kind: 'mote', n: 18, color: '#c89aff', size: 1.3, vx: -3, vy: -10, depth: 0.55, alpha: 0.4, glow: true }],
     },
   };
 
