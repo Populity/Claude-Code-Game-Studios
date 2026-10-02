@@ -125,6 +125,7 @@ function serve() {
       }, t);
       await a.step(20);
       await a.press('KeyE');
+      await a.step(15); // overlay ignores input for its first ~0.12 s (open animation) by design
       let st = await a.ev(() => G.game.puzzle && JSON.parse(JSON.stringify(G.game.puzzle.st, (k, v) => (typeof v === 'function' ? undefined : v))));
       let ok = opened && !!st, note = '';
       if (ok && t.type === 'pipes') {

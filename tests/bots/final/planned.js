@@ -44,3 +44,23 @@ const at = (x0, x1, row0, row1) => (w) => { const [x, f] = w.tile(); return x >=
 const toward = (x, row, kx = 0.3) => (w) => { const [cx, f] = w.tile(); return Math.abs(cx - x) * kx + Math.abs(f - row); };
 const cpLit = (tx) => (w) => w.level.entities.some((e) => e.type === 'checkpoint' && e.tx === tx && e.lit);
 module.exports = { runPlanned, at, toward, cpLit };
+/** Reactive wall-jump climb: jump the moment a wall is touched while not rising fast; leave toward exitDir above stopFeetRow. */
+function climb(w, approachX, firstDir, exitDir, stopFeetRow, max = 600) {
+  const P = w.player; let n = 0;
+  while (Math.abs(w.tile()[0] - approachX) > 0.15) { w.tick({ right: w.tile()[0] < approachX, left: w.tile()[0] > approachX }); if (++n > 600 || P.dead) return false; }
+  for (let i = 0; i < 12; i++) w.tick({});
+  let jh = true, dir = firstDir;
+  w.tick({ jumpPressed: true, jumpHeld: true, right: dir > 0, left: dir < 0 });
+  for (let i = 0; i < max; i++) {
+    const k = { jumpPressed: false, jumpHeld: false };
+    const wd = P.wallDir || P.nearWall(w.level);
+    if (!P.onGround && wd && P.vy > -150 && !jh) { k.jumpPressed = true; jh = true; dir = -wd; } else jh = jh && P.vy < 0;
+    k.jumpHeld = jh;
+    if (w.tile()[1] < stopFeetRow) dir = exitDir;
+    k.right = dir > 0; k.left = dir < 0;
+    w.tick(k); if (P.dead) return false;
+    if (P.onGround && i > 10) return w.tile()[1] <= stopFeetRow + 0.05;
+  }
+  return false;
+}
+module.exports.climb = climb;

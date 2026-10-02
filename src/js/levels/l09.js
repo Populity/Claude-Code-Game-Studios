@@ -11,7 +11,7 @@
  *  Z3 (55→37): lift M1 (x36-38, rows 54↔44) → jump left onto ledge A (x27-32,row44) — hop the patrolling
  *     saw → jump onto lift M2 (x21-23, rows 44↔38) when it is low → hop up through '=' → C3 (17,36).
  *  Z4 (37→20): enter shaft B (x9-12) from the right at the bottom. Wall-jump to rest ledge (9,31); wait for
- *     laser row 28 (2.6s period) to go dark, climb to rest ledge (12,26); wait for laser row 23 (anti-phase),
+ *     laser row 28 (2.6s period) to go dark, climb to rest ledge (12,26); wait for laser row 23 (same phase as row 28),
  *     climb out through '=' → C4 (16,19).
  *  Z5 (20→6): X x21-23 → X x25-27 → REST x28-30 (row12) + C5 (29,11). Saw x32 (rows 5↔10) – run X x31-34 when it is up,
  *     board lift M3 (x35-36, rows 12↔7, pauses 1.4s at both ends) → summit → l09_top → exit (40,5).
@@ -55,12 +55,12 @@ G.registerLevel({
     '#########....#.............................#', // 23
     '#####........#.............................#', // 24
     '#####.*......#.............................#', // 25
-    '#########...##.............................#', // 26
+    '#########..###.............................#', // 26
     '#########....#.............................#', // 27
     '#########....#.............................#', // 28
     '#########....#.............................#', // 29
     '#########....#.............................#', // 30
-    '##########...#.............................#', // 31
+    '###########..#.............................#', // 31
     '#########....#.............................#', // 32
     '#########....#.............................#', // 33
     '#########....#.............................#', // 34
@@ -143,8 +143,8 @@ G.registerLevel({
     { type: 'saw', x: 27, y: 43, path: [[27, 43], [32, 43]], speed: 2, pause: 0.5 },
     { type: 'mplatform', x: 21, y: 44, w: 3, path: [[21, 44], [21, 38]], speed: 1.5, pause: 1 },
     // Z4: storm shaft B (x9-12) with two pulsing horizontal lasers and rest ledges
-    { type: 'laser', x: 8, y: 28, dir: 'right', period: 2.6, on: 1.1 },
-    { type: 'laser', x: 13, y: 23, dir: 'left', period: 2.6, on: 1.1, offset: 1.3 },
+    { type: 'laser', x: 8, y: 28, dir: 'right', period: 2.6, on: 0.8 },
+    { type: 'laser', x: 13, y: 23, dir: 'left', period: 2.6, on: 0.8, offset: 0 },
     { type: 'sign', x: 19, y: 36, title: 'Табличка Зодчих', text: 'Глифы стёрты ветром. ЛЮМ собирает уцелевшие:\n«…МЫ ПОДНИМАЛИСЬ… СНОВА… КАЖДЫЙ РАЗ ВЫШЕ… КАЖДЫЙ РАЗ ТЕ ЖЕ…»\nДальше — только царапины. Человеческие.' },
     // Z5 summit: crumbling stair, vertical saw, lift M3 to the top
     { type: 'saw', x: 32, y: 5, path: [[32, 5], [32, 10]], speed: 2.5, pause: 0.8 },

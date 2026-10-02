@@ -8,8 +8,8 @@
  *  D  clue corridor (rows 19-23): tablets I (48,23), II (70,23), III (83,23); a low saw patrols x74-79
  *      (jump it). C (86,23). CODE terminal (88,23) → vault door x90.
  *      CODE = 234  (I: two moons → 2; II: letters in «ЗОВ» → 3; III: twice the first → 4).
- *  E1 laser shaft x97-99 (3 wide): rest ledge (97,18); laser row 15 (2.4s, 1.0 on) → rest ledge (99,13);
- *      laser row 10 (anti-phase) → top. C + wait spot on the shaft wall top (100,7).
+ *  E1 laser shaft x97-99 (3 wide): rest ledge (97,18); laser row 15 (2.4s, 0.8 on) → rest ledge (99,13);
+ *      laser row 10 (same phase) → top. C + wait spot on the shaft wall top (100,7).
  *  E2 run crumbles X101-104, board the moving platform (x106↔112, pauses 1.0s) → when the saw at x115
  *      (rows 3↔7) is up, jump to crumbles X116-118 → C (121,7).
  *  E3 drop to pillar x128-129 → floating crumble XX133-134 → vault x139+; saws x131 / x137 run in
@@ -94,8 +94,8 @@ G.registerLevel({
     { type: 'terminal', x: 88, y: 23, puzzle: { type: 'code', code: '234', title: 'Хранилище ядра', hint: 'Луны · Зов · Вдвое' }, targets: ['vault_door'], objective: 'Доберитесь до ядра' },
     { type: 'door', id: 'vault_door', x: 90, y: 21, h: 3 },
     // E1 laser shaft (interior x97-99) with rest ledges
-    { type: 'laser', x: 96, y: 15, dir: 'right', period: 2.4, on: 1 },
-    { type: 'laser', x: 100, y: 10, dir: 'left', period: 2.4, on: 1, offset: 1.2 },
+    { type: 'laser', x: 96, y: 15, dir: 'right', period: 2.4, on: 0.8 },
+    { type: 'laser', x: 100, y: 10, dir: 'left', period: 2.4, on: 0.8, offset: 0 },
     // E2 crumbles + moving platform, vertical saw at the far end
     { type: 'mplatform', x: 106, y: 8, w: 3, path: [[106, 8], [112, 8]], speed: 2, pause: 1 },
     { type: 'saw', x: 115, y: 3, path: [[115, 3], [115, 7]], speed: 2, pause: 0.6 },

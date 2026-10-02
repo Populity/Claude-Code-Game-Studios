@@ -24,6 +24,17 @@ runPlanned('l08', [
   { name: 'crate on plate', goal: (w) => w.level.byId.hall_plate.byCrate, h: (w) => Math.abs(crate(w).x / 32 - 129.5) + Math.abs(crate(w).y / 32 - 25) + 0.3 * Math.abs(w.player.cx - crate(w).x) / 32, opts: { maxNodes: 300000, extra: [{ k: 'R', f: 30 }, { k: 'R', f: 60 }], key: (w) => Math.round(crate(w).x / 8) + ',' + Math.round(crate(w).y / 8) } },
   { name: 'terminal', goal: (w) => { const t = w.focus(); return t && t.type === 'terminal'; }, h: toward(141, 26, 1), opts: { maxNodes: 200000 } },
   { name: 'lights', use: true, check: (w) => w.level.byId.lift.powered },
+  { name: 'ride lift', script: (w) => {
+    const lift = w.level.byId.lift; const P = w.player; let n = 0;
+    while (w.tile()[0] > 138.6) { w.tick({ left: true }); if (++n > 200) return false; }
+    for (let i = 0; i < 10; i++) w.tick({});
+    n = 0; while (!(lift.y >= 25 * 32 - 1 && lift.waitT > 0.3)) { w.tick({}); if (++n > 1200) return false; }
+    w.tick({ jumpPressed: true, jumpHeld: true }); for (let i = 0; i < 10; i++) w.tick({ jumpHeld: true });
+    n = 0; while (!P.onGround) { w.tick({}); if (++n > 200) return false; }
+    if (P.groundEntity !== lift) return false;
+    n = 0; while (!(lift.y <= 10 * 32 + 1)) { w.tick({}); if (++n > 1200) return false; }
+    return true;
+  } },
   { name: 'lift top C146', goal: cpLit(146), h: toward(146, 10, 0.5), opts: { timeKey: 12, maxNodes: 200000, extra: [{ k: '', f: 40 }] } },
   { name: 'pads C162', goal: cpLit(162), h: toward(162, 17, 0.5), opts: { maxNodes: 200000 } },
   { name: 'exit', goal: (w) => w.completed, h: toward(195, 8, 0.5), opts: { timeKey: 6.4, maxNodes: 300000, extra: [{ k: '', f: 40 }] } },
