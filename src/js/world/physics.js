@@ -40,13 +40,17 @@
      */
     move(body, dx, dy, level, opts = {}) {
       const res = { hitX: false, hitY: false, ground: false, ceiling: false, groundEntity: null, groundTiles: [] };
+      // Dynamic solids the body is already inside (a bridge extended into it, a crate respawned
+      // onto it) never block it: it can always walk out instead of being snapped across them.
+      const stuck = Physics.embeddedIn(body, level);
+      const filt = stuck ? (hs) => hs.filter((h) => !h.entity || !stuck.includes(h.entity)) : (hs) => hs;
       // ---- X axis ----
       let remaining = dx;
       while (Math.abs(remaining) > 0.0001) {
         const s = Math.abs(remaining) > STEP ? STEP * Math.sign(remaining) : remaining;
         remaining -= s;
         body.x += s;
-        let hits = solidsOverlapping(body, level, body, false);
+        let hits = filt(solidsOverlapping(body, level, body, false));
         if (hits.length && opts.pusher) {
           let pushed = false;
           for (const h of hits) {
@@ -57,7 +61,7 @@
               res.pushing = h.entity;
             }
           }
-          if (pushed) hits = solidsOverlapping(body, level, body, false);
+          if (pushed) hits = filt(solidsOverlapping(body, level, body, false));
         }
         if (hits.length) {
           if (s > 0) body.x = Math.min(...hits.map((h) => h.x)) - body.w;
@@ -73,9 +77,11 @@
         remaining -= s;
         const prevBottom = body.y + body.h;
         body.y += s;
-        let hits = solidsOverlapping(body, level, body, s > 0 && !opts.dropThrough);
+        let hits = filt(solidsOverlapping(body, level, body, s > 0 && !opts.dropThrough));
         if (s > 0) {
-          hits = hits.filter((h) => !h.oneWay || prevBottom <= h.y + 0.5);
+          // A rising one-way platform moved up before this body moved: accept it if the body was
+          // above where the platform top was at the start of the frame (no fall-through on lifts).
+          hits = hits.filter((h) => !h.oneWay || prevBottom <= h.y + 0.5 + (h.entity && h.entity.dy < 0 ? -h.entity.dy : 0));
         } else {
           hits = hits.filter((h) => !h.oneWay);
         }
@@ -98,6 +104,36 @@
         }
       }
       return res;
+    },
+
+    /** Non-one-way dynamic solids the body currently overlaps, or null. */
+    embeddedIn(body, level) {
+      let out = null;
+      for (const e of level._dyn || level.dynamicSolids()) {
+        if (e === body || e.oneWay || !G.overlap(body, e)) continue;
+        (out = out || []).push(e);
+      }
+      return out;
+    },
+
+    /**
+     * Push a body out of dynamic solids it is embedded in, along the shortest free axis
+     * (max `maxPush` px). Returns false if no free spot was found (the body is crushed).
+     */
+    depenetrate(body, level, maxPush = 40) {
+      const stuck = Physics.embeddedIn(body, level);
+      if (!stuck) return true;
+      const cands = [];
+      for (const e of stuck) {
+        cands.push([0, e.y - body.h - body.y], [0, e.y + e.h - body.y], [e.x - body.w - body.x, 0], [e.x + e.w - body.x, 0]);
+      }
+      cands.sort((a, b) => Math.abs(a[0]) + Math.abs(a[1]) - Math.abs(b[0]) - Math.abs(b[1]));
+      for (const [ox, oy] of cands) {
+        if (Math.abs(ox) + Math.abs(oy) > maxPush) break;
+        const r = { x: body.x + ox, y: body.y + oy, w: body.w, h: body.h };
+        if (!Physics.solidAt(r, level, body)) { body.x = r.x; body.y = r.y; return true; }
+      }
+      return false;
     },
 
     /** Is there ground directly below the body (1px probe)? Returns the ground hit or null. */
