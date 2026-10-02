@@ -6,19 +6,22 @@
  *   '^' floor spikes             'v' ceiling spikes        '~' acid (deadly liquid)
  *   'X' crumbling block          'P' player start          'C' checkpoint
  *   'E' level exit               'B' pushable crate        '*' data shard (collectible)
- *   'J' jump pad
+ *   'J' jump pad                 'I' ice (slick solid)     '{' / '}' conveyor (solid, carries left/right)
  * Everything else (doors, levers, terminals, lasers…) is declared in def.entities
  * using TILE coordinates. See docs/level-format.md.
  */
 (function () {
   const T = G.TILE;
-  const TILE = { EMPTY: 0, SOLID: 1, ONEWAY: 2, SPIKE_UP: 3, SPIKE_DOWN: 4, ACID: 5, CRUMBLE: 6 };
+  const TILE = { EMPTY: 0, SOLID: 1, ONEWAY: 2, SPIKE_UP: 3, SPIKE_DOWN: 4, ACID: 5, CRUMBLE: 6, ICE: 7, CONVEYOR_L: 8, CONVEYOR_R: 9 };
   G.TILE_CODES = TILE;
 
   const CHAR_TILE = {
     '#': TILE.SOLID, '=': TILE.ONEWAY, '^': TILE.SPIKE_UP, 'v': TILE.SPIKE_DOWN,
-    '~': TILE.ACID, 'X': TILE.CRUMBLE,
+    '~': TILE.ACID, 'X': TILE.CRUMBLE, 'I': TILE.ICE, '{': TILE.CONVEYOR_L, '}': TILE.CONVEYOR_R,
   };
+  /** Codes that are always solid (ground, ice, conveyors). Crumble is solid unless gone. */
+  const STATIC_SOLID = new Set([TILE.SOLID, TILE.ICE, TILE.CONVEYOR_L, TILE.CONVEYOR_R]);
+  G.isSolidCode = (c) => STATIC_SOLID.has(c);
 
   class Level {
     /** @param {object} def level definition from G.levels */
@@ -64,6 +67,10 @@
       for (const d of def.decor || []) this.add(Object.assign({ type: 'deco' }, d));
       /** Crates never get added/removed at runtime: cached to avoid per-frame filters. */
       this.crates = this.entities.filter((e) => e.type === 'crate');
+      // Chapter 2 lookups (fixed after construction, like crates)
+      this.anchors = this.entities.filter((e) => e.type === 'anchor');
+      this.winds = this.entities.filter((e) => e.type === 'wind');
+      this.lasers = this.entities.filter((e) => e.type === 'laser');
       this.buildSignalGraph();
     }
 
@@ -105,7 +112,7 @@
       if (tx < 0 || tx >= this.w) return TILE.SOLID;
       // Above the map, walls that touch the top row continue upward, so a jump pad or a
       // wall-jump can never carry her over a wall off-screen. Below the map is open (fall = death).
-      if (ty < 0) return this.tiles[tx] === TILE.SOLID ? TILE.SOLID : TILE.EMPTY;
+      if (ty < 0) return STATIC_SOLID.has(this.tiles[tx]) ? TILE.SOLID : TILE.EMPTY;
       if (ty >= this.h) return TILE.EMPTY;
       return this.tiles[ty * this.w + tx];
     }
@@ -118,7 +125,7 @@
 
     isSolidTile(tx, ty) {
       const c = this.tileCode(tx, ty);
-      if (c === TILE.SOLID) return true;
+      if (c === TILE.SOLID || STATIC_SOLID.has(c)) return true;
       if (c === TILE.CRUMBLE) {
         const cr = this.crumbles.get(ty * this.w + tx);
         return !cr || cr.state !== 'gone';
@@ -127,6 +134,40 @@
     }
 
     isOneWayTile(tx, ty) { return this.tileCode(tx, ty) === TILE.ONEWAY; }
+
+    /** Ice tile? (low friction, no wall jump) */
+    isIceTile(tx, ty) { return this.tileCode(tx, ty) === TILE.ICE; }
+
+    /** Conveyor direction of a tile: -1 ('{'), +1 ('}'), 0 otherwise. */
+    conveyorDir(tx, ty) {
+      const c = this.tileCode(tx, ty);
+      return c === TILE.CONVEYOR_L ? -1 : c === TILE.CONVEYOR_R ? 1 : 0;
+    }
+
+    /**
+     * Ground surface under a body from the tiles it landed on this frame (Physics.move groundTiles).
+     * ice: every supporting tile is ice. conveyor: mean belt direction of the supporting tiles (-1..1).
+     */
+    surfaceOf(groundTiles) {
+      if (!groundTiles || !groundTiles.length) return { ice: false, conveyor: 0 };
+      let ice = true, conv = 0;
+      for (const [tx, ty] of groundTiles) {
+        if (!this.isIceTile(tx, ty)) ice = false;
+        conv += this.conveyorDir(tx, ty);
+      }
+      return { ice, conveyor: conv / groundTiles.length };
+    }
+
+    /** Summed wind acceleration {ax, ay} (px/s^2) acting on rect r at the current level time. */
+    windAt(r) {
+      let ax = 0, ay = 0;
+      for (const w of this.winds) {
+        if (!G.overlap(r, w)) continue;
+        const f = w.force(this.time);
+        ax += f.ax; ay += f.ay;
+      }
+      return { ax, ay };
+    }
 
     /** Dynamic solid rects (closed doors, active bridges, crates, platforms). */
     dynamicSolids() {
