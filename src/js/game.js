@@ -94,10 +94,11 @@
       if (hasSave) items.push({ label: 'Продолжить', action: () => App.startLevelIndex(G.save.current, true) });
       items.push({ label: 'Новая игра', action: () => { G.save.current = 0; G.persist(); App.startLevelIndex(0); } });
       items.push({ label: 'Выбор уровня', action: () => this.buildLevels() });
+      items.push({ label: 'Полный экран', action: () => G.toggleFullscreen() });
       items.push({ label: 'Настройки', action: () => this.buildSettings() });
       items.push({ label: 'Управление', action: () => { this.mode = 'controls'; this.menu = new G.Menu([{ label: 'Назад', action: () => this.buildMain() }], { y: 470 }); } });
       this.mode = 'main';
-      this.menu = new G.Menu(items, { y: 300, lh: 44 });
+      this.menu = new G.Menu(items, { y: 296, lh: 41 });
     }
     buildLevels() {
       this.mode = 'levels';
@@ -116,7 +117,7 @@
     }
     buildSettings() {
       this.mode = 'settings';
-      this.menu = settingsMenu(() => this.buildMain(), 250);
+      this.menu = settingsMenu(() => this.buildMain(), 290);
     }
     update(dt) {
       this.t += dt;
@@ -174,6 +175,19 @@
     });
   }
 
+  /** Toggle browser fullscreen (works from a click/key in desktop browsers; harmless if refused). */
+  G.isFullscreen = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
+  G.toggleFullscreen = () => {
+    try {
+      if (G.isFullscreen()) (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+      else {
+        const el = document.documentElement;
+        const p = (el.requestFullscreen || el.webkitRequestFullscreen).call(el, { navigationUI: 'hide' });
+        if (p && p.catch) p.catch(() => {});
+      }
+    } catch (e) { /* fullscreen not allowed here */ }
+  };
+
   function settingsMenu(onBack, y) {
     const pct = (v) => Math.round(v * 100) + '%';
     const Q = ['auto', 'high', 'low'];
@@ -188,9 +202,10 @@
       { label: 'Звуки', value: () => pct(G.settings.sfx), left: step('sfx', -0.1), right: step('sfx', 0.1), action: step('sfx', 0.1) },
       { label: 'Тряска экрана', value: () => (G.settings.reduceShake ? 'слабая' : 'полная'), action: () => { G.settings.reduceShake = !G.settings.reduceShake; G.persist(); }, left: () => { G.settings.reduceShake = !G.settings.reduceShake; G.persist(); }, right: () => { G.settings.reduceShake = !G.settings.reduceShake; G.persist(); } },
       { label: 'Графика', value: () => ({ auto: G.settings.autoLow ? 'авто (низкая)' : 'авто', high: 'высокая', low: 'низкая' }[G.settings.quality] || 'авто'), action: () => cycleQ(1), left: () => cycleQ(-1), right: () => cycleQ(1) },
+      { label: 'Полный экран', value: () => (G.isFullscreen() ? 'вкл' : 'выкл'), action: () => G.toggleFullscreen(), left: () => G.toggleFullscreen(), right: () => G.toggleFullscreen() },
       { label: 'Сенсорные кнопки', value: () => ({ auto: 'авто', on: 'вкл', off: 'выкл' }[G.settings.touch]), action: () => { G.settings.touch = { auto: 'on', on: 'off', off: 'auto' }[G.settings.touch]; G.persist(); } },
       { label: 'Назад', action: onBack },
-    ], { y, lh: 44, w: 440 });
+    ], { y: y - 20, lh: 40, w: 460 });
   }
 
   // ------------------------------------------------------------------ Credits
