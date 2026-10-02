@@ -2979,6 +2979,7 @@
     if (broken) { g.fillStyle = R.dark; g.beginPath(); g.moveTo(24, 0); g.lineTo(30, -10); g.lineTo(40, -8); g.lineTo(42, 0); g.fill(); }
   }
 
+  S.PROPS = PROPS; // QA access
   const warned = new Set();
   function propSprite(kind, def) {
     const key = kind + ':' + S.key + ':' + S.cs;
