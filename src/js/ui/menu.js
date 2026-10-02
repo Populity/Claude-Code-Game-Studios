@@ -69,7 +69,7 @@
         }
         ctx.font = `${sel ? 700 : 500} ${this.size}px ${FONT}`;
         ctx.textAlign = this.align;
-        ctx.fillStyle = it.disabled ? 'rgba(255,255,255,0.28)' : sel ? '#ffffff' : 'rgba(220,235,255,0.72)';
+        ctx.fillStyle = it.disabled ? 'rgba(255,255,255,0.36)' : sel ? '#ffffff' : 'rgba(220,235,255,0.72)';
         let label = it.label;
         if (it.value) label += ':  ' + (it.left ? '‹ ' : '') + it.value() + (it.right ? ' ›' : '');
         if (sel) { ctx.save(); ctx.shadowColor = '#7ef9ff'; ctx.shadowBlur = 16; ctx.fillText(label, this.x, y); ctx.restore(); }

@@ -70,7 +70,7 @@ G.registerLevel({
     { type: 'saw', x: 59, y: 4, path: [[59, 4], [67, 4]], speed: 3, pause: 0.2 },
     // E — logic gate
     { type: 'sign', x: 95, y: 25, title: 'Поющий кристалл', text: 'Четыре струны — A, B, C, D. Три голоса должны звучать разом.\nКто поёт без лада — тот молчит.' },
-    { type: 'terminal', x: 101, y: 25, targets: ['gate'], onSolve: 'l07_logic', objective: 'Пройдите за кристальную стену', puzzle: { type: 'logic', title: 'Резонансный контур', inputs: ['A', 'B', 'C', 'D'], outputs: [{ label: 'Резонатор', expr: 'A ^ C' }, { label: 'Фокус', expr: '!A ^ (C & D)' }, { label: 'Затвор', expr: '(B | D) & !(A & C)' }] } },
+    { type: 'terminal', x: 101, y: 25, targets: ['gate'], onSolve: 'l07_logic', objective: 'Пройдите за кристальную стену', puzzle: { type: 'logic', title: 'Резонансный контур', inputs: ['A', 'B', 'C', 'D'], outputs: [{ label: 'Резонатор', expr: 'A ^ C' }, { label: 'Фокус', expr: '(!A) ^ (C & D)' }, { label: 'Затвор', expr: '(B | D) & !(A & C)' }] } },
     { type: 'door', id: 'gate', x: 108, y: 23, h: 3 },
     // F1 — pillars: blade loops the middle pillar (4 s cycle), pendulum blade before the ledge
     { type: 'saw', x: 122, y: 21, path: [[122, 21], [125, 21], [125, 24], [122, 24]], mode: 'loop', speed: 3 },

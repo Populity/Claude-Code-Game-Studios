@@ -21,7 +21,7 @@
   /** Per-overlay UI state: whether the player is steering with the mouse (hover) or a cursor. */
   const ui = { mouse: false };
   const showCursor = () => !ui.mouse && G.input.lastDevice !== 'touch';
-  const CLOSE = { x: PX + PW - 58, y: PY + 6, w: 52, h: 52 }; // generous hit area (phones)
+  const CLOSE = { x: PX + PW - 66, y: PY + 2, w: 64, h: 60 }; // generous hit area (phones)
 
   /**
    * Panel frame. `sub` is the top line (flavour or rules); `rules` (optional) is a
@@ -54,7 +54,7 @@
     }
     if (rules) {
       ctx.fillStyle = 'rgba(126,249,255,0.75)'; ctx.font = `500 13px ${FONT}`; ctx.textAlign = 'center';
-      ctx.fillText(rules, W / 2, PY + PH - 52);
+      ctx.fillText(rules, W / 2, PY + PH - 49);
       ctx.textAlign = 'left';
     }
     // footer controls
@@ -62,7 +62,7 @@
     ctx.fillText(footer, PX + 26, PY + PH - 26);
     // close button (drawn as a round chip, hit area is CLOSE)
     const hov = ui.mouse && inRect(G.input.pointer, CLOSE);
-    const cx = CLOSE.x + CLOSE.w / 2, cy = CLOSE.y + CLOSE.h / 2;
+    const cx = PX + PW - 32, cy = PY + 32;
     ctx.fillStyle = hov ? 'rgba(255,93,108,0.25)' : 'rgba(126,249,255,0.08)';
     ctx.beginPath(); ctx.arc(cx, cy, 17, 0, 7); ctx.fill();
     ctx.strokeStyle = hov ? RED : 'rgba(200,230,255,0.7)'; ctx.lineWidth = 2;

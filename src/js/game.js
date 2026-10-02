@@ -162,15 +162,15 @@
   function countShards(def) { return def.map.reduce((n, r) => n + (r.split('*').length - 1), 0); }
 
   function drawControls(ctx) {
-    ctx.fillStyle = 'rgba(4,8,16,0.82)'; G.roundRect(ctx, W / 2 - 300, 230, 600, 210, 14); ctx.fill();
+    ctx.fillStyle = 'rgba(4,8,16,0.82)'; G.roundRect(ctx, W / 2 - 370, 230, 740, 210, 14); ctx.fill();
     const rows = [
       ['← → / A D', 'Движение'], ['Пробел / W / ↑', 'Прыжок (держите — выше)'], ['Прыжок у стены', 'Отскок от стены'],
       ['E / F', 'Действие: рычаг, терминал, взять/починить'], ['↓ + Пробел', 'Спрыгнуть с платформы'], ['R', 'Вернуться к чекпоинту'], ['Esc', 'Пауза'],
     ];
     ctx.font = `600 16px ${FONT}`; ctx.textBaseline = 'middle';
     rows.forEach(([k, v], i) => {
-      ctx.fillStyle = '#7ef9ff'; ctx.textAlign = 'right'; ctx.fillText(k, W / 2 - 20, 254 + i * 26);
-      ctx.fillStyle = '#e8eef8'; ctx.textAlign = 'left'; ctx.fillText(v, W / 2, 254 + i * 26);
+      ctx.fillStyle = '#7ef9ff'; ctx.textAlign = 'right'; ctx.fillText(k, W / 2 - 100, 254 + i * 26);
+      ctx.fillStyle = '#e8eef8'; ctx.textAlign = 'left'; ctx.fillText(v, W / 2 - 80, 254 + i * 26);
     });
   }
 
@@ -544,7 +544,8 @@
     }
 
     drawTouch(ctx) {
-      const show = G.settings.touch === 'on' || (G.settings.touch === 'auto' && G.input.touchActive);
+      const overlay = this.puzzle || this.sign || this.paused || this.completeT >= 0;
+      const show = !overlay && (G.settings.touch === 'on' || (G.settings.touch === 'auto' && G.input.touchActive));
       if (!show) { G.input.touchButtons = []; this.pauseBtn = null; return; }
       const btns = [
         { action: 'left', x: 80, y: H - 80, r: 50, label: '◀' },
@@ -554,7 +555,7 @@
         { action: 'down', x: 140, y: H - 170, r: 34, label: '▼' },
       ];
       G.input.touchButtons = btns;
-      this.pauseBtn = { x: W - 34, y: 30, r: 24 };
+      this.pauseBtn = { x: W - 34, y: 30, r: 34 };
       ctx.save();
       for (const b of btns) {
         const held = G.input.down(b.action);
@@ -614,23 +615,34 @@
     ctx.save();
     ctx.globalAlpha = k;
     ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(0, 0, W, H);
-    const pw = 600, ph = 260, px = (W - pw) / 2, py = (H - ph) / 2 + (1 - k) * 20;
+    const pw = 600, px = (W - pw) / 2;
+    const paras = s.text.split('\n');
+    // measure wrapped height first so the panel fits its content
+    ctx.font = `400 17px ${FONT}`;
+    let lines = 0;
+    for (const p of paras) {
+      let line = '', n = 1;
+      for (const w of p.split(' ')) {
+        const test = line ? line + ' ' + w : w;
+        if (ctx.measureText(test).width > pw - 48 && line) { n++; line = w; } else line = test;
+      }
+      lines += n;
+    }
+    const ph = Math.min(H - 40, 58 + lines * 23 + paras.length * 6 + 44);
+    const py = (H - ph) / 2 + (1 - k) * 20;
     ctx.fillStyle = 'rgba(14,12,8,0.95)'; G.roundRect(ctx, px, py, pw, ph, 14); ctx.fill();
     ctx.strokeStyle = '#ffcf6b'; ctx.lineWidth = 2; ctx.stroke();
     ctx.fillStyle = '#ffcf6b'; ctx.font = `700 20px ${FONT}`; ctx.textBaseline = 'top';
     ctx.fillText(s.title, px + 24, py + 20);
     ctx.fillStyle = '#f4ead8'; ctx.font = `400 17px ${FONT}`;
-    const paras = s.text.split('\n');
     let y = py + 58;
     for (const p of paras) {
-      G.wrapText(ctx, p, px + 24, y, pw - 48, 23, p);
-      ctx.save(); ctx.font = `400 17px ${FONT}`;
-      const lines = Math.max(1, Math.ceil(ctx.measureText(p).width / (pw - 48)));
-      ctx.restore();
-      y += lines * 23 + 6;
+      const n = G.wrapText(ctx, p, px + 24, y, pw - 48, 23, p);
+      y += (typeof n === 'number' ? n : 1) * 23 + 6;
     }
+    const dev = G.input.touchActive ? 'Коснитесь экрана' : G.input.lastDevice === 'gamepad' ? 'Нажмите X' : 'Нажмите E';
     ctx.fillStyle = 'rgba(255,255,255,0.45)'; ctx.font = `400 12px ${FONT}`;
-    ctx.fillText('Нажмите E, чтобы закрыть', px + 24, py + ph - 28);
+    ctx.fillText(dev + ', чтобы закрыть', px + 24, py + ph - 28);
     ctx.restore();
   }
 
