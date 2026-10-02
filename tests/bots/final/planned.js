@@ -14,6 +14,7 @@ function runPlanned(id, legs, { replan = process.argv.includes('--replan') } = {
   for (const leg of legs) {
     if (leg.wait) { for (let i = 0; i < leg.wait; i++) w.tick({}); continue; }
     if (leg.use) { w.tick({}); w.tick({ action: true }); w.tick({}); if (leg.check && !leg.check(w)) { failed = `use '${leg.name}' had no effect at ${w.tile()}`; break; } continue; }
+    if (leg.script) { const r = leg.script(w); if (r !== true || w.player.dead) { failed = `script leg '${leg.name}' failed at ${w.tile()}`; break; } console.log(`leg ${leg.name.padEnd(18)} -> ${JSON.stringify(w.tile())} t=${(w.frame / 60).toFixed(1)}s deaths=${w.deaths} (scripted)`); continue; }
     const goal = leg.goal;
     let ok = false;
     const cached = !replan && cache[leg.name];
