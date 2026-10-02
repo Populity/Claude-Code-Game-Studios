@@ -178,12 +178,16 @@
       const gx = PX + (PW - size * st.w) / 2, gy = PY + 92 + (PH - 150 - size * st.h) / 2;
       return { size, gx, gy };
     },
-    input(st, inp) {
+    cellAt(st, p) {
       const L = Pipes.layout(st);
+      const cx = Math.floor((p.x - L.gx) / L.size), cy = Math.floor((p.y - L.gy) / L.size);
+      return cx >= 0 && cy >= 0 && cx < st.w && cy < st.h ? { x: cx, y: cy } : null;
+    },
+    input(st, inp) {
       let rotate = -1;
       if (inp.pointer.clicked) {
-        const cx = Math.floor((inp.pointer.x - L.gx) / L.size), cy = Math.floor((inp.pointer.y - L.gy) / L.size);
-        if (cx >= 0 && cy >= 0 && cx < st.w && cy < st.h) { st.cursor = { x: cx, y: cy }; rotate = cy * st.w + cx; }
+        const c = Pipes.cellAt(st, inp.pointer);
+        if (c) { st.cursor = c; rotate = c.y * st.w + c.x; }
       }
       if (inp.pressed('left')) st.cursor.x = (st.cursor.x + st.w - 1) % st.w;
       if (inp.pressed('right')) st.cursor.x = (st.cursor.x + 1) % st.w;
@@ -193,34 +197,48 @@
       if (rotate >= 0) { st.cells[rotate].rot = (st.cells[rotate].rot + 1) % 4; st.anim[rotate] = 1; G.Audio.play('rotate'); }
       return Pipes.check(st).solved;
     },
+    tick(st, dt) { for (let i = 0; i < st.anim.length; i++) st.anim[i] = Math.max(0, st.anim[i] - dt * 7); },
     draw(ctx, st, t) {
       const L = Pipes.layout(st);
-      const { powered } = Pipes.check(st);
-      for (let i = 0; i < st.anim.length; i++) st.anim[i] = Math.max(0, st.anim[i] - 0.12);
+      const { powered, solved } = Pipes.check(st);
+      const hover = ui.mouse ? Pipes.cellAt(st, G.input.pointer) : null;
       // source / sink
       const srcY = L.gy + st.sr * L.size + L.size / 2, snkY = L.gy + st.kr * L.size + L.size / 2;
+      const srcX = L.gx - 30, snkX = L.gx + L.size * st.w + 30;
+      ctx.save();
+      ctx.shadowColor = AMBER; ctx.shadowBlur = 16;
       ctx.fillStyle = AMBER;
-      ctx.beginPath(); ctx.arc(L.gx - 26, srcY, 12 + Math.sin(t * 5) * 2, 0, 7); ctx.fill();
-      ctx.fillRect(L.gx - 26, srcY - 4, 26, 8);
-      ctx.fillStyle = CYAN; ctx.font = `600 11px ${FONT}`; ctx.textAlign = 'center';
-      ctx.fillText('ИСТОЧНИК', L.gx - 30, srcY + 18);
-      const sinkLit = Pipes.check(st).solved;
-      ctx.fillStyle = sinkLit ? GREEN : 'rgba(126,249,255,0.25)';
-      ctx.fillRect(L.gx + L.size * st.w, snkY - 4, 26, 8);
-      ctx.beginPath(); ctx.arc(L.gx + L.size * st.w + 26, snkY, 13, 0, 7); ctx.fill();
-      ctx.fillStyle = CYAN; ctx.fillText('ПРИЁМНИК', L.gx + L.size * st.w + 30, snkY + 18);
+      ctx.fillRect(srcX, srcY - 4, L.gx - srcX + 4, 8);
+      ctx.beginPath(); ctx.arc(srcX, srcY, 13 + Math.sin(t * 5) * 2, 0, 7); ctx.fill();
+      ctx.restore();
+      ctx.fillStyle = solved ? GREEN : 'rgba(126,249,255,0.22)';
+      ctx.fillRect(L.gx + L.size * st.w - 4, snkY - 4, snkX - (L.gx + L.size * st.w) + 4, 8);
+      ctx.save();
+      if (solved) { ctx.shadowColor = GREEN; ctx.shadowBlur = 20 + Math.sin(t * 8) * 6; }
+      ctx.beginPath(); ctx.arc(snkX, snkY, 14, 0, 7); ctx.fill();
+      ctx.restore();
+      ctx.strokeStyle = solved ? GREEN : 'rgba(126,249,255,0.6)'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(snkX, snkY, 14, 0, 7); ctx.stroke();
+      ctx.font = `700 10px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+      ctx.fillStyle = AMBER; ctx.fillText('ИСТОЧНИК', srcX, srcY + 20);
+      ctx.fillStyle = solved ? GREEN : CYAN; ctx.fillText('ПРИЁМНИК', snkX, snkY + 20);
       ctx.textAlign = 'left';
       for (let y = 0; y < st.h; y++) for (let x = 0; x < st.w; x++) {
         const i = y * st.w + x, c = st.cells[i];
         const cx = L.gx + x * L.size, cy = L.gy + y * L.size;
-        ctx.fillStyle = 'rgba(126,249,255,0.06)';
+        const isHover = hover && hover.x === x && hover.y === y;
+        ctx.fillStyle = isHover ? 'rgba(126,249,255,0.14)' : 'rgba(126,249,255,0.06)';
         G.roundRect(ctx, cx + 3, cy + 3, L.size - 6, L.size - 6, 8); ctx.fill();
-        if (st.cursor.x === x && st.cursor.y === y && G.input.lastDevice !== 'mouse' && G.input.lastDevice !== 'touch') {
-          ctx.strokeStyle = AMBER; ctx.lineWidth = 2; G.roundRect(ctx, cx + 2, cy + 2, L.size - 4, L.size - 4, 8); ctx.stroke();
+        if (st.cursor.x === x && st.cursor.y === y && showCursor()) {
+          ctx.strokeStyle = AMBER; ctx.lineWidth = 2.5; G.roundRect(ctx, cx + 2, cy + 2, L.size - 4, L.size - 4, 9); ctx.stroke();
+        } else if (isHover) {
+          ctx.strokeStyle = 'rgba(126,249,255,0.5)'; ctx.lineWidth = 1.5; G.roundRect(ctx, cx + 3, cy + 3, L.size - 6, L.size - 6, 8); ctx.stroke();
         }
         const m = Pipes.mask(c);
         const on = powered.has(i);
-        const rotA = -st.anim[i] * Math.PI / 2;
+        // eased quarter-turn: the piece swings from its previous orientation into the new one
+        const e = st.anim[i];
+        const rotA = -(e * e * (3 - 2 * e)) * Math.PI / 2;
         ctx.save();
         ctx.translate(cx + L.size / 2, cy + L.size / 2); ctx.rotate(rotA);
         ctx.lineCap = 'round';
@@ -234,11 +252,11 @@
           if (m & Wd) { ctx.moveTo(0, 0); ctx.lineTo(-arm, 0); }
           ctx.stroke();
         };
-        if (on) { ctx.shadowColor = AMBER; ctx.shadowBlur = 14; }
-        drawArms(L.size * 0.26, on ? '#5a3b10' : '#1c2c3c');
+        if (on) { ctx.shadowColor = solved ? GREEN : AMBER; ctx.shadowBlur = 14; }
+        drawArms(L.size * 0.26, on ? (solved ? '#124a2a' : '#5a3b10') : '#1c2c3c');
         ctx.shadowBlur = 0;
-        drawArms(L.size * 0.12, on ? AMBER : '#4c6a80');
-        if (on) {
+        drawArms(L.size * 0.12, on ? (solved ? GREEN : AMBER) : '#5d7d94');
+        if (on && e === 0) {
           // flowing energy dots
           ctx.fillStyle = '#fff';
           const ph = (t * 1.6) % 1;
@@ -248,7 +266,7 @@
             ctx.beginPath(); ctx.arc(dx * d, dy * d, 2.2, 0, 7); ctx.fill();
           }
         }
-        ctx.fillStyle = on ? AMBER : '#4c6a80';
+        ctx.fillStyle = on ? (solved ? GREEN : AMBER) : '#5d7d94';
         ctx.beginPath(); ctx.arc(0, 0, L.size * 0.1, 0, 7); ctx.fill();
         ctx.restore();
       }

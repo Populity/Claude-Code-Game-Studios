@@ -103,7 +103,10 @@
 
     tileCode(tx, ty) {
       if (tx < 0 || tx >= this.w) return TILE.SOLID;
-      if (ty < 0 || ty >= this.h) return TILE.EMPTY;
+      // Above the map, walls that touch the top row continue upward, so a jump pad or a
+      // wall-jump can never carry her over a wall off-screen. Below the map is open (fall = death).
+      if (ty < 0) return this.tiles[tx] === TILE.SOLID ? TILE.SOLID : TILE.EMPTY;
+      if (ty >= this.h) return TILE.EMPTY;
       return this.tiles[ty * this.w + tx];
     }
 
