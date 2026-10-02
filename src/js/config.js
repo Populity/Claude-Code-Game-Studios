@@ -32,6 +32,10 @@ G.CONFIG = {
     pushSpeed: 110,         // speed while pushing a crate
     interactRange: 40,
     jumpPadVelocity: 1050,
+    cornerCorrection: 6,    // px: jumping into a ceiling corner by ≤ this slides around it
+    ledgeAssist: 8,         // px: missing a ledge top by ≤ this pops her up onto it
+    ledgeAssistMinVy: 120,  // only when not rising faster than this (px/s)
+    crushPush: 40,          // px: max push-out from a dynamic solid before it counts as a crush
   },
 
   crate: { size: 32, gravity: 2100, maxFall: 900 },

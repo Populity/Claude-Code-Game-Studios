@@ -42,18 +42,34 @@
     G.App.setNow(new G.TitleScene());
   }
 
+  const MAX_STEP = 1 / 60, MAX_FRAME = 1 / 15;
+
+  // Losing focus (alt-tab, tab switch, phone call) pauses gameplay instead of letting Mira run on.
+  function autoPause() {
+    const sc = G.App.scene;
+    if (G.timeScale === 0 || !sc || !(sc instanceof G.GameScene)) return;
+    if (!sc.paused && !sc.puzzle && !sc.sign && sc.completeT < 0) sc.pause();
+  }
+  window.addEventListener('blur', autoPause);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) autoPause(); });
+
   let last = performance.now();
   G.paused = false;
   function frame(now) {
     let dt = (now - last) / 1000;
     last = now;
-    if (dt > 1 / 30) dt = 1 / 30;
+    if (dt > MAX_FRAME) dt = MAX_FRAME;
     if (G.timeScale != null) dt *= G.timeScale;
     if (G.timeScale === 0) { requestAnimationFrame(frame); return; } // QA: driven by G.step()
     try {
-      G.input.update();
-      G.App.update(dt);
-      G.input.endFrame();
+      // Long frames are split into equal sub-steps ≤ 1/60 s so jump arcs, wall jumps and
+      // collisions stay the same on slow machines (only the first sub-step sees new presses).
+      const n = Math.ceil(dt / MAX_STEP - 1e-6) || 1;
+      for (let i = 0; i < n; i++) {
+        G.input.update();
+        G.App.update(dt / n);
+        G.input.endFrame();
+      }
       render();
     } catch (e) {
       console.error(e);

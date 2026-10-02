@@ -2068,7 +2068,7 @@
       // (not draw count) is what blows the frame budget on weak GPUs / software raster.
       S.sky = downscale(bg.sky, 0.75);
       S.layers = bg.layers.map((L, i) => Object.assign(L, { c: downscale(L.c, L.q || [0.5, 0.65, 0.8, 0.8][Math.min(3, i)]) }));
-      S.gradeG = null; S.bgKey = ''; S.bgAccents = [];
+      S.edgeG = null; S.alarmG = null; S.bgKey = ''; S.bgAccents = [];
       buildShafts();
       buildMotes();
       buildForeground();
@@ -2206,12 +2206,8 @@
       ctx.globalAlpha = 1;
       // biome specials
       if (S.biome === 'ship') {
-        const a = Math.max(0, Math.sin(t * 2.6)) ** 2 * 0.16;
-        if (a > 0.005) {
-          const gr = ctx.createRadialGradient(W / 2, H / 2, H * 0.3, W / 2, H / 2, W * 0.7);
-          gr.addColorStop(0, 'rgba(255,30,50,0)'); gr.addColorStop(1, `rgba(255,30,50,${a})`);
-          ctx.fillStyle = gr; ctx.fillRect(0, 0, W, H);
-        }
+        const a = Math.max(0, Math.sin(t * 2.6)) ** 2;
+        if (a > 0.02) { if (!S.alarmG) S.alarmG = buildEdgeGradients(ctx, null); drawEdges(ctx, S.alarmG, a); }
       } else if (S.biome === 'caves') {
         ctx.globalAlpha = 0.12; ctx.drawImage(vfade('#4affc0'), 0, H - 60, W, 60); ctx.globalAlpha = 1;
       } else if (S.biome === 'tower') {
@@ -2220,17 +2216,10 @@
       } else if (S.biome === 'desert' || S.biome === 'wreck') {
         ctx.globalAlpha = 0.5; ctx.drawImage(vfade(S.pal.haze), 0, H - 70, W, 70); ctx.globalAlpha = 1;
       }
-      // grade + vignette as gradient fills (no full-screen image blit). Kept gentle so the
-      // player and hazards in the middle of the view are never darkened much.
-      if (!S.gradeG) {
-        const P = S.pal;
-        S.gradeG = ctx.createLinearGradient(0, 0, 0, H);
-        S.gradeG.addColorStop(0, P.grade.top); S.gradeG.addColorStop(0.55, 'rgba(0,0,0,0)'); S.gradeG.addColorStop(1, P.grade.bottom);
-        S.vigG = ctx.createRadialGradient(W / 2, H * 0.5, H * 0.5, W / 2, H * 0.5, W * 0.62);
-        S.vigG.addColorStop(0, 'rgba(0,0,0,0)'); S.vigG.addColorStop(1, `rgba(0,0,0,${P.vignette * 0.85})`);
-      }
-      ctx.globalAlpha = 0.75; ctx.fillStyle = S.gradeG; ctx.fillRect(0, 0, W, H);
-      ctx.globalAlpha = 1; ctx.fillStyle = S.vigG; ctx.fillRect(0, 0, W, H);
+      // grade + vignette as edge bands only: the centre of the view (player, hazards) is never
+      // darkened or tinted, and the fill touches ~45% of the pixels instead of 100%.
+      if (!S.edgeG) S.edgeG = buildEdgeGradients(ctx, S.pal);
+      drawEdges(ctx, S.edgeG, 1);
       ctx.restore();
     },
 
@@ -2294,6 +2283,33 @@
       }
     }
     return accents;
+  }
+
+
+  /** Linear edge-band gradients: grade tint top/bottom + vignette on all four edges (or a red alarm rim). */
+  function buildEdgeGradients(ctx, P) {
+    const v = P ? P.vignette * 0.8 : 0;
+    const col = P ? (a) => `rgba(0,0,0,${a})` : (a) => `rgba(255,30,50,${a})`;
+    const k = P ? 1 : 0.2;
+    const lin = (x0, y0, x1, y1, a) => { const g = ctx.createLinearGradient(x0, y0, x1, y1); g.addColorStop(0, col(a)); g.addColorStop(1, col(0)); return g; };
+    const out = {
+      top: lin(0, 0, 0, H * 0.22, P ? v * 0.7 : k), bottom: lin(0, H, 0, H * 0.72, P ? v : k),
+      left: lin(0, 0, W * 0.16, 0, P ? v : k), right: lin(W, 0, W * 0.84, 0, P ? v : k),
+    };
+    if (P) {
+      out.gTop = ctx.createLinearGradient(0, 0, 0, H * 0.35); out.gTop.addColorStop(0, P.grade.top); out.gTop.addColorStop(1, 'rgba(0,0,0,0)');
+      out.gBot = ctx.createLinearGradient(0, H, 0, H * 0.6); out.gBot.addColorStop(0, P.grade.bottom); out.gBot.addColorStop(1, 'rgba(0,0,0,0)');
+    }
+    return out;
+  }
+  function drawEdges(ctx, E, a) {
+    ctx.globalAlpha = a;
+    if (E.gTop) { ctx.fillStyle = E.gTop; ctx.fillRect(0, 0, W, H * 0.35); ctx.fillStyle = E.gBot; ctx.fillRect(0, H * 0.6, W, H * 0.4); }
+    ctx.fillStyle = E.top; ctx.fillRect(0, 0, W, H * 0.22);
+    ctx.fillStyle = E.bottom; ctx.fillRect(0, H * 0.72, W, H * 0.28);
+    ctx.fillStyle = E.left; ctx.fillRect(0, 0, W * 0.16, H);
+    ctx.fillStyle = E.right; ctx.fillRect(W * 0.84, 0, W * 0.16, H);
+    ctx.globalAlpha = 1;
   }
 
   // ================================================================== acid

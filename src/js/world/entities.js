@@ -164,8 +164,7 @@
       const want = this.powered ? 1 : 0;
       if (want === 0 && this.openT > 0) {
         // never close on a body
-        const bodies = [game.player, ...game.level.entities.filter((e) => e.type === 'crate')];
-        if (bodies.some((b) => G.overlap(b, this))) return;
+        if (G.overlap(game.player, this) || game.level.crates.some((b) => G.overlap(b, this))) return;
       }
       const prev = this.openT;
       this.openT = G.approach(this.openT, want, dt * 2.2);
@@ -187,10 +186,7 @@
       super.update(dt);
       const prev = this.extendT;
       let want = this.powered ? 1 : 0;
-      if (want === 0 && this.extendT > 0.6) {
-        const bodies = [game.player, ...game.level.entities.filter((e) => e.type === 'crate')];
-        // retracting under a body is allowed (it falls) – that's the point of a bridge
-      }
+      // retracting under a body is allowed (it falls) – that's the point of a bridge
       this.extendT = G.approach(this.extendT, want, dt * 2.5);
       if (prev === 0 && this.extendT > 0) G.Audio.play('bridge');
     }
@@ -219,12 +215,9 @@
     update(dt, game) {
       super.update(dt);
       const zone = { x: this.x + 3, y: this.y - 2, w: this.w - 6, h: 8 };
-      const bodies = [];
-      if (!game.player.dead) bodies.push(game.player);
-      for (const e of game.level.entities) if (e.type === 'crate') bodies.push(e);
       const was = this.active;
-      this.active = bodies.some((b) => G.overlap(b, zone));
-      this.byCrate = this.active && bodies.some((b) => b.type === 'crate' && G.overlap(b, zone));
+      this.byCrate = game.level.crates.some((b) => G.overlap(b, zone));
+      this.active = this.byCrate || (!game.player.dead && G.overlap(game.player, zone));
       if (this.active !== was) G.Audio.play(this.active ? 'plateDown' : 'plateUp');
       this.pressT = G.approach(this.pressT, this.active ? 1 : 0, dt * 10);
     }
@@ -352,16 +345,8 @@
         }
       }
       this.dx = this.x - ox; this.dy = this.y - oy;
-      // carry riders
-      if (this.dx || this.dy) {
-        const riders = [game.player, ...game.level.entities.filter((e) => e.type === 'crate')];
-        for (const r of riders) {
-          if (r.groundEntity === this && !r.dead) {
-            G.Physics.move(r, this.dx, 0, game.level);
-            G.Physics.move(r, 0, this.dy, game.level);
-          }
-        }
-      }
+      // carry riders (and whatever stands on them: Mira on a crate on a lift moves too)
+      if (this.dx || this.dy) carryRiders(this, this.dx, this.dy, game, 0);
     }
     advance() {
       const n = this.pts.length;
@@ -371,6 +356,22 @@
       this.to = this.from + this.dir;
     }
   };
+
+  /** Move every body standing on `base` by (dx,dy), recursively for stacks. */
+  function carryRiders(base, dx, dy, game, depth) {
+    if (depth > 4) return;
+    const L = game.level;
+    const visit = (r) => {
+      if (r === base || r.groundEntity !== base || r.dead) return;
+      const ox = r.x, oy = r.y;
+      G.Physics.move(r, dx, 0, L);
+      G.Physics.move(r, 0, dy, L);
+      if (r.x !== ox || r.y !== oy) carryRiders(r, r.x - ox, r.y - oy, game, depth + 1);
+    };
+    visit(game.player);
+    for (const c of L.crates) visit(c);
+  }
+  G.carryRiders = carryRiders;
 
   // ------------------------------------------------------------------ laser / energy arc (hazard)
   Types.laser = class extends Entity {
@@ -470,7 +471,8 @@
       const p = game.player;
       const inside = !p.dead && G.overlap(p, this);
       if (inside && !this.inside && !(this.once && this.fired)) {
-        if (this.requires && !(game.level.byId[this.requires] && game.level.byId[this.requires].active)) { this.inside = inside; return; }
+        // requirement not met yet: stay "outside" so it fires as soon as it is met, even if she never left the zone
+        if (this.requires && !(game.level.byId[this.requires] && game.level.byId[this.requires].active)) { this.inside = false; return; }
         this.fired = true;
         if (this.objective) game.setObjective(this.objective);
         if (this.dialogue) game.playDialogue(this.dialogue);

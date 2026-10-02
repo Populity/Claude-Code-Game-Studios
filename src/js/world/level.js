@@ -62,6 +62,8 @@
       for (const e of def.entities || []) this.add(Object.assign({}, e));
       for (const tr of def.triggers || []) this.add(Object.assign({ type: 'trigger' }, tr));
       for (const d of def.decor || []) this.add(Object.assign({ type: 'deco' }, d));
+      /** Crates never get added/removed at runtime: cached to avoid per-frame filters. */
+      this.crates = this.entities.filter((e) => e.type === 'crate');
       this.buildSignalGraph();
     }
 

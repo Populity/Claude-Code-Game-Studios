@@ -33,6 +33,7 @@
       this.dead = false;
       this.deathCause = null;
       this.carry = null;
+      this.carryPart = null;
       this.landImpact = 0;
       this.interactT = 0;
       this.pushing = false;
@@ -48,7 +49,7 @@
     get cy() { return this.y + this.h / 2; }
 
     kill(cause) {
-      if (this.dead) return;
+      if (this.dead || this.frozen) return; // frozen = level complete: nothing can kill her any more
       this.dead = true;
       this.deathCause = cause;
       this.setState('dead');
@@ -71,6 +72,9 @@
       if (this.frozen) { ctl = { left: false, right: false, down: false, jumpPressed: false, jumpHeld: false }; }
 
       const inputX = (ctl.right ? 1 : 0) - (ctl.left ? 1 : 0);
+
+      // ---- never stay inside a dynamic solid (bridge extended into her, crate respawned on her) ----
+      if (!G.Physics.depenetrate(this, level, P.crushPush)) { this.kill('crush'); return; }
 
       // ---- timers ----
       this.coyote = this.onGround ? P.coyoteTime : Math.max(0, this.coyote - dt);
@@ -140,7 +144,11 @@
       const preVy = this.vy;
       const rx = G.Physics.move(this, this.vx * dt, 0, level, { pusher: true, canPush: this.onGround });
       this.pushing = !!rx.pushing && this.onGround && inputX !== 0;
-      if (rx.hitX) this.vx = 0;
+      if (rx.hitX && !this.onGround && inputX !== 0 && this.vy > -P.ledgeAssistMinVy && this.ledgeAssist(level, inputX)) {
+        // ledge forgiveness: popped up onto a ledge she just barely missed; keep momentum
+        G.Physics.move(this, this.vx * dt * 0.5, 0, level);
+      } else if (rx.hitX) this.vx = 0;
+      if (this.vy < 0) this.cornerCorrect(level, this.vy * dt);
       const ry = G.Physics.move(this, 0, this.vy * dt, level, { dropThrough: this.dropT > 0 || (ctl.down && ctl.jumpHeld && false) });
       if (ry.hitY) {
         if (ry.ground) {
@@ -176,6 +184,28 @@
       } else if (sliding) this.setState('wall');
       else if (this.vy < 0) this.setState('jump');
       else this.setState('fall');
+    }
+
+    /** Jumping into a ceiling edge by a few px: slide sideways around it instead of bonking. */
+    cornerCorrect(level, dy) {
+      const r = { x: this.x, y: this.y + dy, w: this.w, h: this.h };
+      if (!G.Physics.solidAt(r, level, this)) return;
+      for (let o = 1; o <= P.cornerCorrection; o++) {
+        for (const s of [-1, 1]) {
+          r.x = this.x + o * s;
+          if (!G.Physics.solidAt(r, level, this) && !G.Physics.solidAt({ x: r.x, y: this.y, w: this.w, h: this.h }, level, this)) { this.x = r.x; return; }
+        }
+      }
+    }
+
+    /** Falling just short of a ledge top: lift up to ledgeAssist px if that clears it. */
+    ledgeAssist(level, dir) {
+      for (let k = 1; k <= P.ledgeAssist; k++) {
+        const up = { x: this.x, y: this.y - k, w: this.w, h: this.h };
+        if (G.Physics.solidAt(up, level, this)) return false;
+        if (!G.Physics.solidAt({ x: this.x + dir * 2, y: up.y, w: this.w, h: this.h }, level, this)) { this.y = up.y; return true; }
+      }
+      return false;
     }
 
     standingOnOneWay(level) {

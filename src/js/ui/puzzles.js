@@ -18,11 +18,22 @@
   const FONT = '"Exo 2", "Segoe UI", sans-serif';
 
   // ----- shared panel chrome -----
-  function panel(ctx, title, subtitle, t, solvedT) {
+  /** Per-overlay UI state: whether the player is steering with the mouse (hover) or a cursor. */
+  const ui = { mouse: false };
+  const showCursor = () => !ui.mouse && G.input.lastDevice !== 'touch';
+  const CLOSE = { x: PX + PW - 58, y: PY + 6, w: 52, h: 52 }; // generous hit area (phones)
+
+  /**
+   * Panel frame. `sub` is the top line (flavour or rules); `rules` (optional) is a
+   * second rules line pinned above the footer; `footer` is the controls line.
+   */
+  function panel(ctx, title, sub, rules, footer, t, solvedT) {
     ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(0, 0, W, H);
     ctx.save();
-    ctx.shadowColor = CYAN; ctx.shadowBlur = 24;
-    ctx.fillStyle = 'rgba(6,14,26,0.96)';
+    ctx.shadowColor = solvedT > 0 ? GREEN : CYAN; ctx.shadowBlur = 24;
+    const bg = ctx.createLinearGradient(0, PY, 0, PY + PH);
+    bg.addColorStop(0, 'rgba(8,20,34,0.97)'); bg.addColorStop(1, 'rgba(4,10,20,0.97)');
+    ctx.fillStyle = bg;
     G.roundRect(ctx, PX, PY, PW, PH, 18); ctx.fill();
     ctx.restore();
     ctx.strokeStyle = solvedT > 0 ? GREEN : CYAN; ctx.lineWidth = 2;
@@ -33,28 +44,48 @@
     ctx.globalAlpha = 0.05; ctx.fillStyle = CYAN;
     for (let y = PY + ((t * 30) % 4); y < PY + PH; y += 4) ctx.fillRect(PX, y, PW, 1);
     ctx.restore();
+    // header rule
+    ctx.fillStyle = 'rgba(126,249,255,0.12)'; ctx.fillRect(PX + 26, PY + 70, PW - 52, 1);
     ctx.fillStyle = CYAN; ctx.font = `700 20px ${FONT}`; ctx.textBaseline = 'top'; ctx.textAlign = 'left';
     ctx.fillText(title, PX + 26, PY + 18);
-    if (subtitle) {
-      ctx.fillStyle = 'rgba(200,230,255,0.75)'; ctx.font = `400 14px ${FONT}`;
-      G.wrapText(ctx, subtitle, PX + 26, PY + 46, PW - 52, 18, subtitle);
+    if (sub) {
+      ctx.fillStyle = 'rgba(210,235,255,0.8)'; ctx.font = `400 14px ${FONT}`;
+      G.wrapText(ctx, sub, PX + 26, PY + 46, PW - 110, 18, sub);
+    }
+    if (rules) {
+      ctx.fillStyle = 'rgba(126,249,255,0.75)'; ctx.font = `500 13px ${FONT}`; ctx.textAlign = 'center';
+      ctx.fillText(rules, W / 2, PY + PH - 52);
+      ctx.textAlign = 'left';
     }
     // footer controls
-    ctx.fillStyle = 'rgba(200,230,255,0.5)'; ctx.font = `400 12px ${FONT}`;
-    const touch = G.input.touchActive;
-    ctx.fillText(touch ? 'Нажимайте на элементы · ✕ — выйти' : 'Мышь или стрелки + Пробел · R — сброс · Esc — выйти', PX + 26, PY + PH - 26);
-    // close button
-    const cb = { x: PX + PW - 44, y: PY + 14, w: 30, h: 30 };
-    ctx.strokeStyle = 'rgba(200,230,255,0.6)'; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(cb.x + 9, cb.y + 9); ctx.lineTo(cb.x + 21, cb.y + 21); ctx.moveTo(cb.x + 21, cb.y + 9); ctx.lineTo(cb.x + 9, cb.y + 21); ctx.stroke();
-    if (solvedT > 0) {
-      const a = Math.min(1, solvedT * 3);
-      ctx.globalAlpha = a;
-      ctx.fillStyle = GREEN; ctx.font = `800 30px ${FONT}`; ctx.textAlign = 'center';
-      ctx.fillText('СИСТЕМА ВОССТАНОВЛЕНА', W / 2, PY + PH - 70);
-      ctx.textAlign = 'left'; ctx.globalAlpha = 1;
-    }
-    return cb;
+    ctx.fillStyle = 'rgba(200,230,255,0.55)'; ctx.font = `400 12px ${FONT}`;
+    ctx.fillText(footer, PX + 26, PY + PH - 26);
+    // close button (drawn as a round chip, hit area is CLOSE)
+    const hov = ui.mouse && inRect(G.input.pointer, CLOSE);
+    const cx = CLOSE.x + CLOSE.w / 2, cy = CLOSE.y + CLOSE.h / 2;
+    ctx.fillStyle = hov ? 'rgba(255,93,108,0.25)' : 'rgba(126,249,255,0.08)';
+    ctx.beginPath(); ctx.arc(cx, cy, 17, 0, 7); ctx.fill();
+    ctx.strokeStyle = hov ? RED : 'rgba(200,230,255,0.7)'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(cx - 6, cy - 6); ctx.lineTo(cx + 6, cy + 6); ctx.moveTo(cx + 6, cy - 6); ctx.lineTo(cx - 6, cy + 6); ctx.stroke();
+    return CLOSE;
+  }
+
+  /** "System restored" banner drawn over the solved puzzle. */
+  function solvedBanner(ctx, solvedT) {
+    const a = Math.min(1, solvedT * 4);
+    const k = G.easeOutBack(Math.min(1, solvedT * 3));
+    ctx.save();
+    ctx.globalAlpha = a * 0.75; ctx.fillStyle = 'rgba(2,10,8,1)';
+    G.roundRect(ctx, PX + 2, PY + 76, PW - 4, PH - 110, 0); ctx.fill();
+    ctx.globalAlpha = a;
+    const bh = 84, by = H / 2 - bh / 2 + 10;
+    ctx.fillStyle = 'rgba(125,255,168,0.10)'; ctx.fillRect(PX + 2, by, PW - 4, bh);
+    ctx.fillStyle = GREEN; ctx.fillRect(PX + 2, by, PW - 4, 2); ctx.fillRect(PX + 2, by + bh - 2, PW - 4, 2);
+    ctx.translate(W / 2, by + bh / 2); ctx.scale(k, k);
+    ctx.shadowColor = GREEN; ctx.shadowBlur = 18;
+    ctx.fillStyle = GREEN; ctx.font = `800 30px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('СИСТЕМА ВОССТАНОВЛЕНА', 0, 0);
+    ctx.restore();
   }
   const inRect = (p, r) => p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
 

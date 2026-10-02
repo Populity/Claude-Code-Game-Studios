@@ -23,6 +23,7 @@
   const prev = {};
   const cur = {};
   const keyHeld = {};
+  const tapped = {};     // actions pressed since the last update(): a press+release within one frame still counts
   const touchHeld = {};
   let padHeld = {};
 
@@ -51,7 +52,9 @@
       const all = new Set([
         ...Object.keys(keyHeld), ...Object.keys(touchHeld), ...Object.keys(padHeld), ...Object.keys(prev),
       ]);
-      for (const a of all) cur[a] = !!(keyHeld[a] || touchHeld[a] || padHeld[a]);
+      for (const a in tapped) all.add(a);
+      for (const a of all) cur[a] = !!(keyHeld[a] || touchHeld[a] || padHeld[a] || tapped[a]);
+      for (const a in tapped) delete tapped[a];
       this.typed = typedBuf; typedBuf = '';
     },
     /** Call once per frame AFTER game logic. */
@@ -59,6 +62,7 @@
     /** Clear all held state (on blur / scene change). */
     reset() {
       for (const k in keyHeld) delete keyHeld[k];
+      for (const k in tapped) delete tapped[k];
       for (const k in touchHeld) delete touchHeld[k];
       padHeld = {};
       for (const k in cur) { cur[k] = false; prev[k] = false; }
@@ -79,7 +83,7 @@
     if (!acts) return;
     e.preventDefault();
     input.lastDevice = 'keyboard';
-    for (const a of acts) keyHeld[a] = true;
+    for (const a of acts) { if (!keyHeld[a] && !e.repeat) tapped[a] = true; keyHeld[a] = true; }
     if (G.Audio && G.Audio.unlock) G.Audio.unlock();
   });
   window.addEventListener('keyup', (e) => {

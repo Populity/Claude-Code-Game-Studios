@@ -387,7 +387,7 @@
 
       for (const e of L.entities) if (e.type !== 'mplatform' && e.type !== 'saw') e.update(dt, this);
       L.resolveSignals();
-      L.updateCrumbles(dt, [this.player, ...L.entities.filter((e) => e.type === 'crate')]);
+      L.updateCrumbles(dt, this._bodies || (this._bodies = [this.player, ...L.crates]));
       this.drone.update(dt, this);
       this.dialogue.update(dt);
       G.fx.update(dt);
