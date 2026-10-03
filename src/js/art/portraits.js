@@ -663,7 +663,7 @@
         if ((Math.sin(mid) < 0) !== back) continue;
         ctx.strokeStyle = `rgba(${col},${(back ? 0.35 : 0.9) * (i % 3 === 0 ? 1 : 0.6) * (0.8 + 0.4 * syl)})`;
         ctx.lineWidth = back ? 2 : 3.2;
-        ctx.beginPath(); ctx.ellipse(50, 34, R, R * 0.26, -0.16, a0, a1); ctx.stroke();
+        ctx.beginPath(); ctx.ellipse(50, 16, R, R * 0.26, -0.16, a0, a1); ctx.stroke();
       }
       ctx.restore();
     };

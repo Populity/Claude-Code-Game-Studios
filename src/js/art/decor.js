@@ -853,9 +853,11 @@
     // D: caps + undersides (may overhang into empty neighbours)
     for (const s of sol) {
       const nb = s[2];
-      if (!nb.u && openAt(s[0], s[1] - 1) !== false && codeAt(s[0], s[1] - 1) !== TC.SOLID) drawCap(g, s[0], s[1], nb);
+      if (!nb.u && openAt(s[0], s[1] - 1) !== false && codeAt(s[0], s[1] - 1) !== TC.SOLID && S.raw[s[1] * S.w + s[0]] === TC.SOLID) drawCap(g, s[0], s[1], nb);
       if (!nb.d && s[1] < S.h - 1) drawUnder(g, s[0], s[1], nb);
     }
+    // D2: ice and conveyor surfaces
+    for (const sp of S.special) if (sp.tx >= mx0 && sp.tx <= mx1 && sp.ty >= my0 && sp.ty <= my1) drawSpecialTile(g, sp);
     // E: one-ways and spikes
     for (const m of misc) {
       if (m[2] === TC.ONEWAY) drawOneWay(g, m[0], m[1]);
@@ -941,9 +943,11 @@
     ruins_overgrown: { top: [['fern', 0.16], ['flower', 0.12], ['grass', 0.14], ['mushS', 0.05]], under: [['vineh', 0.22]], side: [['glyphw', 0.04], ['mossw', 0.06]] },
     caves:   { top: [['pebbles', 0.10], ['stalagS', 0.08], ['mossglow', 0.08], ['mushS', 0.05]], under: [['stalac', 0.22]], side: [['mossw', 0.06]] },
     crystal: { top: [['crys', 0.14], ['pebbles', 0.06]], under: [['crysd', 0.14]], side: [['crysw', 0.06]] },
+    ruins_archive: { top: [['rubble', 0.05], ['tabletS', 0.12], ['pebbles', 0.05]], under: [['lampc', 0.05], ['chain', 0.04]], side: [['glyphw', 0.12]] },
+    tower_core: { top: [['bolts', 0.10], ['emberv', 0.07]], under: [['cableh', 0.07], ['lampc', 0.04]], side: [['conduitw', 0.10]] },
     tower:   { top: [['bolts', 0.08], ['puddle', 0.06]], under: [['chain', 0.05], ['drip', 0.08]], side: [['conduitw', 0.05]] },
   };
-  const ANIM_KINDS = new Set(['lampc', 'striplight', 'flower', 'glyphw', 'mossglow', 'mushS', 'mossw', 'stalac', 'crys', 'crysd', 'crysw', 'conduitw', 'drip', 'cableh', 'sanddrip', 'vineh', 'puddle']);
+  const ANIM_KINDS = new Set(['emberv', 'lampc', 'striplight', 'flower', 'glyphw', 'mossglow', 'mushS', 'mossw', 'stalac', 'crys', 'crysd', 'crysw', 'conduitw', 'drip', 'cableh', 'sanddrip', 'vineh', 'puddle']);
 
   function buildScatter(level) {
     S.scatter = []; S.anim = [];
@@ -966,7 +970,7 @@
     const pick = (list) => { for (const [k, p] of list) if (R() < p) return k; return null; };
     for (let ty = 0; ty < S.h; ty++) {
       for (let tx = 0; tx < S.w; tx++) {
-        if (S.grid[ty * S.w + tx] !== TC.SOLID) continue;
+        if (S.grid[ty * S.w + tx] !== TC.SOLID || S.raw[ty * S.w + tx] !== TC.SOLID) continue;
         // top surface
         if (ty > 0 && S.grid[(ty - 1) * S.w + tx] === TC.EMPTY && level.charAt(tx, ty - 1) === '.' && !blocked[(ty - 1) * S.w + tx]) {
           const k = pick(cfg.top);
@@ -1055,6 +1059,8 @@
       case 'glyphw': glyphMark(g, x + s.dir * -7, y + 4, (x * 13 + y) >>> 0, R.detail, 0.9); break;
       case 'conduitw': { const xx = s.dir > 0 ? x : x - 4; g.fillStyle = R.line; g.fillRect(xx, y - 10, 4, 24); g.fillStyle = P.accent; g.fillRect(xx + 1.4, y - 9, 1.2, 22); break; }
       case 'mossglow': case 'mossw': { const mx = s.k === 'mossw' ? x - s.dir * 2 : x; g.fillStyle = R.cap; g.beginPath(); g.ellipse(mx, y, s.k === 'mossw' ? 3 : 9, s.k === 'mossw' ? 8 : 2.6, 0, 0, TAU); g.fill(); break; }
+      case 'tabletS': { g.fillStyle = R.line; g.fillRect(x - 6, y - 10, 9, 10); g.fillStyle = R.light; g.fillRect(x - 5, y - 9, 7, 8); g.fillStyle = rgba(R.detail, 0.7); g.fillRect(x - 4, y - 7, 5, 0.8); g.fillRect(x - 4, y - 5, 3, 0.8); g.fillStyle = R.dark; g.fillRect(x + 3, y - 3, 7, 3); break; }
+      case 'emberv': { g.fillStyle = R.line; g.fillRect(x - 5, y - 4, 10, 4); g.fillStyle = mix(R.dark, '#000', 0.3); g.fillRect(x - 4, y - 3, 8, 2); break; }
       case 'puddle': g.fillStyle = rgba('#8aa8d0', 0.35); g.beginPath(); g.ellipse(x, y + 0.5, 10 + r * 6, 1.6, 0, 0, TAU); g.fill(); break;
       case 'sanddrip': g.fillStyle = R.cap; g.beginPath(); g.ellipse(x, y + 1, 4, 2, 0, 0, TAU); g.fill(); break;
       case 'drip': g.fillStyle = rgba(R.rim, 0.5); g.beginPath(); g.arc(x, y + 1.5, 1.2, 0, TAU); g.fill(); break;
@@ -1105,6 +1111,7 @@
         for (let i = 0; i < 5; i++) { const p = frac(t * 0.9 + i / 5 + s.r); ctx.fillRect(x - 0.6 + Math.sin(i * 3 + t) * 0.6, y + p * 70, 1.2, 2.5); }
         break;
       }
+      case 'emberv': { const k = 0.5 + 0.5 * Math.sin(t * 2.2 + ph); glow(ctx, P.accent, x, y - 3, 12, 0.35 + 0.3 * k); const p2 = frac(t * 0.5 + s.r); ctx.globalAlpha = 1 - p2; ctx.fillStyle = '#ffd08a'; ctx.fillRect(x + Math.sin(t * 3 + ph) * 3, y - 4 - p2 * 40, 1.4, 1.4); break; }
       case 'vineh': { glow(ctx, P.accent2, x + (s.r - 0.5) * 6, y + s.len, 8, 0.5 + 0.3 * Math.sin(t * 1.5 + ph)); break; }
       case 'puddle': { const p = frac(t * 1.7 + s.r * 5); ctx.globalAlpha = 0.5 * (1 - p); ctx.strokeStyle = '#c8d8f0'; ctx.lineWidth = 0.7; ctx.beginPath(); ctx.ellipse(x + (s.r - 0.5) * 10, y, 1 + p * 6, 0.5 + p * 1.2, 0, 0, TAU); ctx.stroke(); break; }
     }
@@ -1931,6 +1938,128 @@
     };
   };
 
+
+  // Chapter 2 variants ------------------------------------------------------------------------
+  /** l11 archive: endless receding shelf-walls of glowing data tablets, cold teal, gold accents. */
+  BG.ruins_archive = (P) => {
+    const sky = makeSky((g, w, h) => {
+      skyGradient(g, w, h, P.sky);
+      softBlob(g, w * 0.5, h * 0.55, 420, 260, P.accent, 0.08);
+      softBlob(g, w * 0.5, h * 0.62, 160, 120, P.light, 0.10);
+    });
+    const shelfWall = (g, h, col, slotCol, rows, cell, seed, glowA) => {
+      const r = G.rng(seed);
+      g.fillStyle = col; g.fillRect(0, 0, SW, h);
+      for (let x = 0; x < SW; x += cell * 6) {
+        g.fillStyle = mix(col, '#000000', 0.35); g.fillRect(x, 0, cell * 0.5, h);
+        g.fillStyle = rgba(P.light, 0.05); g.fillRect(x + cell * 0.5, 0, 1, h);
+      }
+      for (let j = 0; j < rows; j++) {
+        const y = 10 + j * (h - 20) / rows;
+        g.fillStyle = mix(col, '#000000', 0.3); g.fillRect(0, y + cell * 0.9, SW, 2);
+        for (let x = cell * 0.7; x < SW; x += cell * 0.55) {
+          if (x % (cell * 6) < cell * 0.6) continue;
+          const lit = r() < glowA;
+          g.fillStyle = lit ? rgba(r() < 0.12 ? P.accent2 : slotCol, 0.35 + r() * 0.45) : mix(col, '#000000', 0.2);
+          g.fillRect(x, y + cell * 0.2, cell * 0.38, cell * 0.68);
+        }
+      }
+    };
+    const far = strip(560);
+    {
+      const { g, h } = far;
+      shelfWall(g, h, mix(P.far, P.haze, 0.35), P.accent, 14, 22, 1101, 0.22);
+      hazeOver(g, SW, h, P.haze, 0.25, 0.75, 0, h);
+    }
+    const mid = strip(440);
+    {
+      const { g, h } = mid;
+      const col = mix(P.mid, P.haze, 0.18);
+      const r = G.rng(1201);
+      for (let x = 0; x < SW; x += 192) {
+        // gallery arch with hanging lamp
+        g.fillStyle = col; g.fillRect(x - 14, 0, 28, h);
+        g.fillRect(x - 20, h - 40, 40, 40);
+        g.beginPath(); g.moveTo(x, 40); g.quadraticCurveTo(x + 96, -10, x + 192, 40); g.lineTo(x + 192, 0); g.lineTo(x, 0); g.fill();
+        g.fillStyle = rgba(P.light, 0.06); g.fillRect(x - 14, 0, 3, h);
+        g.strokeStyle = col; g.lineWidth = 1.5; g.beginPath(); g.moveTo(x + 96, 16); g.lineTo(x + 96, 110 + r() * 40); g.stroke();
+        g.save(); g.globalCompositeOperation = 'lighter'; softBlob(g, x + 96, 120, 26, 26, P.accent2, 0.35); g.restore();
+      }
+      for (let j = 0; j < 4; j++) { g.fillStyle = mix(col, '#000', 0.2); g.fillRect(0, 140 + j * 70, SW, 6); }
+      hazeOver(g, SW, h, P.haze, 0.05, 0.45, 100, h);
+    }
+    const near = strip(360);
+    {
+      const { g, h } = near;
+      const r = G.rng(1301);
+      for (let i = 0; i < 5; i++) {
+        const x = r() * SW, pw = 26 + r() * 20;
+        wrapX(x, pw + 10, (xx) => {
+          g.fillStyle = P.near; g.fillRect(xx - pw, 0, pw * 2, h);
+          for (let y = 20; y < h; y += 44) { g.fillStyle = '#000000'; g.fillRect(xx - pw + 4, y, pw * 2 - 8, 30); g.fillStyle = rgba(P.accent, 0.25); g.fillRect(xx - pw + 8, y + 8, 4, 18); g.fillRect(xx - pw + 16, y + 10, 4, 16); }
+          g.fillStyle = rgba(P.light, 0.1); g.fillRect(xx - pw, 0, 2, h);
+        });
+      }
+    }
+    return {
+      sky,
+      layers: [
+        { c: far.c, fx: 0.06, fy: 0.06, y0: -20, tileY: true },
+        { c: mid.c, fx: 0.2, fy: 0.15, y0: 60, below: mix(P.mid, P.haze, 0.3) },
+        { c: near.c, fx: 0.55, fy: 0.55, y0: 0, tileY: true },
+      ],
+    };
+  };
+
+  /** l13 Spire core: indoor shaft around a vast amber reactor core, violet structure, no storm. */
+  BG.tower_core = (P) => {
+    const sky = makeSky((g, w, h) => {
+      skyGradient(g, w, h, P.sky);
+      softBlob(g, w * 0.5, h * 0.5, 380, 380, P.accent, 0.16);
+      softBlob(g, w * 0.5, h * 0.5, 120, 120, '#ffe0a8', 0.35);
+      g.strokeStyle = rgba(P.accent, 0.25); g.lineWidth = 3;
+      for (let k = 0; k < 3; k++) { g.beginPath(); g.ellipse(w * 0.5, h * 0.5, 170 + k * 70, 40 + k * 18, 0, 0, TAU); g.stroke(); }
+    });
+    const LH = 512;
+    const frame = strip(LH);
+    {
+      const { g, h } = frame;
+      const col = mix(P.mid, P.haze, 0.2);
+      for (let i = 0; i < 6; i++) {
+        const x = i * (SW / 6) + 40, w = 18;
+        g.fillStyle = col; g.fillRect(x - w, 0, w * 2, h);
+        g.fillStyle = mix(col, '#000000', 0.45); g.fillRect(x + w * 0.3, 0, w * 0.7, h);
+        g.fillStyle = rgba(P.accent, 0.18); g.fillRect(x - w, 0, 2, h);
+        for (let y = 0; y < h; y += 64) { g.fillStyle = mix(col, '#000000', 0.25); g.fillRect(x - w - 6, y, w * 2 + 12, 8); }
+        g.save(); g.globalCompositeOperation = 'lighter';
+        for (let y = 32; y < h; y += 128) softBlob(g, x, y, 8, 8, i % 2 ? P.accent2 : P.accent, 0.55);
+        g.restore();
+      }
+      g.strokeStyle = col; g.lineWidth = 5;
+      for (let y = 100; y < h; y += 256) { g.beginPath(); g.moveTo(0, y); g.lineTo(SW, y + 30); g.stroke(); }
+    }
+    const near = strip(LH);
+    {
+      const { g, h } = near;
+      const r = G.rng(2501);
+      for (let i = 0; i < 3; i++) {
+        const x = r() * SW, w = 14 + r() * 10;
+        wrapX(x, w + 10, (xx) => {
+          g.fillStyle = '#050309'; g.fillRect(xx - w, 0, w * 2, h);
+          g.fillStyle = rgba(P.accent, 0.14); g.fillRect(xx + w - 2, 0, 2, h);
+          for (let y = 40; y < h; y += 120) { g.fillStyle = '#020104'; g.fillRect(xx - w - 6, y, w * 2 + 12, 12); }
+        });
+      }
+    }
+    return {
+      sky,
+      layers: [
+        { c: frame.c, fx: 0.22, fy: 0.22, y0: 0, tileY: true },
+        { c: near.c, fx: 0.6, fy: 0.6, y0: 0, tileY: true },
+      ],
+    };
+  };
+
   // ================================================================== atmosphere setup
   const shaftCache = new Map();
   function shaftSprite(col) {
@@ -1956,7 +2085,7 @@
     const add = (n, opt) => { for (let i = 0; i < n; i++) S.shafts.push(Object.assign({ x: r() * SW, w: opt.w0 + r() * (opt.w1 - opt.w0), a: opt.a * (0.6 + r() * 0.4), ph: r() * TAU }, opt, opt.cols ? { col: opt.cols[i % opt.cols.length] } : {})); };
     switch (S.biome) {
       case 'canyon': add(5, { fx: 0.3, w0: 50, w1: 150, a: 0.2, ang: 0.12, col: P.light }); break;
-      case 'ruins': add(S.variant === 'overgrown' ? 4 : 3, { fx: 0.2, w0: 70, w1: 180, a: S.variant === 'overgrown' ? 0.14 : 0.16, ang: 0.42, col: P.light }); break;
+      case 'ruins': if (S.variant === 'archive') { add(4, { fx: 0.18, w0: 30, w1: 70, a: 0.12, ang: 0.05, col: P.light }); break; } add(S.variant === 'overgrown' ? 4 : 3, { fx: 0.2, w0: 70, w1: 180, a: S.variant === 'overgrown' ? 0.14 : 0.16, ang: 0.42, col: P.light }); break;
       case 'crystal': add(5, { fx: 0.25, w0: 40, w1: 110, a: 0.13, ang: -0.22, cols: [P.accent, P.accent2, '#ff9ad8', '#9ab8ff', P.accent] }); break;
       case 'caves': add(2, { fx: 0.22, w0: 30, w1: 60, a: 0.1, ang: 0.08, col: '#a8ffe8' }); break;
       case 'wreck': {
@@ -1964,6 +2093,7 @@
         if (hull) for (const b of hull.breaches) S.shafts.push({ x: b[0], fx: hull ? S.layers[1].fx : 0.16, w: b[2] * 1.2, a: 0.22, ang: 0.38, col: P.light, ph: r() * TAU, layerY: b[1] });
         break;
       }
+      case 'tower': if (S.variant === 'core') add(3, { fx: 0.15, w0: 60, w1: 140, a: 0.1, ang: -0.04, col: P.light }); break;
       case 'desert': add(2, { fx: 0.1, w0: 160, w1: 260, a: 0.07, ang: -0.55, col: '#ffcf9a' }); break;
     }
   }
@@ -1985,7 +2115,7 @@
     const col = mix(P.near, '#000000', 0.45);
     const kinds = {
       ship: ['cables', 'pipe'], wreck: ['cables', 'debris'], desert: ['rocks', 'grass'], canyon: ['rocks', 'roots'],
-      ruins: S.variant === 'overgrown' ? ['vines', 'ferns'] : ['vines', 'rocks'], caves: ['stalac', 'rocks'], crystal: ['crystals', 'crystalsUp'], tower: ['chains', 'beam'],
+      ruins: S.variant === 'overgrown' ? ['vines', 'ferns'] : S.variant === 'archive' ? ['chains', 'rocks'] : ['vines', 'rocks'], caves: ['stalac', 'rocks'], crystal: ['crystals', 'crystalsUp'], tower: S.variant === 'core' ? ['cables', 'beam'] : ['chains', 'beam'],
     }[S.biome] || ['rocks'];
     const sprites = [];
     for (let v = 0; v < 4; v++) {
@@ -2053,7 +2183,18 @@
       S.cs = chunkScale();
       S.lastRS = G.renderScale || 1;
       S.w = level.w; S.h = level.h;
+      S.raw = new Uint8Array(level.tiles);
       S.grid = new Uint8Array(level.tiles);
+      // ice / conveyors are solid ground for auto-tiling; their surfaces are layered on top
+      S.special = [];
+      for (let i = 0; i < S.grid.length; i++) {
+        const c = S.grid[i];
+        if (c === TC.ICE || c === TC.CONVEYOR_L || c === TC.CONVEYOR_R) {
+          S.grid[i] = TC.SOLID;
+          const tx = i % level.w, ty = (i / level.w) | 0, ch = level.charAt(tx, ty);
+          S.special.push({ tx, ty, k: ch === 'I' ? 'ice' : ch === '{' ? 'convL' : 'convR' });
+        }
+      }
       S.chunks.clear(); S.gone.clear(); S.acidGrad.clear();
       buildDepth();
       S.mat = buildMaterial(S.st.mat, S.pal, S.key);
@@ -2063,7 +2204,7 @@
       } catch (e) { S.pattern = null; }
       buildScatter(level);
       buildCrumbleSprites();
-      const bg = (BG[S.biome] || BG.desert)(S.pal);
+      const bg = (BG[S.key] || BG[S.biome] || BG.desert)(S.pal);
       // store layers at reduced resolution: distant layers are soft anyway, and texture memory
       // (not draw count) is what blows the frame budget on weak GPUs / software raster.
       S.sky = downscale(bg.sky, 0.75);
@@ -2102,7 +2243,7 @@
       // animated accents on top (cheap, small)
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
-      if (S.biome === 'tower') drawLightningSky(ctx, t);
+      if (S.biome === 'tower' && S.variant !== 'core') drawLightningSky(ctx, t);
       for (const a of S.bgAccents) {
         if (a.k === 'spire') { const v = 0.55 + 0.45 * Math.sin(t * 2.4); glow(ctx, '#7ef9ff', a.x, a.y, 22, v * 0.8); glow(ctx, '#ffffff', a.x, a.y, 5, v); }
         else if (a.k === 'alarm') { const v = Math.max(0, Math.sin(t * 2.6)) ** 2; if (v > 0.02) { glow(ctx, S.pal.accent2, a.x, a.y, 40, v * 0.6); glow(ctx, '#ffc0c0', a.x, a.y, 6, v); } }
@@ -2129,6 +2270,7 @@
       const tx0 = Math.max(0, Math.floor(view.x / T) - 1), tx1 = Math.min(S.w - 1, Math.floor((view.x + W) / T) + 1);
       const ty0 = Math.max(0, Math.floor(view.y / T) - 1), ty1 = Math.min(S.h - 1, Math.floor((view.y + H) / T) + 1);
       drawAcid(ctx, level, tx0, tx1, Math.max(0, ty0 - 3), ty1, t);
+      drawConveyors(ctx, tx0, tx1, ty0, ty1, t);
       drawCrumbles(ctx, level, tx0, tx1, ty0, ty1, t);
       // animated scatter
       ctx.save();
@@ -2210,7 +2352,7 @@
         if (a > 0.02) { if (!S.alarmG) S.alarmG = buildEdgeGradients(ctx, null); drawEdges(ctx, S.alarmG, a); }
       } else if (S.biome === 'caves') {
         ctx.globalAlpha = 0.12; ctx.drawImage(vfade('#4affc0'), 0, H - 60, W, 60); ctx.globalAlpha = 1;
-      } else if (S.biome === 'tower') {
+      } else if (S.biome === 'tower' && S.variant !== 'core') {
         const b = lightning(t).b;
         if (b > 0.01) { ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = `rgba(170,190,255,${0.16 * b})`; ctx.fillRect(0, 0, W, H); ctx.globalCompositeOperation = 'source-over'; }
       } else if (S.biome === 'desert' || S.biome === 'wreck') {
@@ -2314,6 +2456,75 @@
     ctx.fillStyle = E.left; ctx.fillRect(0, 0, W * 0.16, H);
     ctx.fillStyle = E.right; ctx.fillRect(W * 0.84, 0, W * 0.16, H);
     ctx.globalAlpha = 1;
+  }
+
+
+  // ================================================================== ice + conveyor tiles
+  /** Static surface for an ice ('I') or conveyor ('{' / '}') tile, layered over the auto-tiled body. */
+  function drawSpecialTile(g, sp) {
+    const tx = sp.tx, ty = sp.ty, x = tx * T, y = ty * T, nb = nbOf(tx, ty), st = S.st;
+    const rawAt = (a, b) => (a < 0 || b < 0 || a >= S.w || b >= S.h ? -1 : S.raw[b * S.w + a]);
+    const same = (a, b) => { const c = rawAt(a, b); return sp.k === 'ice' ? c === TC.ICE : c === TC.CONVEYOR_L || c === TC.CONVEYOR_R; };
+    if (sp.k === 'ice') {
+      g.save(); g.beginPath(); tilePath(g, tx, ty, nb, st, 0); g.clip();
+      g.fillStyle = vgrad(g, y, y + T, ['rgba(214,244,255,0.78)', 'rgba(120,190,235,0.62)', 'rgba(60,110,170,0.66)']); g.fillRect(x, y, T, T);
+      // internal fractures + trapped bubbles
+      const hv = h2(tx, ty, 41);
+      g.strokeStyle = 'rgba(240,252,255,0.55)'; g.lineWidth = 0.8; g.beginPath();
+      g.moveTo(x + 4 + hv * 10, y + 6); g.lineTo(x + 12 + hv * 8, y + 16); g.lineTo(x + 9 + hv * 12, y + 28);
+      g.moveTo(x + 12 + hv * 8, y + 16); g.lineTo(x + 26, y + 20 - hv * 6); g.stroke();
+      g.fillStyle = 'rgba(255,255,255,0.5)';
+      for (let i = 0; i < 3; i++) { g.beginPath(); g.arc(x + 5 + h2(tx, ty, 50 + i) * 22, y + 8 + h2(tx, ty, 60 + i) * 20, 0.7 + h2(tx, ty, 70 + i), 0, TAU); g.fill(); }
+      // diagonal specular sheen
+      g.globalCompositeOperation = 'lighter';
+      g.fillStyle = 'rgba(200,240,255,0.22)'; g.beginPath(); g.moveTo(x + 6, y + T); g.lineTo(x + 14, y + T); g.lineTo(x + 30, y); g.lineTo(x + 22, y); g.fill();
+      g.fillStyle = 'rgba(220,250,255,0.14)'; g.beginPath(); g.moveTo(x + 17, y + T); g.lineTo(x + 19, y + T); g.lineTo(x + 35, y); g.lineTo(x + 33, y); g.fill();
+      g.restore();
+      if (!nb.u) { // glossy frozen top lip
+        g.fillStyle = '#eaf9ff'; g.fillRect(x - (same(tx - 1, ty) ? 0 : 1), y - 2, T + (same(tx - 1, ty) ? 0 : 1) + (same(tx + 1, ty) ? 0 : 1), 3);
+        g.fillStyle = 'rgba(255,255,255,0.95)'; g.fillRect(x + 3 + hv * 8, y - 1.6, 9, 1);
+        g.fillStyle = 'rgba(150,210,240,0.8)'; g.fillRect(x, y + 1, T, 1);
+      }
+      if (!nb.d && ty < S.h - 1) { // icicles
+        g.fillStyle = 'rgba(200,236,255,0.85)';
+        for (let i = 0; i < 3; i++) { const ix = x + 5 + i * 10 + h2(tx, ty, 80 + i) * 4, il = 4 + h2(tx, ty, 90 + i) * 10; g.beginPath(); g.moveTo(ix - 2.2, y + T); g.lineTo(ix, y + T + il); g.lineTo(ix + 2.2, y + T); g.fill(); }
+      }
+      return;
+    }
+    // conveyor: steel housing, rubber belt on top, end rollers
+    g.save(); g.beginPath(); tilePath(g, tx, ty, nb, st, 0); g.clip();
+    g.fillStyle = vgrad(g, y, y + T, ['#3a4048', '#262a31', '#15181c']); g.fillRect(x, y, T, T);
+    g.fillStyle = 'rgba(0,0,0,0.45)'; g.fillRect(x, y + 9, T, 2);
+    for (let k = 0; k < 2; k++) { g.fillStyle = '#4a525e'; g.beginPath(); g.arc(x + 8 + k * 16, y + 20, 5, 0, TAU); g.fill(); g.fillStyle = '#1a1d22'; g.beginPath(); g.arc(x + 8 + k * 16, y + 20, 2, 0, TAU); g.fill(); g.strokeStyle = '#6a7482'; g.lineWidth = 0.8; g.beginPath(); g.arc(x + 8 + k * 16, y + 20, 5, Math.PI * 1.1, Math.PI * 1.7); g.stroke(); }
+    if (!same(tx, ty + 1)) hazardStripes(g, x, y + T - 5, T, 5);
+    g.restore();
+    if (!nb.u) {
+      const l = !same(tx - 1, ty), r = !same(tx + 1, ty);
+      g.fillStyle = '#121418'; g.fillRect(x + (l ? 2 : 0), y - 1, T - (l ? 2 : 0) - (r ? 2 : 0), 8);
+      g.fillStyle = '#2c3036'; g.fillRect(x + (l ? 2 : 0), y - 1, T - (l ? 2 : 0) - (r ? 2 : 0), 1.2);
+      if (l) { g.fillStyle = '#5a6470'; g.beginPath(); g.arc(x + 5, y + 3, 4.5, 0, TAU); g.fill(); g.fillStyle = '#1a1d22'; g.beginPath(); g.arc(x + 5, y + 3, 1.6, 0, TAU); g.fill(); }
+      if (r) { g.fillStyle = '#5a6470'; g.beginPath(); g.arc(x + T - 5, y + 3, 4.5, 0, TAU); g.fill(); g.fillStyle = '#1a1d22'; g.beginPath(); g.arc(x + T - 5, y + 3, 1.6, 0, TAU); g.fill(); }
+    }
+  }
+
+  /** Animated conveyor belts: chevrons scrolling at the belt speed (120 px/s) plus a status light. */
+  function drawConveyors(ctx, tx0, tx1, ty0, ty1, t) {
+    if (!S.special.length) return;
+    const speed = (G.CONFIG.surface && G.CONFIG.surface.conveyorSpeed) || 120;
+    ctx.save();
+    for (const sp of S.special) {
+      if (sp.k === 'ice' || sp.tx < tx0 || sp.tx > tx1 || sp.ty < ty0 || sp.ty > ty1) continue;
+      const above = codeAt(sp.tx, sp.ty - 1);
+      if (above === TC.SOLID) continue;
+      const x = sp.tx * T, y = sp.ty * T, dir = sp.k === 'convR' ? 1 : -1;
+      ctx.save(); ctx.beginPath(); ctx.rect(x, y, T, 7); ctx.clip();
+      const off = mod(t * speed * dir, 16);
+      ctx.strokeStyle = 'rgba(255,196,64,0.85)'; ctx.lineWidth = 1.6; ctx.beginPath();
+      for (let cx = x - 16 + off; cx < x + T + 16; cx += 16) { ctx.moveTo(cx - 3 * dir, y + 0.5); ctx.lineTo(cx + 2 * dir, y + 3); ctx.lineTo(cx - 3 * dir, y + 5.5); }
+      ctx.stroke();
+      ctx.restore();
+    }
+    ctx.restore();
   }
 
   // ================================================================== acid
@@ -2495,6 +2706,7 @@
         if (m.kind === 'spore') { ctx.globalAlpha = a; const r = p.s * 3; ctx.drawImage(sporeSprite(m.color), x - r, y - r, r * 2, r * 2); continue; }
         ctx.globalAlpha = a;
         if (m.kind === 'sand') ctx.fillRect(x, y, p.s * 3, p.s * 0.8);
+        else if (m.kind === 'glyph') { const z = p.s; ctx.fillRect(x - z / 2, y - z / 2, z, 0.9); ctx.fillRect(x - z / 2, y - z / 2, 0.9, z); ctx.fillRect(x + z * 0.1, y - z * 0.1, z * 0.4, 0.9); ctx.fillRect(x - z / 2, y + z / 2, z * 0.7, 0.9); }
         else ctx.fillRect(x - p.s / 2, y - p.s / 2, p.s, p.s);
       }
     }
@@ -2977,6 +3189,107 @@
       w: 24, h: 74,
       draw(g, P, r, M) { g.fillStyle = M.d; g.fillRect(-7, -4, 14, 4); cyl(g, -2, -66, 4, 62, M); g.fillStyle = M.b; g.fillRect(-7, -72, 14, 7); g.fillStyle = '#fff4d8'; g.fillRect(-5, -66, 10, 2); },
       anim(ctx, P, t, e) { ctx.globalCompositeOperation = 'lighter'; const col = S.biome === 'ship' || S.biome === 'tower' || S.biome === 'crystal' ? '#bfefff' : '#ffd9a0'; const f = 0.85 + 0.15 * Math.sin(t * 9 + e.x) * Math.sin(t * 3.7); glow(ctx, col, 0, -64, 46, 0.35 * f); glow(ctx, '#ffffff', 0, -65, 6, 0.8 * f); ctx.globalAlpha = 0.07 * f; ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(-5, -64); ctx.lineTo(5, -64); ctx.lineTo(26, 0); ctx.lineTo(-26, 0); ctx.fill(); },
+    },
+    // ---- Chapter 2 (archive / spire core) ----
+    tablet_shelf: {
+      w: 96, h: 120,
+      draw(g, P, r, M) {
+        const R = S.pal.rock;
+        g.fillStyle = vgrad(g, -120, 0, [R.light, R.base, R.dark]); g.fillRect(-46, -118, 92, 118); outline(g, 1.4); g.strokeRect(-46, -118, 92, 118);
+        g.fillStyle = R.dark; g.fillRect(-48, -122, 96, 6);
+        const rr = G.rng(1501);
+        for (let j = 0; j < 4; j++) {
+          const y = -110 + j * 27;
+          g.fillStyle = R.deep; g.fillRect(-40, y, 80, 22);
+          g.fillStyle = rgba('#000000', 0.5); g.fillRect(-40, y, 80, 3);
+          for (let x = -38; x < 38; x += 7 + rr() * 3) {
+            const tw = 4 + rr() * 2, th = 14 + rr() * 6, lean = rr() < 0.15 ? 0.25 : 0;
+            g.save(); g.translate(x + tw / 2, y + 22); g.rotate(lean);
+            g.fillStyle = mix(R.light, R.base, rr()); g.fillRect(-tw / 2, -th, tw, th);
+            g.fillStyle = rgba(rr() < 0.15 ? P.accent2 : P.accent, 0.55); g.fillRect(-tw / 2 + 1, -th + 3, tw - 2, 0.9); g.fillRect(-tw / 2 + 1, -th + 6, tw - 2.5, 0.9);
+            g.restore();
+          }
+          g.fillStyle = R.light; g.fillRect(-42, y + 22, 84, 2.5);
+        }
+      },
+      anim(ctx, P, t, e) {
+        ctx.globalCompositeOperation = 'lighter';
+        for (let j = 0; j < 4; j++) { const k = Math.max(0, Math.sin(t * 0.9 + j * 1.7 + e.x * 0.03)); if (k > 0.2) glow(ctx, P.accent, -30 + ((j * 37 + (e.x | 0)) % 60), -100 + j * 27, 14, 0.35 * k); }
+      },
+    },
+    data_pillar: {
+      w: 40, h: 150,
+      draw(g, P, r, M) {
+        const R = S.pal.rock;
+        g.fillStyle = R.dark; g.fillRect(-20, -10, 40, 10); g.fillRect(-20, -150, 40, 10);
+        g.fillStyle = hgrad(g, -14, 14, [R.light, R.base, R.dark, R.deep]); g.fillRect(-14, -140, 28, 130); outline(g);
+        g.fillStyle = '#02080a'; g.fillRect(-5, -132, 10, 114);
+        for (let y = -128; y < -22; y += 6) { g.fillStyle = rgba(P.accent, 0.2 + h2(y, 3, 7) * 0.4); g.fillRect(-3.5, y, 7 * (0.4 + h2(y, 4, 8) * 0.6), 1.4); }
+        glyphMark(g, 0, -146, 1601, R.detail, 0.6);
+      },
+      anim(ctx, P, t, e) {
+        ctx.globalCompositeOperation = 'lighter';
+        const p = frac(t * 0.45 + e.x * 0.013);
+        ctx.fillStyle = rgba(P.accent, 0.9); ctx.fillRect(-4, -22 - p * 110, 8, 3);
+        glow(ctx, P.accent, 0, -22 - p * 110, 18, 0.6);
+        glow(ctx, P.accent, 0, -75, 40, 0.18 + 0.06 * Math.sin(t * 2 + e.x));
+      },
+    },
+    echo_statue: {
+      w: 80, h: 190,
+      draw(g, P, r, M) {
+        const R = S.pal.rock;
+        g.fillStyle = R.dark; g.fillRect(-36, -16, 72, 16); g.fillStyle = R.base; g.fillRect(-30, -24, 60, 9);
+        // robed figure, hands cupped around a light
+        g.beginPath(); g.moveTo(-24, -24); g.quadraticCurveTo(-28, -110, -14, -150); g.quadraticCurveTo(0, -170, 14, -150); g.quadraticCurveTo(28, -110, 24, -24); g.closePath();
+        g.fillStyle = hgrad(g, -26, 26, [R.light, R.base, R.dark, R.deep]); g.fill(); outline(g, 1.4);
+        g.beginPath(); g.ellipse(0, -164, 11, 13, 0, 0, TAU); g.fillStyle = hgrad(g, -11, 11, [R.light, R.base, R.dark]); g.fill(); outline(g);
+        g.fillStyle = R.deep; g.beginPath(); g.ellipse(0, -160, 7, 6, 0, 0, TAU); g.fill();
+        g.strokeStyle = rgba(R.deep, 0.6); g.lineWidth = 1.2; for (let k = -2; k <= 2; k++) { g.beginPath(); g.moveTo(k * 6, -140); g.quadraticCurveTo(k * 8, -80, k * 9, -26); g.stroke(); }
+        g.fillStyle = R.base; g.beginPath(); g.ellipse(0, -96, 16, 7, 0, 0, TAU); g.fill(); outline(g);
+        g.fillStyle = '#ffd27a'; g.beginPath(); g.arc(0, -102, 4, 0, TAU); g.fill();
+      },
+      anim(ctx, P, t, e) {
+        ctx.globalCompositeOperation = 'lighter';
+        const k = 0.75 + 0.25 * Math.sin(t * 1.4 + e.x);
+        glow(ctx, '#ffd27a', 0, -102, 34, 0.55 * k); glow(ctx, '#ffffff', 0, -102, 6, 0.8 * k);
+        glow(ctx, '#ffd27a', 0, -160, 10, 0.3 * k);
+      },
+    },
+    ring_machine: {
+      w: 170, h: 180,
+      draw(g, P, r, M) {
+        g.fillStyle = vgrad(g, -22, 0, [M.l, M.b, M.d]); g.beginPath(); g.moveTo(-70, 0); g.lineTo(-52, -22); g.lineTo(52, -22); g.lineTo(70, 0); g.fill(); outline(g);
+        for (const sx of [-1, 1]) { g.fillStyle = hgrad(g, sx * 66 - 8, sx * 66 + 8, [M.l, M.b, M.d]); g.fillRect(sx * 66 - 8, -150, 16, 130); outline(g); }
+        // outer ring
+        g.lineWidth = 14; g.strokeStyle = M.d; g.beginPath(); g.arc(0, -96, 62, 0, TAU); g.stroke();
+        g.lineWidth = 10; g.strokeStyle = M.b; g.stroke();
+        g.lineWidth = 2; g.strokeStyle = M.l; g.beginPath(); g.arc(0, -96, 66, Math.PI * 1.05, Math.PI * 1.7); g.stroke();
+        for (let i = 0; i < 12; i++) { const a = i / 12 * TAU; g.fillStyle = M.d; g.fillRect(Math.cos(a) * 62 - 3, -96 + Math.sin(a) * 62 - 3, 6, 6); }
+        g.fillStyle = 'rgba(0,0,0,0.55)'; g.beginPath(); g.arc(0, -96, 54, 0, TAU); g.fill();
+      },
+      anim(ctx, P, t, e) {
+        ctx.globalCompositeOperation = 'lighter';
+        const col = '#ffd27a', k = 0.7 + 0.3 * Math.sin(t * 1.8 + e.x);
+        ctx.lineWidth = 3; ctx.strokeStyle = rgba(col, 0.75 * k); ctx.beginPath(); ctx.arc(0, -96, 50, t * 0.8, t * 0.8 + Math.PI * 1.3); ctx.stroke();
+        ctx.lineWidth = 1.5; ctx.strokeStyle = rgba(P.accent, 0.6); ctx.beginPath(); ctx.arc(0, -96, 40, -t * 1.3, -t * 1.3 + Math.PI * 0.9); ctx.stroke();
+        glow(ctx, col, 0, -96, 70, 0.28 * k); glow(ctx, '#fff2d0', 0, -96, 16, 0.5 * k);
+        for (let i = 0; i < 12; i++) { const a = i / 12 * TAU + t * 0.25, on = Math.sin(t * 3 + i) > 0.3; if (on) glow(ctx, col, Math.cos(a) * 62, -96 + Math.sin(a) * 62, 6, 0.8); }
+      },
+    },
+    conduit: {
+      w: 28, h: 140,
+      draw(g, P, r, M) {
+        cyl(g, -8, -136, 16, 136, M);
+        for (let y = -130; y < 0; y += 26) { g.fillStyle = M.d; g.fillRect(-11, y, 22, 5); g.fillStyle = M.l; g.fillRect(-11, y, 22, 1); }
+        g.fillStyle = '#05080a'; g.fillRect(-2.5, -128, 5, 120);
+      },
+      anim(ctx, P, t, e) {
+        ctx.globalCompositeOperation = 'lighter';
+        const col = S.variant === 'core' ? P.accent : P.accent;
+        ctx.fillStyle = rgba(col, 0.55); ctx.fillRect(-1.5, -128, 3, 120);
+        for (let k = 0; k < 3; k++) { const p = frac(t * 0.7 + k / 3 + e.x * 0.01); glow(ctx, col, 0, -8 - p * 120, 10, 0.7); }
+      },
     },
     sign_post: {
       w: 40, h: 54,

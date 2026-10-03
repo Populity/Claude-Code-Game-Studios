@@ -1884,8 +1884,8 @@
     // streaks (deterministic lanes, flow along dir)
     ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
     ctx.globalCompositeOperation = 'lighter'; ctx.lineCap = 'round';
-    const lanes = Math.min(40, Math.max(3, Math.round(across / 7)));
-    const per = Math.min(3, Math.max(1, Math.round(along / 120)));
+    const lanes = Math.min(48, Math.max(3, Math.round(across / 5)));
+    const per = Math.min(4, Math.max(2, Math.round(along / 60)));
     const speed = 220 * Math.sqrt(str) * (0.4 + 0.6 * I);
     for (let i = 0; i < lanes; i++) {
       const s = hash1(i * 3.1 + x * 0.013 + y * 0.007);
@@ -1895,7 +1895,7 @@
         const sp = speed * (0.7 + 0.6 * hash1(i * 1.3 + k * 9));
         const pos = ((t * sp + s * along * 3 + k * along / per) % (along + L)) - L;
         const wob = Math.sin(t * 5 + i + k) * 1.4;
-        const a = (0.25 + 0.35 * hash1(i + k * 5)) * I;
+        const a = (0.3 + 0.4 * hash1(i + k * 5)) * I;
         if (a < 0.02) continue;
         ctx.strokeStyle = rgba(col, a); ctx.lineWidth = 0.8 + hash1(i * 2 + k) * 0.8;
         ctx.beginPath();
@@ -2323,7 +2323,7 @@
         if (isBack !== back) continue;
         ctx.strokeStyle = rgba(col, (back ? 0.35 : 0.85) * (0.6 + 0.4 * (i % 3 === 0 ? 1 : 0.5)) * (0.75 + 0.25 * m.talk + 0.3 * syl));
         ctx.lineWidth = back ? 1 : 1.6;
-        ctx.beginPath(); ctx.ellipse(0, -1, rr, rr * ringTilt, -0.18, a0, a1); ctx.stroke();
+        ctx.beginPath(); ctx.ellipse(0, -5.5, rr, rr * ringTilt, -0.18, a0, a1); ctx.stroke();
       }
       ctx.restore();
     };

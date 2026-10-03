@@ -506,15 +506,15 @@
       // body contact: shield kills; open core takes a dash strike; otherwise she bounces off
       const dx = p.cx - this.bx, dy = p.cy - this.by;
       if (this.exposed && this.state === 'fight') {
-        if (circleRect(this.bx, this.by, this.cfg.coreR + 6, p) && isStriking(p)) {
+        if (circleRect(this.bx, this.by, this.cfg.coreR + 12, p) && isStriking(p)) {
           this.exposed = false; this.crystalsOff();
           p.vx = Math.sign(dx || 1) * 320; p.vy = -420;
           this.hit(game);
           if (this.alive && this.state === 'fight') this.onPhaseStart(game);
-        } else if (circleRect(this.bx, this.by, this.cfg.bodyR * 0.8, hurtBox(p))) {
+        } else if (!isStriking(p) && circleRect(this.bx, this.by, this.cfg.bodyR * 0.8, hurtBox(p))) {
           p.vx = Math.sign(dx || 1) * 260; p.vy = Math.max(p.vy, 120);
         }
-      } else if (circleRect(this.bx, this.by, this.cfg.bodyR, hurtBox(p))) p.kill(BC().common.killCause);
+      } else if (this.hurtT <= 0 && circleRect(this.bx, this.by, this.cfg.bodyR, hurtBox(p))) p.kill(BC().common.killCause);
     }
     fight(dt, game) {
       const c = this.cfg, i = this.phase, p = game.player;
@@ -668,7 +668,7 @@
           return;
         }
       }
-      if (this.cfg.bodyKill && this.state !== 'dying' && G.overlap(hurtBox(p), this.bodyBox())) p.kill(BC().common.killCause);
+      if (this.cfg.bodyKill && this.hurtT <= 0 && G.overlap(hurtBox(p), this.bodyBox())) p.kill(BC().common.killCause);
     }
     fight(dt, game) {
       const c = this.cfg, i = this.phase, p = game.player;
@@ -796,13 +796,13 @@
       super.update(dt, game);
       const p = game.player;
       if (!this.alive || this.state === 'dormant' || this.state === 'intro' || p.dead || this.frozenWorld(game)) return;
-      if (this.exposed && this.state === 'fight' && circleRect(this.bx, this.by, this.cfg.coreR + 6, p) && isStriking(p)) {
+      if (this.exposed && this.state === 'fight' && circleRect(this.bx, this.by, this.cfg.coreR + 12, p) && isStriking(p)) {
         p.vx = Math.sign(p.cx - this.bx || 1) * 320; p.vy = -420;
         this.exposed = false;
         this.hit(game);
         return;
       }
-      if (!this.exposed && circleRect(this.bx, this.by, this.cfg.shellR, hurtBox(p))) p.kill(BC().common.killCause);
+      if (!this.exposed && this.hurtT <= 0 && circleRect(this.bx, this.by, this.cfg.shellR, hurtBox(p))) p.kill(BC().common.killCause);
     }
     hit(game) { const r = super.hit(game); if (this.state === 'phase') this.clearProjectiles(['seeker']); return r; }
     fight(dt, game) {

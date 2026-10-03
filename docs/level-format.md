@@ -56,6 +56,8 @@ G.registerLevel({
 | `B` | pushable crate (32×32). Resets to the last checkpoint snapshot on death |
 | `*` | data shard (optional collectible) |
 | `J` | jump pad (launches about 9 tiles high) |
+| `I` | ice: solid, slick (accel ×0.25, decel ×0.08), cannot be wall-slid or wall-jumped |
+| `{` / `}` | conveyor belt, solid, carries bodies standing on it left / right at 120 px/s (kept when jumping off) |
 
 The left and right map edges are solid. Falling below the bottom row kills. The camera clamps
 to the map.
@@ -96,7 +98,21 @@ powered when ALL its sources are active (or ANY if the receiver has `need: 'any'
 | `saw` | `[id],x,y,path:[[x,y],…],[speed=3],[r=18 px],[pause=0]` | deadly spinning blade moving along a path (tile centres). If targeted and powered, it stops |
 | `sign` | `x,y,title,text` *or* `x,y,dialogue` | E reads it. Use it for logic clues and lore. `\n` = new paragraph |
 | `hint` | `x,y,text,[touchText],[range=5]` | floating tutorial text that fades in when the player is within `range` tiles |
-| `trigger` | `x,y,[w=1],[h=1],[dialogue],[say],[mode],[objective],[once=true],[requires],[sound],[shake]` | invisible zone, fires when the player enters. `say: [[who,mood,text],…]` inline barks (`mode` 'bark' default or 'talk'). `requires: 'id'` fires only once that source is active |
+| `trigger` | `x,y,[w=1],[h=1],[dialogue],[say],[mode],[objective],[once=true],[requires],[sound],[shake],[grant]` | invisible zone, fires when the player enters. `say: [[who,mood,text],…]` inline barks (`mode` 'bark' default or 'talk'). `requires: 'id'` fires only once that source is active. `grant: 'dash'` unlocks the dash (save flag) and shows the icon hint |
+| `anchor` | `x,y,[len=4]` | grapple point. Airborne + E within `len` tiles (clear line) attaches a rope: pendulum swing, ←/→ pump, ↑/↓ reel ±1 tile, Jump releases with a boost |
+| `wind` | `[id],x,y,w,h,dir('up'\|'down'\|'left'\|'right'),[strength=900],[period],[on],[offset]` | current zone accelerating the player (and crates ×0.6). Pulses like a laser with `period`/`on`. If targeted, blows only while powered. Up-wind lifts only if strength > gravity (2100) |
+| `dashcrystal` | `x,y` | refills the dash on touch, regrows after 2.5 s |
+| `fallplat` | `x,y,[w=2]` | one-way platform: shakes 0.5 s once stood on, falls, respawns after 3 s |
+| `sentinel` | `x,y,[range=7],[speed=170],[path:[[x,y],…]]` | enemy drone: patrols/hovers, chases on sight (≤4 s), returns, 1 s cooldown. Touch kills. A live laser beam stuns it 3 s |
+| `npc` | `x,y,who,dialogue,[facing]` | E «Говорить» plays `dialogue`; later talks play `dialogue+'_again'` if it exists |
+| `boss` | `x,y,kind,…` | owned by the boss module (`src/js/world/bosses.js`) |
+
+Level-level field `abilities: ['dash']` makes the dash available in that level regardless of the save.
+
+Art fields (chapter 2): `anchor.attached`; `wind.phase`/`strength`/`k`; `dashcrystal.ready`/`regrowT`; `fallplat.state` (`idle shaking falling gone`)/`t`;
+`sentinel.state` (`patrol alert chase return stunned`)/`eye{x,y}`/`alertT`/`vx`/`vy`; `npc.who`/`facing`/`talking`/`talkMood`/`t`.
+Player: `state` `'dash'|'swing'`, `canDash`, `dashCharges`, `dashDir{x,y}`, `dashT` (s since the dash started), `rope{ax,ay,len,angle}`, `talking`, `talkMood`.
+Drone also gets `talking`/`talkMood` while ЛЮМ/Орион speak. Camera: `G.game.cineFocus(x, y, zoom, dur)`; `G.game.speaker = obj` speaks for other ids.
 
 ### Puzzles (`terminal.puzzle`). All are generated from a seed and solvable by construction.
 
@@ -128,11 +144,16 @@ edge = bottom of that tile). Kinds:
 | ship / wreck | `cryo_pod`, `console`, `pipes`, `cable_bundle`, `locker`, `window_space`, `warning_light`, `hull_breach`, `crate_stack`, `fan` |
 | desert / canyon | `pod_wreck`, `debris`, `fire`, `rock`, `bones`, `monolith`, `singing_pillar`, `dune_grass`, `spire_far` |
 | ruins | `pillar`, `broken_pillar`, `statue`, `glyph_wall`, `arch`, `vines`, `helmet` |
+| ruins `archive` (l11) | `tablet_shelf`, `data_pillar`, `echo_statue`, `glyph_wall`, `pillar` |
 | caves | `stalagmite`, `mushroom`, `pipe_outlet`, `glow_moss`, `footprints` |
 | crystal | `crystal_cluster`, `crystal_big`, `geode` |
 | tower | `antenna`, `beacon_core`, `storm_rod`, `cable_bundle`, `glyph_wall` |
+| tower `core` (l13) | `ring_machine`, `conduit`, `data_pillar`, `beacon_core`, `cable_bundle` |
 | any | `lamp`, `sign_post`, `crate_stack` |
 
+Light-emitting kinds (`lamp`, `fire`, `glow_moss`, `warning_light`, `beacon_core`, crystals, `mushroom`,
+`console`, `cryo_pod`, `data_pillar`, `tablet_shelf`, `echo_statue`, `ring_machine`, `conduit`…) also feed
+`G.Art.Lighting`; `lamp`, `fire`, `beacon_core`, `crystal_big`, `data_pillar` and `ring_machine` cast tile shadows.
 Unknown kinds draw nothing (with a console warning). Tile decoration (grass on edges,
 stalactites, rivets…) is automatic. Do not place props for it.
 

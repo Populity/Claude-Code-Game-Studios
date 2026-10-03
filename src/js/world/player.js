@@ -228,7 +228,7 @@
         } else if (this.wallDir !== 0 || this.wallStick > 0 || this.nearWall(level)) {
           const dir = this.wallDir || this.nearWall(level);
           this.vy = -P.wallJumpVy;
-          this.vx = -dir * Math.max(P.wallJumpVx, Math.abs(this.vx) * (this.overspeedT > 0 ? 1 : 0));
+          this.vx = -dir * P.wallJumpVx;
           this.facing = -dir;
           this.jumping = true; jumped = true;
           this.wallLockT = P.wallJumpLock;

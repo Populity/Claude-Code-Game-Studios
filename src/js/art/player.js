@@ -712,7 +712,7 @@
     if (!empty && M.hairE > 0.5 && p.state !== 'dead') M.refillT = t;
     M.hairE += (empty - M.hairE) * (1 - Math.exp(-(empty ? 30 : 18) * dt));
     // after-image trail (feet positions sampled while dashing)
-    if (p.state === 'dash' && t - M.trailT >= 0.022) { M.trailT = t; M.trail.push({ x: fx, y: fy, t }); if (M.trail.length > 12) M.trail.shift(); }
+    if (p.state === 'dash' && t - M.trailT >= 0.04) { M.trailT = t; M.trail.push({ x: fx, y: fy, t }); if (M.trail.length > 7) M.trail.shift(); }
     while (M.trail.length && t - M.trail[0].t > 0.28) M.trail.shift();
     const air = !p.onGround && p.state !== 'spawn';
     const T = M.T;
@@ -1179,7 +1179,7 @@
       const q = M.trail[i];
       const age = clamp((t - q.t) / 0.28, 0, 1);
       if (age >= 1) continue;
-      ctx.globalAlpha = 0.5 * (1 - age) * (0.45 + 0.55 * (i + 1) / n);
+      ctx.globalAlpha = 0.42 * (1 - age) * (0.35 + 0.65 * (i + 1) / n);
       ctx.drawImage(oc, 0, 0, pw, ph, q.x - OCX, q.y - OCY, OCW, OCH);
     }
     // speed lines along the trail

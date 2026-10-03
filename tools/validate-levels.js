@@ -25,6 +25,7 @@ ctx.G.fx = { burst() {}, dust() {}, shake() {} };
 load('world/level.js');
 load('world/physics.js');
 load('world/entities.js');
+try { load('world/bosses.js'); } catch (e) { /* boss module optional */ }
 try { load('story/script.js'); } catch (e) { console.log('! script.js failed to load:', e.message); }
 
 const levelFiles = fs.readdirSync(path.join(SRC, 'levels')).filter((f) => f.endsWith('.js') && f !== 'order.js');
@@ -48,8 +49,11 @@ const REQUIRED = {
   l08: ['l08_start', 'l08_helmet', 'l08_doubt', 'l08_end'],
   l09: ['l09_start', 'l09_storm', 'l09_halfway', 'l09_top'],
   l10: ['l10_start', 'l10_core', 'l10_final'],
+  l11: ['l11_start', 'l11_echo_meet', 'l11_dash_get', 'l11_end'],
+  l12: ['l12_start', 'l12_wind', 'l12_sentinel', 'l12_end'],
+  l13: ['l13_start', 'l13_echo_truth', 'l13_final'],
 };
-const CUTSCENES = ['intro', 'crash', 'ending'];
+const CUTSCENES = ['intro', 'crash', 'ending', 'ch2_intro', 'ch2_end'];
 const BIOMES = ['ship', 'wreck', 'desert', 'canyon', 'ruins', 'caves', 'crystal', 'tower'];
 const DECO = ['cryo_pod', 'console', 'pipes', 'cable_bundle', 'locker', 'window_space', 'warning_light', 'hull_breach', 'crate_stack', 'fan',
   'pod_wreck', 'debris', 'fire', 'rock', 'bones', 'monolith', 'singing_pillar', 'dune_grass', 'spire_far',
@@ -91,14 +95,14 @@ for (const id of Object.keys(G.levels)) {
   const E = (m) => errs.push(m), Wn = (m) => warns.push(m);
   const rows = def.map || [];
   const w = Math.max(...rows.map((r) => r.length));
-  rows.forEach((r, i) => { if (r.length !== w) Wn(`row ${i} length ${r.length} ≠ ${w} (padded with '.')`); if (/[^.#=^v~XPCEB*J ]/.test(r)) E(`row ${i} has unknown chars: ${r.replace(/[.#=^v~XPCEB*J ]/g, '')}`); });
+  rows.forEach((r, i) => { if (r.length !== w) Wn(`row ${i} length ${r.length} ≠ ${w} (padded with '.')`); if (/[^.#=^v~XPCEB*JI{} ]/.test(r)) E(`row ${i} has unknown chars: ${r.replace(/[.#=^v~XPCEB*JI{} ]/g, '')}`); });
   const count = (ch) => rows.reduce((n, r) => n + r.split(ch).length - 1, 0);
   if (count('P') !== 1) E(`expected exactly one P, found ${count('P')}`);
   if (count('E') < 1) E('no exit E');
   if (!BIOMES.includes(def.biome)) E(`unknown biome '${def.biome}'`);
   if (!def.title) E('missing title');
   const at = (x, y) => (y >= 0 && y < rows.length && x >= 0 && x < w ? (rows[y][x] || '.') : x < 0 || x >= w ? '#' : '.');
-  const solidBelow = (x, y) => '#X'.includes(at(x, y + 1)) || at(x, y + 1) === '=';
+  const solidBelow = (x, y) => '#XI{}'.includes(at(x, y + 1)) || at(x, y + 1) === '=';
   rows.forEach((r, y) => [...r].forEach((ch, x) => {
     if ('PCEB'.includes(ch) && !solidBelow(x, y) && ch !== 'B') Wn(`'${ch}' at ${x},${y} has no solid ground below`);
     if (ch === 'P' && (at(x, y - 1) === '#')) E(`P at ${x},${y} has no headroom (needs 2 tiles)`);
@@ -114,7 +118,7 @@ for (const id of Object.keys(G.levels)) {
   const addId = (v) => v && usedIds.add(v);
   if (def.startDialogue) addId(def.startDialogue);
   for (const e of def.entities || []) {
-    const req = { lever: ['targets'], plate: ['targets'], terminal: ['puzzle', 'targets'], part: ['item'], socket: ['needs', 'targets'], door: ['id'], bridge: ['id'], laser: ['dir'], saw: ['path'], sign: [], hint: ['text'], mplatform: [] }[e.type];
+    const req = { lever: ['targets'], plate: ['targets'], terminal: ['puzzle', 'targets'], part: ['item'], socket: ['needs', 'targets'], door: ['id'], bridge: ['id'], laser: ['dir'], saw: ['path'], sign: [], hint: ['text'], mplatform: [], anchor: [], wind: ['w', 'h', 'dir'], dashcrystal: [], fallplat: [], sentinel: [], npc: ['who', 'dialogue'], boss: ['kind'] }[e.type];
     if (!req) { if (!G.EntityTypes[e.type]) E(`unknown entity type ${e.type}`); continue; }
     for (const k of req) if (e[k] == null && !(k === 'targets' && e.target)) E(`${e.type} at ${e.x},${e.y} missing '${k}'`);
     if (e.x < 0 || e.x >= w || e.y < 0 || e.y >= rows.length) E(`${e.type} at ${e.x},${e.y} out of bounds`);
@@ -130,10 +134,13 @@ for (const id of Object.keys(G.levels)) {
       if (p.type === 'code' && !/^\d{2,6}$/.test(String(p.code))) E(`code '${p.code}' must be 2–6 digits`);
       if (p.type === 'pipes' && ((p.w || 5) > 8 || (p.h || 4) > 6)) Wn('pipes puzzle larger than 8×6 may not fit');
     }
-    if (e.type === 'mplatform' || e.type === 'saw') for (const pt of e.path || []) if (pt[0] < 0 || pt[0] >= w || pt[1] < 0 || pt[1] >= rows.length) E(`${e.type} path point ${pt} out of bounds`);
+    if (e.type === 'wind' && !['up', 'down', 'left', 'right'].includes(e.dir)) E(`wind at ${e.x},${e.y} bad dir '${e.dir}'`);
+    if (e.type === 'npc' && e.dialogue && script[e.dialogue + '_again']) addId(e.dialogue + '_again');
+    if (e.type === 'sentinel' && at(e.x, e.y) === '#') E(`sentinel at ${e.x},${e.y} inside a solid tile`);
+    if (e.type === 'mplatform' || e.type === 'saw' || e.type === 'sentinel') for (const pt of e.path || []) if (pt[0] < 0 || pt[0] >= w || pt[1] < 0 || pt[1] >= rows.length) E(`${e.type} path point ${pt} out of bounds`);
     addId(e.onSolve); addId(e.onPickup); addId(e.onRepair); addId(e.dialogue);
   }
-  for (const tr of def.triggers || []) { addId(tr.dialogue); if (tr.x < 0 || tr.x >= w) E(`trigger at ${tr.x},${tr.y} out of bounds`); if (tr.requires && !L?.byId[tr.requires]) E(`trigger requires unknown id ${tr.requires}`); }
+  for (const tr of def.triggers || []) { addId(tr.dialogue); if (tr.grant && !['dash'].includes(tr.grant)) E(`trigger grant '${tr.grant}' unknown`); if (tr.x < 0 || tr.x >= w) E(`trigger at ${tr.x},${tr.y} out of bounds`); if (tr.requires && !L?.byId[tr.requires]) E(`trigger requires unknown id ${tr.requires}`); }
   for (const d of def.decor || []) if (!DECO.includes(d.kind)) Wn(`decor kind '${d.kind}' not in the art contract`);
   if (L) {
     for (const e of L.entities) {
