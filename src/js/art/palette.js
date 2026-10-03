@@ -247,4 +247,31 @@
     const variant = level && level.def && level.def.variant;
     return (variant && P.biomes[biome + '_' + variant]) || P.biomes[biome] || P.biomes.desert;
   };
+
+  /**
+   * Dynamic-lighting ambience per biome / variant (used by G.Art.Lighting).
+   *   amb    multiply colour of unlit space ('#ffffff' = no darkening)
+   *   lamp   strength of Mira's shoulder lamp (0..1), glow additive bloom scale,
+   *   shadow true when the biome is dark enough for cast shadows to read.
+   * Values are art-direction knobs: tune here, never in lighting.js.
+   */
+  P.lighting = {
+    ship:            { amb: '#46526c', lamp: 1.0, glow: 1.0, shadow: true },
+    wreck:           { amb: '#a49488', lamp: 0.55, glow: 0.7, shadow: true },
+    desert:          { amb: '#f6eee6', lamp: 0.15, glow: 0.35, shadow: false },
+    canyon:          { amb: '#e2ccbe', lamp: 0.25, glow: 0.45, shadow: false },
+    ruins:           { amb: '#8c9e98', lamp: 0.55, glow: 0.7, shadow: true },
+    ruins_overgrown: { amb: '#5a726c', lamp: 0.8, glow: 0.9, shadow: true },
+    ruins_archive:   { amb: '#425a64', lamp: 0.95, glow: 1.0, shadow: true },
+    caves:           { amb: '#33444a', lamp: 1.0, glow: 1.0, shadow: true },
+    crystal:         { amb: '#64547e', lamp: 0.8, glow: 1.0, shadow: true },
+    tower:           { amb: '#525a78', lamp: 0.9, glow: 0.9, shadow: true, storm: true },
+    tower_core:      { amb: '#4c3a56', lamp: 0.9, glow: 1.0, shadow: true },
+  };
+  /** Lighting ambience for a level (variant first, then biome, then neutral). */
+  P.lightingFor = (level) => {
+    const biome = (level && level.biome) || 'desert';
+    const variant = level && level.def && level.def.variant;
+    return (variant && P.lighting[biome + '_' + variant]) || P.lighting[biome] || P.lighting.desert;
+  };
 })();

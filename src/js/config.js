@@ -87,7 +87,7 @@ G.CONFIG = {
     crateFactor: 0.6,       // crates are heavier: wind accel multiplier
   },
   dashcrystal: { regrow: 2.5, radius: 14 },
-  fallplat: { shake: 0.5, gravity: 1800, maxFall: 800, fallTime: 1.6, respawn: 3.0 },
+  fallplat: { h: 16, shake: 0.5, gravity: 1800, maxFall: 800, fallTime: 1.6, respawn: 3.0 },
   sentinel: {
     range: 7,               // tiles, detection radius
     speed: 170,             // px/s chase speed
@@ -119,7 +119,15 @@ G.CONFIG = {
   /** UI: noText hides hints, objective, level banners, item labels, captions (menus/puzzles/dialogue keep text). */
   ui: { noText: true },
 
-  camera: { lookAhead: 70, smooth: 6, verticalSmooth: 5, deadzoneY: 40 },
+  camera: {
+    lookAhead: 70, smooth: 6, verticalSmooth: 5, deadzoneY: 40,
+    talkZoom: 1.3,          // "live" dialogue: zoom toward the speaker while a talk dialogue runs
+    talkPan: 0.5,           // share of the way the camera pans from Mira toward the speaker (0..1)
+    zoomRate: 4,            // 1/s exponential smoothing of zoom + focus
+    cineDur: 2.0,           // default seconds for G.game.cineFocus()
+  },
+  npc: { faceRange: 5 },    // tiles: an npc turns to face Mira within this range
+  abilityHint: { time: 6 }, // s the icon-only key-cap hint stays after an ability grant (or until used)
 
   /**
    * Reference reach numbers for level designers (derived from the values above,

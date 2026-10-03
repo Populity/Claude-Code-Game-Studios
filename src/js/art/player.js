@@ -18,6 +18,15 @@
  *   Key light from the upper-left in WORLD space (independent of facing), warm rim on light-facing
  *   edges, cool ambient rim from the lower-right. Glows use additive radial gradients (no shadowBlur).
  *
+ * Chapter 2 (docs/chapter2-spec.md §2, §4)
+ *   p.state 'dash'  : streamlined lunge blended from dashDir (8-way), magenta after-image trail, burst
+ *                     on start. Hair cools to steel-blue while p.dashCharges <= 0 and flashes on refill.
+ *   p.state 'swing' : both hands on the rope, body hangs along it, legs pump with velocity. The rope
+ *                     is drawn from p.rope {ax, ay} to her near hand (taut cable + travelling pulse).
+ *   p.talking       : live dialogue acting (p.talkMood ∈ portrait moods): hand gestures, head bob,
+ *                     lip flap, brows and mouth shape. ЛЮМ (d.talking / d.talkMood) bobs and pulses.
+ *   All Chapter 2 fields are read defensively; missing fields fall back to Chapter 1 behaviour.
+ *
  * The draw functions are self-timed from `t` (level time): they sub-step the springs at 60 Hz, so
  * they behave identically whether called every frame or once after G.step(n).
  */
@@ -280,8 +289,10 @@
   // ================================================================== MIRA
   const HIP_Y = -20.6, THIGH = 10, SHIN = 9.6, UARM = 6.8, FARM = 6.4;
   const KEYS = ['hx', 'hy', 'lean', 'tilt', 'lookX', 'lookY', 'nfx', 'nfy', 'ffx', 'ffy', 'ntoe', 'ftoe',
-    'nhx', 'nhy', 'fhx', 'fhy', 'squint', 'mouth', 'brow', 'breath'];
-  const RATE = { idle: 10, run: 24, jump: 16, fall: 12, wall: 18, land: 30, push: 14, interact: 20, spawn: 60, dead: 0 };
+    'nhx', 'nhy', 'fhx', 'fhy', 'squint', 'mouth', 'brow', 'breath', 'smile'];
+  const RATE = { idle: 10, run: 24, jump: 16, fall: 12, wall: 18, land: 30, push: 14, interact: 20, spawn: 60, dead: 0, dash: 42, swing: 16 };
+  const DASH_COL = '#ff6ad5', DASH_RGB = '255,106,213';
+  const HAIR_EMPTY = ['#161d30', '#34466e', '#7c9bd6'];
 
   // Hair strand definitions in the head frame (facing +x): anchor, rest direction, segments, length, width.
   const STRANDS = [
@@ -308,6 +319,7 @@
       P: {}, T: {}, S: newSkeleton(),
       blinkAt: t + 1.5, blinkN: 0, hairLagX: 0, hairLagY: 0, hairLagVX: 0, hairLagVY: 0,
       strands: null, lanyard: null, sparkT: 0, deadPose: null, spawnFx: false,
+      hairE: 0, refillT: -9, trail: [], trailT: 0, ropeT: -9,
       xf: { fx: 0, fy: 0, a: 1, d: 1, pv: 0 },
     };
     for (const k of KEYS) M.P[k] = 0;
@@ -324,6 +336,51 @@
   }
   const _s1 = V(), _s2 = V();
 
+  /**
+   * Dialogue acting layer. Writes face keys into T; returns [nearHand, farHand] offsets
+   * (shoulder-relative) when `body` is true, else null. mood = portrait mood id.
+   */
+  function talkPose(mood, tt, T, body) {
+    const syl = Math.abs(Math.sin(tt * 13.0) * Math.sin(tt * 4.7 + 1.0));   // lip flap envelope
+    const beat = Math.sin(tt * 2.6), up = Math.max(0, beat);
+    const bob = Math.sin(tt * 5.2);
+    let nh = [5.0 + 1.5 * beat, 5.2 - 2.2 * up], fh = [-1.4, 11.4];
+    let mouthBase = 0.1, mouthAmp = 0.55;
+    T.tilt += 0.035 * bob; T.lookX = Math.max(T.lookX, 0.6);
+    switch (mood) {
+      case 'happy':
+        nh = [6.2 + beat, 3.6 + 1.6 * Math.sin(tt * 5.2)]; fh = [-5.2, 5.4 - 1.2 * up];
+        T.hy -= 0.6 * Math.abs(Math.sin(tt * 6)); T.brow = 0.55; T.smile = 1; T.tilt -= 0.05;
+        mouthBase = 0.16; mouthAmp = 0.7; break;
+      case 'sad':
+        nh = [2.8, 11.0]; fh = [1.6, 10.6];
+        T.lookY = 0.8; T.tilt += 0.11; T.brow = 0.55; T.smile = -0.8; T.lean += 0.07; T.lookX = 0.2;
+        mouthBase = 0.02; mouthAmp = 0.3; break;
+      case 'angry':
+        nh = [7.2 + 2.2 * beat, 2.4 - 1.2 * up]; fh = [-2.4, 10.4];
+        T.lean += 0.1; T.brow = -1; T.squint = Math.max(T.squint, 0.45); T.smile = -0.7; T.tilt += 0.03 * Math.sin(tt * 9);
+        mouthBase = 0.14; mouthAmp = 0.8; break;
+      case 'scared':
+        nh = [4.4, 4.6 + 0.4 * Math.sin(tt * 31)]; fh = [3.0, 5.4];
+        T.lean -= 0.09; T.hx -= 0.6 + 0.2 * Math.sin(tt * 29); T.brow = 1; T.smile = -0.5; T.lookX = -0.3;
+        mouthBase = 0.12; mouthAmp = 0.45; break;
+      case 'surprised':
+        nh = [6.4, -1.2]; fh = [-6.2, 0.2];
+        T.brow = 1.2; T.hy -= 0.6; T.tilt -= 0.06; mouthBase = 0.5; mouthAmp = 0.35; break;
+      case 'thinking':
+        nh = [3.8, -1.4]; fh = [3.4, 8.0];
+        T.lookY = -0.75; T.lookX = 0.8; T.tilt += 0.08; T.brow = 0.35; T.smile = -0.15;
+        mouthBase = 0.02; mouthAmp = 0.35; break;
+      case 'determined':
+        nh = [5.2, 2.0 - 3.0 * up]; fh = [-1.6, 11.0];
+        T.lean += 0.05; T.brow = -0.6; T.smile = 0.2; T.squint = Math.max(T.squint, 0.2); break;
+      default:
+        T.brow = 0.15 + 0.3 * up; break;
+    }
+    T.mouth = Math.max(T.mouth, mouthBase + syl * mouthAmp);
+    return body ? [nh, fh] : null;
+  }
+
   /** Procedural target pose for the current state at time tt (local space, facing +x, feet at 0,0). */
   function targetPose(p, M, tt, T) {
     const state = p.state === 'spawn' || p.state === 'dead' ? 'idle' : p.state;
@@ -332,7 +389,7 @@
     const fwd = p.vx * M.face >= 0 ? 1 : -1;
     T.hx = 0; T.hy = HIP_Y; T.lean = 0.02; T.tilt = 0; T.lookX = 0.35; T.lookY = 0;
     T.nfx = 2.4; T.nfy = -2; T.ffx = -2.6; T.ffy = -2; T.ntoe = 0; T.ftoe = 0;
-    T.squint = 0; T.mouth = 0; T.brow = 0; T.breath = 0;
+    T.squint = 0; T.mouth = 0; T.brow = 0; T.breath = 0; T.smile = 0;
     let nh = [1.5, 12.0], fh = [-1.1, 11.8], abs = false;
 
     switch (state) {
@@ -428,6 +485,48 @@
         T.tilt = -0.3; T.lookX = 1; T.squint = 0.7; T.mouth = 0.2; T.brow = -1;
         break;
       }
+      case 'dash': {
+        // 8-way lunge: blend a forward, an upward and a downward key pose by the dash direction
+        const dd = p.dashDir || { x: M.face, y: 0 };
+        let ux = Math.abs(dd.x || 0), uy = dd.y || 0;
+        if (ux < 1e-3 && Math.abs(uy) < 1e-3) ux = 1;
+        const sum = ux + Math.abs(uy);
+        const wf = ux / sum, wu = Math.max(0, -uy) / sum, wd = Math.max(0, uy) / sum;
+        const mix = (f, u, d) => f * wf + u * wu + d * wd;
+        const k = sstep(0, 0.05, st);                       // snap into the pose
+        T.lean = mix(0.78, 0.08, 0.3) * k + 0.02 * (1 - k);
+        T.hx = mix(1.6, 0, 0.6); T.hy = HIP_Y + mix(0.8, -1.2, 1.4);
+        T.nfx = mix(-7.2, 0.9, 4.2); T.nfy = mix(-4.6, 1.2, -8.4); T.ntoe = mix(1.1, 0.9, 0.3);
+        T.ffx = mix(-10.4, -0.9, 1.0); T.ffy = mix(-9.6, 0.6, -5.8); T.ftoe = mix(1.3, 1.0, 0.5);
+        nh = [mix(8.6, 2.6, 4.2), mix(2.4, -11.6, -6.2)];
+        fh = [mix(-7.6, -0.8, -4.4), mix(4.4, -11.0, -7.0)];
+        T.tilt = mix(-0.42, -0.12, 0.05); T.lookX = 1; T.lookY = mix(0, -1, 1);
+        T.squint = 0.55; T.brow = -0.9; T.mouth = 0.16; T.smile = -0.3;
+        break;
+      }
+      case 'swing': {
+        // hang along the rope: lean = rope angle seen from the body, hands on the rope above her
+        const r = p.rope;
+        let ra = 0;
+        if (r && isFinite(r.ax) && isFinite(r.ay)) {
+          const bx = p.x + p.w / 2, by = p.y + 10;
+          ra = Math.atan2((r.ax - bx) * M.face, -(r.ay - by));
+        } else if (r && isFinite(r.angle)) ra = -r.angle * M.face;
+        const L = clamp(ra * 0.85, -0.95, 0.95);
+        T.lean = L; T.hx = 0; T.hy = HIP_Y;
+        const kick = clamp(p.vx * M.face / 380, -1, 1);
+        const sL = Math.sin(L), cL = Math.cos(L);
+        T.nfx = -sL * 18.5 + kick * 3.4 + 0.6; T.nfy = HIP_Y + cL * 18.2 - Math.max(0, kick) * 2.2;
+        T.ffx = -sL * 18.5 - kick * 2.2 - 1.2; T.ffy = HIP_Y + cL * 17.6 - Math.max(0, -kick) * 2.6;
+        T.ntoe = 0.6 + kick * 0.3; T.ftoe = 0.7;
+        abs = true;
+        shoulderOf(T, true, _s1); shoulderOf(T, false, _s2);
+        const dx = Math.sin(ra), dy = -Math.cos(ra);
+        nh = [_s1.x + dx * 11.4, _s1.y + dy * 11.4]; fh = [_s2.x + dx * 9.6 + 0.6, _s2.y + dy * 9.6 + 0.4];
+        T.tilt = -L * 0.75; T.lookX = 0.8; T.lookY = -0.35 * Math.abs(kick) + 0.25;
+        T.mouth = 0.14 * Math.abs(kick); T.brow = -0.3; T.squint = 0.2;
+        break;
+      }
       case 'interact': {
         const k = sstep(0, 0.1, st) * (1 - sstep(0.22, 0.36, st));
         nh = [lerp(1.6, 9.0, k), lerp(12, 4.2, k)];
@@ -437,6 +536,13 @@
         T.nfx = 3.0; T.ffx = -2.8;
         break;
       }
+    }
+
+    // live dialogue acting (body gestures only on calm grounded states; face always)
+    if (p.talking) {
+      const body = state === 'idle' || state === 'interact' || state === 'land';
+      const g = talkPose(p.talkMood, tt, T, body);
+      if (body && g) { nh = g[0]; fh = g[1]; abs = false; }
     }
 
     // landing recovery is additive on any grounded pose (landImpact decays over ~0.25 s)
@@ -583,6 +689,14 @@
       if (p.state === 'land') M.sqV -= 5.5 * (0.45 + (p.landImpact || 0));
       if (p.state === 'dead') { M.deadPose = Object.assign({}, M.P); }
       if (p.state === 'spawn') { M.spawnFx = false; M.sq = 0; M.sqV = 0; }
+      if (p.state === 'dash') {
+        M.sqV += 3.5;
+        if (G.fx) {
+          const dd = p.dashDir || { x: M.face, y: 0 };
+          G.fx.burst(fx - (dd.x || 0) * 6, fy - 22 - (dd.y || 0) * 6, { count: 12, color: [DASH_COL, '#ffd0f4', '#ffffff'], speed: 150, life: 0.32, size: 1.8, gravity: 0, drag: 4, glow: true, shape: 'square' });
+        }
+      }
+      if (p.state === 'swing') M.ropeT = t;
       M.prevState = p.state;
     }
     if (p.state === 'dead') { M.fx = fx; M.fy = fy; return; }
@@ -591,7 +705,15 @@
     const h = dt / n;
     const fx0 = M.fx, fy0 = M.fy;
     if (teleport || !M.strands) { setXf(M, fx, fy); solve(M.P, M.S); initChains(M); }
-    const rate = RATE[p.state] != null ? RATE[p.state] : 14;
+    let rate = RATE[p.state] != null ? RATE[p.state] : 14;
+    if (p.talking) rate = Math.max(rate, 18);
+    // dash-charge hair cue: cools while empty, flashes on refill
+    const empty = p.canDash !== false && typeof p.dashCharges === 'number' && p.dashCharges <= 0 ? 1 : 0;
+    if (!empty && M.hairE > 0.5 && p.state !== 'dead') M.refillT = t;
+    M.hairE += (empty - M.hairE) * (1 - Math.exp(-(empty ? 30 : 18) * dt));
+    // after-image trail (feet positions sampled while dashing)
+    if (p.state === 'dash' && t - M.trailT >= 0.022) { M.trailT = t; M.trail.push({ x: fx, y: fy, t }); if (M.trail.length > 12) M.trail.shift(); }
+    while (M.trail.length && t - M.trail[0].t > 0.28) M.trail.shift();
     const air = !p.onGround && p.state !== 'spawn';
     const T = M.T;
 
@@ -656,6 +778,32 @@
     ctx.beginPath(); ctx.arc(h.x - 0.4, h.y - 0.45, 0.65, 0, TAU); ctx.fillStyle = pal[2]; ctx.fill();
   }
 
+  // current hair palette (swapped per draw by the dash-charge cue)
+  let HAIR = C.hair;
+  const hairMemo = new Map();
+  function hexMix(a, b, k) {
+    const A = parseInt(a.slice(1), 16), B = parseInt(b.slice(1), 16);
+    const ch = (sh) => Math.round(lerp((A >> sh) & 255, (B >> sh) & 255, k));
+    return `rgb(${ch(16)},${ch(8)},${ch(0)})`;
+  }
+  /** Hair palette for empty-charge amount e (0..1) and refill flash f (0..1), quantised + memoised. */
+  function hairPalette(e, f) {
+    const qe = Math.round(clamp(e, 0, 1) * 16), qf = Math.round(clamp(f, 0, 1) * 8);
+    if (!qe && !qf) return C.hair;
+    const key = qe * 16 + qf;
+    let v = hairMemo.get(key);
+    if (!v) {
+      v = C.hair.map((c, i) => {
+        const m = hexMix(c, HAIR_EMPTY[i], qe / 16);
+        if (!qf) return m;
+        const n = m.match(/\d+/g).map(Number), w = qf / 8 * 0.75;
+        return `rgb(${Math.round(lerp(n[0], 255, w))},${Math.round(lerp(n[1], 200, w))},${Math.round(lerp(n[2], 240, w))})`;
+      });
+      hairMemo.set(key, v);
+    }
+    return v;
+  }
+
   function drawStrand(ctx, M, idx, xf) {
     const pts = M.strands[idx], d = STRANDS[idx];
     const L = [];
@@ -665,7 +813,7 @@
       for (let i = 0; i < pts.length - 1; i++) {
         const w = d.w * (1 - i / pts.length * 0.6);
         ctx.lineWidth = layer === 0 ? w + 1.1 : layer === 1 ? w : w * 0.35;
-        ctx.strokeStyle = layer === 0 ? C.line : layer === 1 ? C.hair[1] : C.hair[2];
+        ctx.strokeStyle = layer === 0 ? C.line : layer === 1 ? HAIR[1] : HAIR[2];
         ctx.beginPath(); ctx.moveTo(L[i * 2], L[i * 2 + 1]); ctx.lineTo(L[i * 2 + 2], L[i * 2 + 3]); ctx.stroke();
       }
     }
@@ -766,7 +914,7 @@
 
     // hair: back mass (behind the face)
     const hg = ctx.createRadialGradient(hlx * 3.5, -2 + hly * 3.5, 0.5, 0, 0, 8.5);
-    hg.addColorStop(0, C.hair[2]); hg.addColorStop(0.45, C.hair[1]); hg.addColorStop(1, C.hair[0]);
+    hg.addColorStop(0, HAIR[2]); hg.addColorStop(0.45, HAIR[1]); hg.addColorStop(1, HAIR[0]);
     const backPath = (q) => {
       q.beginPath();
       q.moveTo(3.4, -5.6);
@@ -819,7 +967,7 @@
     drawEye(ctx, 5.05, -0.35, 0.5, 1.25, open, gx * 0.6, gy, false);
     // brows
     const by = -2.55 - P.brow * 0.55;
-    ctx.strokeStyle = C.hair[0]; ctx.lineWidth = 0.7; ctx.lineCap = 'round';
+    ctx.strokeStyle = HAIR[0]; ctx.lineWidth = 0.7; ctx.lineCap = 'round';
     ctx.beginPath(); ctx.moveTo(1.6, by + 0.15 + (P.brow < 0 ? -P.brow * 0.2 : 0)); ctx.lineTo(3.7, by - 0.35 + (P.brow < 0 ? P.brow * -0.45 : 0)); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(4.6, by - 0.25); ctx.lineTo(5.4, by - 0.05); ctx.stroke();
     // nose bridge highlight
@@ -830,7 +978,8 @@
       ctx.fillStyle = '#5a1e1e'; ctx.fill();
     } else {
       ctx.strokeStyle = '#8a3d33'; ctx.lineWidth = 0.55;
-      ctx.beginPath(); ctx.moveTo(3.8, 3.55); ctx.quadraticCurveTo(4.5, 3.85 - P.squint * 0.3, 5.15, 3.45); ctx.stroke();
+      const sm = clamp(P.smile, -1, 1);
+      ctx.beginPath(); ctx.moveTo(3.75, 3.55 - sm * 0.2); ctx.quadraticCurveTo(4.5, 3.85 - P.squint * 0.3 + sm * 0.55, 5.2, 3.45 - sm * 0.25); ctx.stroke();
     }
 
     // hair: front cap + side-swept fringe
@@ -910,6 +1059,7 @@
   /** Draw the whole character in local space (ctx already at feet, flipped and squashed). */
   function drawBody(ctx, M, p, t) {
     const S = M.S, xf = M.xf;
+    HAIR = hairPalette(M.hairE, 1 - clamp((t - M.refillT) / 0.3, 0, 1));
     const lx = KEY_X * Math.sign(xf.a), ly = KEY_Y;
     // far limbs
     limb(ctx, [S.shF, S.elbF, S.handF], [SEG.uarmF, SEG.farmF], lx, ly);
@@ -1019,6 +1169,87 @@
     ctx.restore();
   }
 
+  // ---------------------------------------------------------------- Chapter 2: dash trail, rope
+  /** Magenta after-images of the current pose at recently sampled feet positions + speed lines. */
+  function drawTrail(ctx, M, p, t) {
+    const { pw, ph } = renderOffscreen(ctx, M, p, t, DASH_COL, 0.82);
+    ctx.save();
+    const n = M.trail.length;
+    for (let i = 0; i < n; i++) {
+      const q = M.trail[i];
+      const age = clamp((t - q.t) / 0.28, 0, 1);
+      if (age >= 1) continue;
+      ctx.globalAlpha = 0.5 * (1 - age) * (0.45 + 0.55 * (i + 1) / n);
+      ctx.drawImage(oc, 0, 0, pw, ph, q.x - OCX, q.y - OCY, OCW, OCH);
+    }
+    // speed lines along the trail
+    const a = M.trail[0], b = { x: M.xf.fx, y: M.xf.fy };
+    const dx = b.x - a.x, dy = b.y - a.y, dl = Math.hypot(dx, dy);
+    if (dl > 4) {
+      ctx.globalCompositeOperation = 'lighter';
+      const nx = -dy / dl, ny = dx / dl;
+      ctx.lineCap = 'round';
+      for (let i = 0; i < 4; i++) {
+        const off = (i - 1.5) * 7 + (hash1(i + Math.floor(t * 30)) - 0.5) * 3;
+        const yo = -22 + (i - 1.5) * 4;
+        const fade = 1 - clamp((t - M.trail[n - 1].t) / 0.2, 0, 1);
+        ctx.globalAlpha = 0.45 * fade;
+        ctx.strokeStyle = i % 2 ? '#ffe2f7' : DASH_COL; ctx.lineWidth = i % 2 ? 0.8 : 1.4;
+        ctx.beginPath();
+        ctx.moveTo(a.x + nx * off * 0.6, a.y + yo + ny * off * 0.6);
+        ctx.lineTo(b.x - dx / dl * 10 + nx * off * 0.6, b.y + yo - dy / dl * 10 + ny * off * 0.6);
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
+
+  /** Grapple rope from the anchor (p.rope.ax/ay) to her near hand: taut braided cable + energy pulse. */
+  function drawRope(ctx, M, p, t) {
+    const r = p.rope;
+    let ax = r.ax, ay = r.ay;
+    if (!isFinite(ax) || !isFinite(ay)) {
+      if (!isFinite(r.angle) || !isFinite(r.len)) return;
+      ax = p.x + p.w / 2 - Math.sin(r.angle) * r.len; ay = p.y + 10 - Math.cos(r.angle) * r.len;
+    }
+    toWorld(M.xf, M.S.handN.x, M.S.handN.y, _w);
+    const hx = _w.x, hy = _w.y;
+    const dx = hx - ax, dy = hy - ay, dl = Math.hypot(dx, dy) || 1;
+    const nx = -dy / dl, ny = dx / dl;
+    // attach twang: lateral vibration that decays in ~0.4 s
+    const ta = t - M.ropeT;
+    const tw = ta >= 0 && ta < 0.5 ? Math.sin(ta * 70) * 3.2 * Math.exp(-ta * 9) : 0;
+    const mx = (ax + hx) / 2 + nx * tw, my = (ay + hy) / 2 + ny * tw + Math.min(2, dl * 0.01);
+    ctx.save();
+    ctx.lineCap = 'round';
+    const path = () => { ctx.beginPath(); ctx.moveTo(ax, ay); ctx.quadraticCurveTo(mx, my, hx, hy); };
+    path(); ctx.strokeStyle = C.line; ctx.lineWidth = 2.6; ctx.stroke();
+    path(); ctx.strokeStyle = '#8f7c5e'; ctx.lineWidth = 1.5; ctx.stroke();
+    // braid ticks
+    ctx.strokeStyle = '#d9c7a2'; ctx.lineWidth = 0.6;
+    const n = Math.max(2, Math.floor(dl / 4));
+    ctx.beginPath();
+    for (let i = 1; i < n; i++) {
+      const k = i / n, u = 1 - k;
+      const x = u * u * ax + 2 * u * k * mx + k * k * hx, y = u * u * ay + 2 * u * k * my + k * k * hy;
+      ctx.moveTo(x - nx * 0.6 - dx / dl * 0.7, y - ny * 0.6 - dy / dl * 0.7); ctx.lineTo(x + nx * 0.6 + dx / dl * 0.7, y + ny * 0.6 + dy / dl * 0.7);
+    }
+    ctx.stroke();
+    // energy pulse travelling from hand to anchor
+    ctx.globalCompositeOperation = 'lighter';
+    for (let j = 0; j < 2; j++) {
+      const k = 1 - ((t * 1.6 + j * 0.5) % 1), u = 1 - k;
+      const x = u * u * ax + 2 * u * k * mx + k * k * hx, y = u * u * ay + 2 * u * k * my + k * k * hy;
+      glow(ctx, x, y, 5, '126,249,255', 0.5);
+    }
+    ctx.strokeStyle = 'rgba(126,249,255,0.18)'; ctx.lineWidth = 3; path(); ctx.stroke();
+    // carabiner at the hand
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = C.line; ctx.beginPath(); ctx.arc(hx, hy, 1.9, 0, TAU); ctx.fill();
+    ctx.fillStyle = C.metal; ctx.beginPath(); ctx.arc(hx - 0.3, hy - 0.3, 1.1, 0, TAU); ctx.fill();
+    ctx.restore();
+  }
+
   /**
    * Draw Mira in world space.
    * @param {CanvasRenderingContext2D} ctx camera-translated world context
@@ -1041,8 +1272,25 @@
           ctx.fillStyle = sg; ctx.save(); ctx.translate(M.xf.fx, M.xf.fy); ctx.scale(1, 0.22); ctx.translate(-M.xf.fx, -M.xf.fy);
           ctx.fillRect(M.xf.fx - 11, M.xf.fy - 11, 22, 22); ctx.restore();
         }
+        if (M.trail.length) drawTrail(ctx, M, p, t);
+        if (p.state === 'swing' && p.rope) drawRope(ctx, M, p, t);
+        ctx.save();
         applyXf(ctx, M.xf);
         drawBody(ctx, M, p, t);
+        ctx.restore();
+        // refill flash: a quick magenta ring + sparkle around her head
+        const rf = t - M.refillT;
+        if (rf >= 0 && rf < 0.35) {
+          toWorld(M.xf, M.S.head.x, M.S.head.y, _w);
+          const k = rf / 0.35;
+          ctx.save();
+          ctx.globalCompositeOperation = 'lighter';
+          ctx.strokeStyle = `rgba(${DASH_RGB},${0.85 * (1 - k)})`; ctx.lineWidth = 1.4 * (1 - k) + 0.4;
+          ctx.beginPath(); ctx.arc(_w.x, _w.y, 5 + 13 * easeOutCubic(k), 0, TAU); ctx.stroke();
+          glow(ctx, _w.x, _w.y, 16, DASH_RGB, 0.5 * (1 - k));
+          ctx.restore();
+        }
+        applyXf(ctx, M.xf);
         // occasional glove sparks while wall-sliding
         if (p.state === 'wall' && G.fx && t - M.sparkT > 0.09 && hash1(Math.floor(t * 20)) < 0.35) {
           M.sparkT = t;
