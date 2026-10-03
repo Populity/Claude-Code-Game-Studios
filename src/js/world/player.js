@@ -16,7 +16,12 @@
  * Reusable damage helpers for any hazard (bosses, sentinels, projectiles):
  *   p.hurtbox()                → forgiving inset rect
  *   p.touchesRect(r) / p.touchesCircle(cx, cy, r) → bool
- *   p.kill(cause)
+ *   p.hurt(amount, cause, fromX[, deathCause]) → damage with i-frames + knockback (docs/companions-spec.md §1)
+ *   p.kill(cause)              → instant death (acid, fall, crush)
+ *
+ * Health / buffs (art + HUD read): hp, maxHp, invulnT (s of i-frames left, blink while > 0),
+ *   hurtT (s since the last hit), lastHurt (cause), gliding, jetting (bool, this frame),
+ *   buffs = {shield:{hits,t}, glider:{t,uses}, jetpack:{fuel}, boots:{t}, slowmo:{t}} (absent = inactive).
  */
 (function () {
   const P = G.CONFIG.player;
@@ -28,6 +33,7 @@
       this.w = P.w; this.h = P.h;
       this.canDash = false;
       this.talking = false; this.talkMood = 'neutral';
+      this.maxHp = G.CONFIG.health.player;
       this.reset(x, y);
     }
 
@@ -71,6 +77,57 @@
       if (this.anchor) this.anchor.attached = false;
       this.anchor = null;
       this.rope = null;
+      // ---- health + buffs (docs/companions-spec.md §1–2) ----
+      this.hp = this.maxHp;
+      this.invulnT = 0; this.hurtT = 99; this.lastHurt = null; this.hurtStarted = false;
+      this.buffs = {};
+      this.airJumpUsed = false; this.thrownT = 0;
+      this.gliding = false; this.jetting = false;
+    }
+
+    /**
+     * Take damage. Instant causes (amount Infinity: acid/fall/crush) kill. A shield absorbs the hit.
+     * Otherwise HP drops, 0.9 s of i-frames start, she is knocked away from fromX and the scene
+     * applies a short hit-stop (hurtStarted flag). Returns true if the hit landed.
+     * @param {number} amount HP to remove
+     * @param {string} cause damage table key (also the death cause)
+     * @param {number} [fromX] world x of the source (knockback direction); default: opposite facing
+     * @param {string} [deathCause] cause recorded if this hit kills (default: cause)
+     */
+    hurt(amount, cause, fromX, deathCause) {
+      if (this.dead || this.frozen) return false;
+      if (!isFinite(amount)) { this.kill(deathCause || cause); return true; }
+      if (this.invulnT > 0 || amount <= 0) return false;
+      const H = G.CONFIG.health;
+      this.invulnT = H.iframes; this.hurtT = 0; this.lastHurt = cause;
+      const sh = this.buffs.shield;
+      if (sh) {
+        if (--sh.hits <= 0) delete this.buffs.shield;
+        G.Audio.play('shieldHit');
+        G.fx.burst(this.cx, this.cy, { count: 14, color: ['#9fe8ff', '#ffffff'], speed: 180, life: 0.4, size: 3, gravity: 0, glow: true });
+        return false;
+      }
+      this.hp -= amount;
+      if (this.hp <= 0) { this.hp = 0; this.kill(deathCause || cause); return true; }
+      this.detachRope();
+      if (this.dashing) this.endDash(true);
+      const dir = fromX == null ? -this.facing : (this.cx >= fromX ? 1 : -1);
+      this.vx = dir * H.knockX; this.vy = Math.min(this.vy, -H.knockY);
+      this.jumping = false; this.onGround = false; this.wallLockT = H.knockLock; this.thrownT = 0;
+      this.hurtStarted = true;
+      G.Audio.play('hurt');
+      G.fx.burst(this.cx, this.cy, { count: 12, color: ['#ff6a5a', '#ffd27a'], speed: 200, life: 0.45, size: 3, gravity: 500 });
+      G.fx.shake(5, 0.2);
+      return true;
+    }
+
+    /** Restore HP (medkit, checkpoint). Returns the amount actually healed. */
+    heal(n) { const before = this.hp; this.hp = Math.min(this.maxHp, this.hp + n); return this.hp - before; }
+
+    /** Count down buff timers in REAL seconds (game.js calls this; slow-motion does not stretch buffs). */
+    tickBuffs(dt) {
+      const b = this.buffs;
+      for (const k of ['shield', 'glider', 'boots', 'slowmo']) if (b[k] && b[k].t != null) { b[k].t -= dt; if (b[k].t <= 0) delete b[k]; }
     }
 
     setState(s) {
@@ -115,6 +172,9 @@
       this.dashT += dt;
       this.landImpact = Math.max(0, this.landImpact - dt * 4);
       this.interactT = Math.max(0, this.interactT - dt);
+      this.invulnT = Math.max(0, this.invulnT - dt); this.hurtT += dt;
+      this.thrownT = Math.max(0, this.thrownT - dt);
+      this.gliding = false; this.jetting = false;
       this.actionUsed = false;
       this.canDash = !!(level.hasAbility && level.hasAbility('dash'));
       if (this.dead) return;
@@ -175,10 +235,14 @@
 
       // ---- horizontal ----
       const ice = this.onGround && this.surface.ice;
-      const maxSpeed = this.pushing ? P.pushSpeed : P.runSpeed;
+      const PK = G.CONFIG.pickups;
+      const glide = !!this.buffs.glider && !this.onGround && ctl.jumpHeld && this.vy > 0;
+      const maxSpeed = this.pushing ? P.pushSpeed : glide ? P.runSpeed * PK.glider.speedMul : P.runSpeed;
       let accel; const target = inputX * maxSpeed;
       if (this.onGround) accel = inputX ? P.groundAccel * (ice ? G.CONFIG.surface.iceAccel : 1) : P.groundDecel * (ice ? G.CONFIG.surface.iceDecel : 1);
-      else accel = inputX ? P.airAccel : P.airDecel;
+      else accel = inputX ? (glide ? PK.glider.accel : P.airAccel) : P.airDecel;
+      // thrown by Рекс: keep the launch speed unless she steers against it
+      if (this.thrownT > 0 && !this.onGround && (inputX === 0 || inputX === Math.sign(this.vx)) && Math.abs(this.vx) >= Math.abs(target)) accel = 0;
       // overspeed (dash, swing release, lift jump): above target, decay slowly in the air
       if (!this.onGround && this.overspeedT > 0 && Math.abs(this.vx) > Math.abs(target) && (inputX === 0 || inputX === Math.sign(this.vx))) accel = D.overspeedDecel;
       if (this.wallLockT > 0) accel *= 0.25;
@@ -235,6 +299,12 @@
           this.jumpBuffer = 0; this.wallStick = 0;
           G.Audio.play('walljump');
           G.fx.dust(dir > 0 ? this.x + this.w : this.x, this.cy, 5);
+        } else if (this.buffs.boots && !this.airJumpUsed && !this.onGround) {
+          // boots: one extra jump in the air (refreshed on ground / wall)
+          this.vy = -P.jumpVelocity * G.CONFIG.pickups.boots.jumpMul;
+          this.airJumpUsed = true; this.jumping = true; jumped = true; this.jumpBuffer = 0; this.thrownT = 0;
+          G.Audio.play('jump');
+          G.fx.burst(this.cx, this.y + this.h, { count: 8, color: ['#ffe17a', '#ffffff'], speed: 120, life: 0.35, size: 3, gravity: 200 });
         }
       }
       if (this.jumping && !ctl.jumpHeld && this.vy < 0) {
@@ -244,8 +314,17 @@
       if (this.vy >= 0) this.jumping = false;
 
       // ---- gravity (+ vertical wind) ----
-      this.vy += (P.gravity + windAy) * dt;
-      const maxFall = sliding ? P.wallSlideMax : P.maxFall;
+      const jet = this.buffs.jetpack;
+      if (jet && !this.onGround && !sliding && ctl.jumpHeld && !this.jumping) {
+        // jetpack: upward thrust while Jump is held in the air (after the jump's own rise)
+        const J = G.CONFIG.pickups.jetpack;
+        this.vy = G.approach(this.vy, -J.speed, J.accel * dt);
+        jet.fuel -= dt; this.jetting = true;
+        if (jet.fuel <= 0) delete this.buffs.jetpack;
+        if (Math.random() < dt * 30) G.fx.burst(this.cx, this.y + this.h, { count: 1, color: ['#ffb36b', '#fff1c0'], speed: 60, life: 0.3, size: 3, gravity: 300 });
+      } else this.vy += (P.gravity + windAy) * dt;
+      if (glide && !this.jetting) this.gliding = true;
+      const maxFall = sliding ? P.wallSlideMax : this.gliding ? G.CONFIG.pickups.glider.fall : P.maxFall;
       if (this.vy > maxFall) this.vy = G.approach(this.vy, maxFall, P.gravity * 2 * dt);
       if (sliding && Math.random() < dt * 20) G.fx.dust(this.wallDir > 0 ? this.x + this.w : this.x, this.y + this.h * 0.4, 1);
 
@@ -277,6 +356,9 @@
       this.groundEntity = ry.groundEntity;
       this.surface = ry.ground ? level.surfaceOf(ry.groundTiles) : { ice: false, conveyor: 0 };
       for (const [tx, ty] of ry.groundTiles) level.touchCrumble(tx, ty);
+      if (this.onGround || sliding) this.airJumpUsed = false;
+      if (this.onGround) this.thrownT = 0;
+      if (this.onGround && !wasGround && this.buffs.glider && --this.buffs.glider.uses <= 0) delete this.buffs.glider;
 
       // ---- momentum: remember the ground's velocity; walking off a lift keeps its horizontal part ----
       if (this.onGround) {
@@ -298,7 +380,15 @@
 
       // ---- hazards ----
       const hz = level.hazardAt(this.hurtbox());
-      if (hz) this.kill(hz);
+      if (hz === 'spikes') {
+        // spikes hurt and bounce her out (up off floor spikes, down off ceiling spikes) so she is never stuck
+        this.hurt(G.CONFIG.damage.spikes, 'spikes', null);
+        if (!this.dead) {
+          if (this.vy < 0 && this.state !== 'jump') this.vy = Math.max(this.vy, 150);
+          else { this.vy = -G.CONFIG.health.spikeBounce; this.onGround = false; this.jumping = false; }
+          this.detachRope(); this.dashTimer = 0;
+        }
+      } else if (hz) this.hurt(G.CONFIG.damage[hz] != null ? G.CONFIG.damage[hz] : Infinity, hz);
       if (this.y > level.pxH + 80) this.kill('fall');
 
       // ---- animation state ----

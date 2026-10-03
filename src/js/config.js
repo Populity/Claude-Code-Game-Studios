@@ -116,6 +116,59 @@ G.CONFIG = {
 
   death: { respawnDelay: 1.0 },
 
+  // ---- Health, pickups, sudden hazards, companions (docs/companions-spec.md §1–4) ----
+  health: {
+    player: 6,              // Mira's max HP
+    iframes: 0.9,           // s of invulnerability (blinking) after a hit
+    knockX: 260,            // px/s knockback away from the source
+    knockY: 380,            // px/s upward knockback
+    knockLock: 0.22,        // s of reduced air control after a hit
+    hitStopFrames: 4,       // hit-stop frames on a hit (game.js)
+    checkpointHeal: 2,      // HP restored when a checkpoint is lit
+    spikeBounce: 620,       // px/s upward bounce off floor spikes (never stuck in them)
+  },
+  /** Damage per cause. Infinity = instant death (Mira) / instant down (companions). */
+  damage: {
+    spikes: 2, laser: 2, saw: 3, sentinel: 2, orb: 1, glyph: 1, shell: 3, beam: 3, shockwave: 2,
+    stalactite: 3, mine: 4, geyser: 1, collapse: 3, bossBody: 2, fallCompanion: 3,
+    crush: Infinity, acid: Infinity, fall: Infinity,
+  },
+  pickups: {
+    medkit: 3,              // HP restored
+    heart: 1,               // +max HP for the level
+    shield: { hits: 2, time: 20 },
+    glider: { time: 25, uses: 3, fall: 95, speedMul: 1.6, accel: 2200 }, // uses = landings
+    jetpack: { fuel: 3, speed: 330, accel: 3600 },
+    boots: { time: 30, jumpMul: 0.92 },
+    slowmo: { time: 6, world: 0.5, player: 0.75 },
+    radius: 16,             // px pickup radius around the item centre
+  },
+  hazards: {
+    stalactite: { triggerX: 2, shake: 0.4, gravity: 2000, maxFall: 900, respawn: 4, w: 18, h: 30 },
+    mine: { beep: 0.5, radius: 1.5, rearm: 5 },
+    geyser: { period: 3, on: 0.8, h: 6, warn: 0.5, launch: 1.0 }, // launch: × the velocity whose apex is h tiles above the vent
+    collapse: { shake: 0.45, gravity: 1800, maxFall: 900, triggerPad: 0.5 },
+  },
+  party: {
+    teleportDist: 14,       // tiles from Mira → AI companion teleports to her
+    stuckTime: 3,           // s without progress → teleport
+    downTime: 10,           // s a companion stays down
+    reviveFrac: 0.5,        // share of max HP on revive
+    iframes: 0.9,
+    helpCooldown: 1.0,      // s between help actions of one member
+    lum: { hp: 4, speed: 220, pulseR: 3, stunTime: 3, reach: 1, body: 16 },
+    rex: {
+      hp: 10, w: 26, h: 46, runSpeed: 165, accel: 1600, gravity: 2100, maxFall: 900,
+      jumpTiles: 2.15,      // jump apex in tiles
+      grabR: 1.5,           // tiles: Mira / object within this is thrown
+      throwMira: { dist: 9, height: 5 },
+      throwObj: { dist: 8, height: 2 },
+      helpWalk: 2.5,        // s Rex walks toward Mira on an AI "throw me" order
+      followGap: 1.6,       // tiles he keeps behind Mira
+      sentinelBossDmg: 2,   // boss HP removed by a thrown sentinel
+    },
+  },
+
   /** UI: noText hides hints, objective, level banners, item labels, captions (menus/puzzles/dialogue keep text). */
   ui: { noText: true },
 
