@@ -185,6 +185,7 @@
     if (!(a > 0.004) || !(r > 0.3)) return;
     ctx.globalAlpha = a > 1 ? 1 : a;
     ctx.drawImage(glowImg(c), x - r, y - r, r * 2, r * 2);
+    ctx.globalAlpha = 1;
   }
   /** Elliptical glow, rotated by `rot`. */
   function glowE(ctx, x, y, rx, ry, rot, c, a) {
@@ -198,6 +199,7 @@
     if (!(a > 0.004) || !(r > 0.3)) return;
     ctx.globalAlpha = a > 1 ? 1 : a;
     ctx.drawImage(puffImg(c), x - r, y - r, r * 2, r * 2);
+    ctx.globalAlpha = 1;
   }
   /** Four-point star flare (glints, lens sparkle). */
   function flare(ctx, x, y, len, c, a) {
@@ -1035,8 +1037,8 @@
       g.translate(76, 50);
       // body: truncated cone with rounded shoulders
       g.beginPath(); g.moveTo(-58, -20); g.lineTo(26, -42); g.quadraticCurveTo(44, -44, 46, -30); g.lineTo(46, 30); g.quadraticCurveTo(44, 44, 26, 42); g.lineTo(-58, 20); g.closePath();
-      g.fillStyle = '#c9ced8'; g.fill(); g.save(); g.clip();
-      paintPanels(g, -60, -46, 108, 92, { seed: 9, base: [184, 188, 198], min: 7, conduits: 1 });
+      g.fillStyle = '#d6dbe4'; g.fill(); g.save(); g.clip();
+      paintPanels(g, -60, -46, 108, 92, { seed: 9, base: [200, 204, 214], min: 7, conduits: 1 });
       g.fillStyle = 'rgba(214,92,40,0.95)'; g.fillRect(-20, -46, 6, 92); g.fillRect(-10, -46, 2, 92);
       const gr = g.createLinearGradient(0, -44, 0, 44);
       gr.addColorStop(0, 'rgba(255,255,255,0.25)'); gr.addColorStop(0.35, 'rgba(0,0,0,0)'); gr.addColorStop(1, 'rgba(0,0,10,0.75)');
@@ -1071,7 +1073,7 @@
       glow(ctx, -74, 0, 26, C.blue, 0.4 * o.thrust);
       ctx.restore();
     }
-    ctx.drawImage(podImg(o.warm), -76, -50, 140, 100);
+    ctx.globalAlpha = 1; ctx.drawImage(podImg(o.warm), -76, -50, 140, 100);
     // window interior
     ctx.save(); ctx.beginPath(); ctx.arc(-6, -6, 12, 0, TAU); ctx.clip();
     const fl = 0.75 + 0.25 * Math.sin(t * 3.1) * Math.sin(t * 7.7);
@@ -1708,7 +1710,7 @@
     glow(ctx, 330, 230, 160, C.warm, 0.6 * bf); flare(ctx, 330, 230, 200, C.warm, 0.5 * bf);
     ctx.restore();
     // the pod: grows as it rushes toward camera-right
-    const px = lerp(330, 640, u), py = lerp(230, 300, u), ps = lerp(0.9, 2.7, u), pr = lerp(0.5, 0.18, u) + Math.sin(t * 0.9) * 0.03;
+    const px = lerp(380, 610, u), py = lerp(250, 340, u), ps = lerp(1.3, 2.9, u), pr = lerp(0.5, 0.18, u) + Math.sin(t * 0.9) * 0.03;
     // RCS puffs
     ctx.save(); ctx.globalCompositeOperation = 'lighter';
     for (let i = 0; i < 4; i++) {
@@ -1772,7 +1774,7 @@
         : [[0, '#2a1630'], [0.3, '#7a2f3c'], [0.6, '#d8714a'], [0.85, '#f6b070'], [1, '#ffe2b0']]);
       paintStars(g, DW, DH * 0.4, 909, 300, { pow: 3, size: 1, alpha: dusk ? 0.7 : 0.35 });
       g.globalCompositeOperation = 'lighter';
-      paintSkyRing(g, 480, ringY, 980, 300, -0.12, Math.PI * 1.05, Math.PI * 1.95, 44, [255, 220, 200], dusk ? 0.32 : 0.24);
+      paintSkyRing(g, 480, ringY, 980, 300, -0.12, Math.PI * 1.05, Math.PI * 1.95, 60, [255, 220, 200], dusk ? 0.12 : 0.08);
       g.globalCompositeOperation = 'source-over';
       paintMoon(g, 760, 120, 34, norm3([-0.6, 0.4, 0.4]), [240, 220, 210], 3.3, C.rose, 0.12);
       paintMoon(g, 640, 70, 12, norm3([-0.6, 0.4, 0.4]), [220, 200, 230], 8.1, C.ice, 0.1);
@@ -1824,8 +1826,8 @@
     sparks(ctx, t, 40, 7, PX + 25, PY + 60, 260, -300, 0.5, C.gold, 0.9, -Math.PI / 2 - 0.4, 1.4);
     ctx.restore();
     ctx.restore();
-    streaks(ctx, t, 60, 19, 40, -700, [255, 230, 200], 0.4, 50);
-    finish(ctx, t, { bloom: 0.9, grain: 0.08 });
+    streaks(ctx, t, 40, 19, 40, -700, [255, 230, 200], 0.2, 50);
+    finish(ctx, t, { bloom: 0.45, grain: 0.08 });
   };
 
   // ════════════════════════════════════════════════════════════════════ crash
@@ -1869,6 +1871,424 @@
     }
     ctx.restore();
     finish(ctx, t, { bloom: 0.9, vigC: [20, 4, 0], grain: 0.09, flash: a > 0 ? 0.9 * Math.exp(-a * 3) : 0, flashC: C.warm });
+  };
+
+  // ════════════════════════════════════════════════════════════════════ night / storm
+  function stormSky(key, seed) {
+    return layer('storm:' + key, DW, DH, (g) => {
+      vfill(g, 0, DH, [[0, '#03050b'], [0.5, '#0a1020'], [1, '#141a2c']]);
+      paintStars(g, DW, DH * 0.5, seed, 400, { pow: 3, size: 1, alpha: 0.5 });
+      for (let i = 0; i < 4; i++) {
+        const img = cloudImg('storm' + seed + i, 700, 200, seed + i, [70, 84, 110], [10, 12, 22], 34, true);
+        g.globalAlpha = 0.85; g.drawImage(img, -200 + i * 300 - (i % 2) * 120, 40 + i * 70, 700 + i * 80, 200);
+      }
+      g.globalAlpha = 1; bakeGrain(g, DW, DH, 0.1);
+    });
+  }
+  /** Lightning bolt (deterministic per strike index), additive. */
+  function bolt(ctx, x, y, len, seed, a) {
+    if (a < 0.01) return;
+    ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.lineJoin = 'round';
+    for (const [w, al] of [[6, 0.15], [2.2, 0.5], [1, 1]]) {
+      ctx.strokeStyle = rgba(C.ice, al * a); ctx.lineWidth = w; ctx.beginPath(); ctx.moveTo(x, y);
+      let px = x, py = y;
+      for (let i = 1; i <= 14; i++) { px += (hash(seed, i) - 0.5) * 40; py += len / 14; ctx.lineTo(px, py); }
+      ctx.stroke();
+    }
+    glow(ctx, x, y + len * 0.3, len * 0.8, C.ice, 0.2 * a);
+    ctx.restore();
+  }
+  function lightning(ctx, t, seed, x0, x1) {
+    const P = 5.3, k = Math.floor(t / P), u = t - k * P;
+    const a = (u < 0.08 ? 1 : 0) + (u > 0.16 && u < 0.24 ? 0.7 : 0);
+    bolt(ctx, x0 + hash(seed, k) * (x1 - x0), 30, 160 + hash(seed + 1, k) * 120, k + seed, a);
+    return a;
+  }
+
+  // ════════════════════════════════════════════════════════════════════ beacon_on
+  SCENES.beacon_on = function (ctx, t) {
+    const TI = 1.0, a = t - TI, on = a > 0 ? settle(a, 0.5) : 0;
+    const [sx, sy, sr] = shake(t, [[TI, 12, 2], [TI + 0.6, 5, 3]], 0.3 * on);
+    cam(ctx, 1 + 0.06 * settle(t, 10), 480, 200, sx, sy, sr);
+    par(ctx, stormSky('beacon', 404), sx * 0.2, sy * 0.2, 1.05);
+    const lf = lightning(ctx, t, 17, 80, 400);
+    const BX = 480, BY = 210;
+    // cloud underside lit by the beam + shockwave ring tearing through the deck
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    glowE(ctx, BX, 90, 520 * on, 120 * on, 0, C.cyan, 0.35 * on);
+    if (a > 0) for (let k = 0; k < 3; k++) {
+      const age = (a + k * 1.3) % 4, rad = age * 260, al = Math.exp(-age * 0.9) * (a > k * 1.3 ? 1 : 0);
+      ctx.strokeStyle = rgba(C.cyan, 0.5 * al); ctx.lineWidth = 3; ctx.beginPath(); ctx.ellipse(BX, 96, rad, rad * 0.16, 0, 0, TAU); ctx.stroke();
+      ctx.strokeStyle = rgba(C.white, 0.4 * al); ctx.lineWidth = 1; ctx.stroke();
+    }
+    // the column of light
+    const bw = 18 + 4 * Math.sin(t * 9);
+    glowE(ctx, BX, BY - 300, 60 * on, 340, 0, C.cyan, 0.5 * on);
+    glowE(ctx, BX, BY - 300, bw * on, 360, 0, C.beam, 0.9 * on);
+    glowE(ctx, BX, BY - 300, 4 * on, 380, 0, C.white, on);
+    shafts(ctx, BX, BY, -Math.PI / 2, Math.PI * 1.6, 520, 14, C.cyan, 0.12 * on, t, 44, 0.12);
+    ctx.restore();
+    // far ridges below (looking down from the top of the Spire)
+    blit(ctx, layer('beacon-ridge', DW, DH, (g) => {
+      paintMesas(g, 470, 77, [10, 14, 26], 50);
+      paintHaze(g, 430, 500, [40, 70, 110], 0.4);
+    }), sx * 0.3, sy * 0.3);
+    // the Spire crown (huge, close)
+    drawSpire2(ctx, BX, BY + 960 * 0.98, 960, t, { key: 'crown', fill: '#070910', rim: 'rgba(126,249,255,0.35)', glyph: C.cyan, light: 0.3 + 0.9 * on });
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    glow(ctx, BX, BY, 90 + 30 * on, C.cyan, 0.3 + 0.6 * on); glow(ctx, BX, BY, 26, C.white, 0.5 + 0.5 * on);
+    flare(ctx, BX, BY, 260 * on, C.beam, 0.8 * on);
+    glowE(ctx, BX, BY, 700 * on, 8, 0, C.cyan, 0.5 * on);
+    ctx.restore();
+    // Mira on the crown terrace, backlit
+    drawMiraStand(ctx, 560, 330, 46, t, C.cyan, { wind: 1 });
+    // storm: rain + lifted debris spiralling up the beam
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    flow(40, 9, t, 3, (i, u, k, h) => {
+      const ang = u * 8 + h * TAU, rr = 30 + 120 * (1 - u);
+      glow(ctx, BX + Math.cos(ang) * rr, BY - u * 300, 2.5, C.ice, 0.6 * on * Math.sin(u * Math.PI));
+    });
+    ctx.restore();
+    rain(ctx, t, 160, 3, [170, 200, 230], 0.22, 22, 0.25, 900);
+    ctx.restore();
+    finish(ctx, t, { bloom: 1.1, grain: 0.09, flash: lf * 0.25 + (a > 0 ? 0.9 * Math.exp(-a * 3) : 0), flashC: C.beam });
+  };
+
+  // ════════════════════════════════════════════════════════════════════ voice
+  /** voice — Mira faces a towering hologram of herself, assembled from the signal. */
+  SCENES.voice = function (ctx, t) {
+    const form = sstep(0.3, 3.5, t), gl = Math.pow(Math.max(0, Math.sin(t * 2.7) * Math.sin(t * 1.3)), 6);
+    const z = 1 + 0.07 * settle(t, 12);
+    cam(ctx, z, 480, 250, 0, 0, 0);
+    par(ctx, stormSky('voice', 606), 0, 0, 1.04);
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    glowE(ctx, 560, 0, 60, 500, 0, C.cyan, 0.4); glowE(ctx, 560, 0, 10, 500, 0, C.white, 0.6);
+    // hologram face: her own bust, huge, in cyan-violet light with scanlines + glitch slices
+    const HX = 570, HY = 260, HS = 6.4;
+    ctx.restore();
+    const holo = layer('voice-holo', DW, DH, (g) => {
+      g.save(); g.translate(HX, HY); g.scale(HS, HS);
+      g.fillStyle = '#9fe8ff';
+      g.beginPath(); g.moveTo(-34, 40); g.quadraticCurveTo(-30, 12, -10, 8); g.lineTo(10, 8); g.quadraticCurveTo(30, 12, 34, 40); g.closePath(); g.fill();
+      g.fillRect(-5, -2, 10, 12); g.beginPath(); g.ellipse(0, -12, 10.5, 13, 0, 0, TAU); g.fill();
+      g.beginPath(); g.moveTo(-11, -14); g.quadraticCurveTo(-6, -30, 8, -24); g.quadraticCurveTo(14, -18, 12, -8); g.quadraticCurveTo(22, -6, 20, 10); g.quadraticCurveTo(14, 2, 10, -2); g.closePath(); g.fill();
+      g.restore();
+      g.globalCompositeOperation = 'source-atop';
+      const gr = g.createRadialGradient(HX, HY - 80, 10, HX, HY, 300);
+      gr.addColorStop(0, 'rgba(230,250,255,0.9)'); gr.addColorStop(0.5, 'rgba(120,200,255,0.5)'); gr.addColorStop(1, 'rgba(150,90,255,0.15)');
+      g.fillStyle = gr; g.fillRect(0, 0, DW, DH);
+      g.fillStyle = 'rgba(0,0,0,0.55)'; for (let y = 0; y < DH; y += 3) g.fillRect(0, y, DW, 1.2);
+      // closed eyes + mouth line, carved as darker strokes
+      g.fillStyle = 'rgba(10,20,40,0.7)'; g.fillRect(HX - 36, HY - 86, 16, 3); g.fillRect(HX + 18, HY - 86, 16, 3); g.fillRect(HX - 10, HY - 34, 22, 2.5);
+    });
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    for (let s = 0; s < 6; s++) {
+      const y0 = (s / 6) * DH, h = DH / 6, off = (hash(Math.floor(t * 12), s) - 0.5) * 30 * gl;
+      ctx.save(); ctx.beginPath(); ctx.rect(0, y0, DW, h); ctx.clip();
+      ctx.globalAlpha = 0.5 * form * (0.85 + 0.15 * Math.sin(t * 20 + s));
+      ctx.drawImage(holo, off + Math.sin(t * 0.5) * 3, 0, DW, DH);
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1;
+    glow(ctx, HX, HY - 40, 300, [120, 160, 255], 0.18 * form);
+    // particles converging into the projection
+    flow(90, 41, t, 2.6, (i, u, k, h) => {
+      const tx = HX + (hash(k, i) - 0.5) * 220, ty = HY - 80 + (hash(k + 3, i) - 0.4) * 300;
+      const sx0 = 560, sy0 = -20, e = 1 - Math.pow(1 - u, 3);
+      glow(ctx, lerp(sx0, tx, e), lerp(sy0, ty, e), 2.2, i % 4 ? C.cyan : C.violet, 0.7 * Math.sin(u * Math.PI));
+    });
+    // speech waveform ring around the projection's mouth
+    const amp = 0.4 + 0.6 * Math.pow(Math.abs(Math.sin(t * 3.1) * Math.sin(t * 1.7)), 0.5);
+    ctx.strokeStyle = rgba(C.cyan, 0.5 * form); ctx.lineWidth = 1.2; ctx.beginPath();
+    for (let i = 0; i <= 160; i++) {
+      const x = 260 + i * 4, d = Math.exp(-Math.pow((x - HX) / 120, 2));
+      const y = HY + 70 + Math.sin(i * 0.9 + t * 14) * 26 * amp * d * Math.sin(i * 0.23 + t * 3);
+      i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+    }
+    ctx.stroke();
+    ctx.restore();
+    // the platform + Mira from behind, foreground left, rim-lit by her own image
+    blit(ctx, layer('voice-deck', DW, DH, (g) => {
+      g.fillStyle = '#05060a'; g.beginPath(); g.moveTo(0, 430); g.lineTo(380, 410); g.lineTo(760, 430); g.lineTo(DW, 470); g.lineTo(DW, DH); g.lineTo(0, DH); g.fill();
+      g.strokeStyle = 'rgba(126,249,255,0.4)'; g.lineWidth = 1.2; g.beginPath(); g.moveTo(0, 430); g.lineTo(380, 410); g.lineTo(760, 430); g.lineTo(DW, 470); g.stroke();
+      paintPanels(g, 0, 440, DW, 100, { seed: 6, base: [10, 12, 18], hi: [80, 160, 200], min: 10, conduits: 0 });
+    }));
+    drawMiraStand(ctx, 250, 600, 330, t, [150, 220, 255], { wind: 0.6 });
+    ctx.restore();
+    rain(ctx, t, 90, 8, [170, 200, 230], 0.12, 18, 0.2, 800);
+    finish(ctx, t, { bloom: 1.0, grain: 0.1, vigC: [6, 0, 20], flash: gl * 0.12, flashC: C.violet });
+  };
+
+  // ════════════════════════════════════════════════════════════════════ wrecks_orbit
+  /** Tall night sky (DW × DH+240) with ring + a field of identical «Ковчег-7» wrecks. */
+  function wreckSky() {
+    return layer('wrecksky', DW, DH + 240, (g) => {
+      vfill(g, 0, DH + 240, [[0, '#010208'], [0.6, '#070a18'], [0.85, '#1a1430'], [1, '#3a1c34']]);
+      paintNebula(g, 12, [{ x: 600, y: 200, sx: 700, sy: 200, r: 260, c: [60, 70, 150], a: 0.08, n: 14 }]);
+      paintStars(g, DW, DH + 240, 1212, 2600, { pow: 3.4, size: 1, band: { y0: 240, k: 0.3, spread: 90, frac: 0.5 } });
+      g.globalCompositeOperation = 'lighter';
+      paintSkyRing(g, 480, 760, 1100, 560, 0.08, Math.PI * 1.08, Math.PI * 1.92, 70, [255, 220, 220], 0.2);
+      g.globalCompositeOperation = 'source-over';
+      const img = shipImg2(false), r = G.rng(4040);
+      const parts = ['aft', 'cryo', 'fore', 'all', 'aftcryo'];
+      for (let i = 0; i < 150; i++) {
+        const x = r() * DW, y = 20 + Math.pow(r(), 1.4) * 520, s = 0.02 + Math.pow(r(), 3) * 0.11, rot = (r() - 0.5) * 2.4;
+        const part = parts[(r() * parts.length) | 0], sp = PSPAN[part] || [0, SH.W];
+        g.save(); g.translate(x, y); g.rotate(rot); g.scale(s, s); g.translate(-(sp[0] + sp[1]) / 2, -SH.CY);
+        clipPart2(g, part); g.globalAlpha = 0.5 + s * 4; g.drawImage(img, 0, 0); g.restore();
+        if (r() < 0.5) { g.globalCompositeOperation = 'lighter'; glow(g, x + (r() - 0.5) * 20 * s * 10, y, 3 + s * 30, C.warm, 0.2 + r() * 0.3); g.globalCompositeOperation = 'source-over'; }
+      }
+      g.globalAlpha = 1; bakeGrain(g, DW, DH + 240, 0.08);
+    });
+  }
+  SCENES.wrecks_orbit = function (ctx, t) {
+    const tilt = 1 - easeInOut(Math.min(1, t / 9)); // tilt-up reveal
+    const oy = -240 * tilt;
+    ctx.drawImage(wreckSky(), 0, oy, DW, DH + 240);
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < 30; i++) { // sun glints flashing off tumbling hulls
+      const x = hash(61, i) * DW, y = 20 + hash(62, i) * 500 + oy;
+      const g2 = Math.pow(Math.max(0, Math.sin(t * (0.4 + hash(63, i)) + i * 3)), 30);
+      flare(ctx, x, y, 14 + 20 * hash(64, i), C.warm, g2 * 0.9);
+    }
+    ctx.restore();
+    // a near wreck drifting slowly across, tumbling
+    drawShip2(ctx, 760 - 60 * settle(t, 30), 140 + oy * 0.6, 0.34, -0.5 + t * 0.01 % 1, t, { part: 'aftcryo', lights: false });
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    glowE(ctx, 700 - 60 * settle(t, 30), 130 + oy * 0.6, 160, 8, -0.5, C.warm, 0.15); ctx.restore();
+    // clouds parting below
+    ctx.save(); ctx.globalAlpha = 0.6;
+    const ci = cloudImg('wr', 700, 160, 77, [70, 60, 100], [16, 12, 28], 30, true);
+    const part2 = settle(t, 6) * 320;
+    ctx.drawImage(ci, -320 - part2, 380 + oy * 0.4 + 240 * tilt, 700, 160); ctx.drawImage(ci, 580 + part2, 370 + oy * 0.4 + 240 * tilt, 700, 160);
+    ctx.restore();
+    // ground, Spire + beam, Mira tiny on the top terrace
+    const gy = 540 + 240 * tilt * 0.9;
+    ctx.save(); ctx.translate(0, gy - 540);
+    blit(ctx, layer('wr-ground', DW, DH, (g) => { paintMesas(g, 500, 13, [8, 6, 14], 40); g.fillStyle = '#05040a'; g.fillRect(0, 510, DW, 40); }));
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    glowE(ctx, 640, 0, 6, 520, 0, C.beam, 0.6); glowE(ctx, 640, 0, 30, 520, 0, C.cyan, 0.2);
+    ctx.restore();
+    drawSpire2(ctx, 640, 520, 150, t, { fill: '#05040a', rim: 'rgba(126,249,255,0.25)', light: 0.8 });
+    ctx.restore();
+    motes(ctx, t, 30, 8, 0, 0, DW, DH, C.ice, 0.2, 2, 1);
+    finish(ctx, t, { bloom: 0.8, grain: 0.08 });
+  };
+
+  // ════════════════════════════════════════════════════════════════════ credits
+  SCENES.credits = function (ctx, t) {
+    const dx = Math.sin(t * 0.04) * 12;
+    par(ctx, layer('cred-sky', DW, DH, (g) => {
+      vfill(g, 0, DH, [[0, '#02030a'], [0.6, '#0a0c1e'], [1, '#22142a']]);
+      paintStars(g, DW, DH, 7070, 2200, { pow: 3.4, size: 1, band: { y0: 200, k: -0.4, spread: 80, frac: 0.5 } });
+      g.globalCompositeOperation = 'lighter';
+      paintSkyRing(g, 480, 640, 900, 420, -0.06, Math.PI * 1.05, Math.PI * 1.95, 60, [255, 220, 220], 0.16);
+      g.globalCompositeOperation = 'source-over';
+      paintMoon(g, 200, 110, 24, norm3([0.6, -0.3, 0.5]), [236, 214, 200], 2.2, C.rose, 0.12);
+    }), dx * 0.2, 0, 1.03);
+    // aurora curtains
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < 44; i++) {
+      const x = 80 + i * 19 + Math.sin(t * 0.3 + i * 0.4) * 20 + dx * 0.4, h = 120 + 80 * Math.sin(i * 0.5 + t * 0.2);
+      const y = 120 + 30 * Math.sin(i * 0.31 + t * 0.15);
+      glowE(ctx, x, y, 14, h, 0.1 * Math.sin(i), i % 3 ? [80, 255, 190] : [140, 120, 255], 0.06 + 0.04 * Math.sin(t * 0.7 + i));
+    }
+    ctx.restore();
+    starTwinkle(ctx, t, 8, 333, 0.8, 300);
+    blit(ctx, layer('cred-land', DW, DH, (g) => {
+      paintMesas(g, 420, 21, [16, 12, 26], 30);
+      paintHaze(g, 390, 440, [60, 40, 90], 0.4);
+      paintDunes(g, DW, DH, { y: 470, amp: 40, seed: 31, top: [24, 16, 30], bottom: [8, 6, 12], rim: [140, 150, 255], rimA: 0.4, sunRight: true });
+    }), dx * 0.6, 0);
+    drawSpire2(ctx, 760 + dx * 0.5, 424, 90, t, { fill: '#0c0a16', light: 0.6 });
+    ctx.save(); ctx.globalCompositeOperation = 'lighter'; glowE(ctx, 760 + dx * 0.5, 100, 3, 330, 0, C.beam, 0.3); ctx.restore();
+    // Mira + ЛЮМ on the dune crest
+    drawMiraStand(ctx, 300 + dx, 452, 60, t, [140, 150, 255], { wind: 0.4 });
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    const lx = 326 + dx + Math.sin(t * 0.9) * 4, ly = 400 + Math.sin(t * 1.4) * 3;
+    glow(ctx, lx, ly, 26, C.cyan, 0.35); glow(ctx, lx, ly, 4, C.white, 0.9);
+    ctx.restore();
+    motes(ctx, t, 30, 77, 0, 300, DW, 540, [180, 190, 255], 0.2, 6, -1);
+    finish(ctx, t, { bloom: 0.7, grain: 0.07 });
+  };
+
+  // ════════════════════════════════════════════════════════════════════ archive_gate
+  /** One colossal Architect door leaf (bronze plates, glyph seams, half of the great seal). */
+  function doorLeaf(side) {
+    return layer('door:' + side, 300, 470, (g) => {
+      const r = G.rng(side > 0 ? 71 : 72);
+      g.fillStyle = '#2a1a0e'; g.fillRect(0, 0, 300, 470);
+      paintPanels(g, 0, 0, 300, 470, { seed: side > 0 ? 5 : 6, base: [92, 62, 34], hi: [255, 210, 150], lo: [10, 6, 2], min: 18, conduits: 0 });
+      // glyph seams
+      g.strokeStyle = 'rgba(255,200,110,0.4)'; g.lineWidth = 1.2;
+      for (let i = 0; i < 40; i++) {
+        const x = 20 + r() * 260, y = 20 + r() * 430;
+        g.beginPath(); g.moveTo(x, y); g.lineTo(x, y + 10 + r() * 20); if (r() < 0.6) g.lineTo(x + (r() - 0.5) * 16, y + 34); g.stroke();
+      }
+      // great seal half (concentric arcs at the meeting edge)
+      const ex = side > 0 ? 0 : 300;
+      for (let k = 0; k < 6; k++) {
+        g.strokeStyle = k % 2 ? 'rgba(255,210,140,0.45)' : 'rgba(20,10,4,0.8)'; g.lineWidth = 6 - k * 0.6;
+        g.beginPath(); g.arc(ex, 230, 140 - k * 22, side > 0 ? -Math.PI / 2 : Math.PI / 2, side > 0 ? Math.PI / 2 : Math.PI * 1.5); g.stroke();
+      }
+      const sh = g.createLinearGradient(0, 0, 0, 470); sh.addColorStop(0, 'rgba(0,0,0,0.65)'); sh.addColorStop(0.5, 'rgba(0,0,0,0.15)'); sh.addColorStop(1, 'rgba(0,0,0,0.6)');
+      g.fillStyle = sh; g.fillRect(0, 0, 300, 470);
+      const eg = g.createLinearGradient(side > 0 ? 0 : 300, 0, side > 0 ? 60 : 240, 0); eg.addColorStop(0, 'rgba(255,220,160,0.35)'); eg.addColorStop(1, 'rgba(255,220,160,0)');
+      g.fillStyle = eg; g.fillRect(0, 0, 300, 470);
+    });
+  }
+  SCENES.archive_gate = function (ctx, t) {
+    const open = settle(t - 0.4, 4.5) * (t > 0.4 ? 1 : 0), gap = open * 190;
+    const [sx, sy, sr] = shake(t, null, open > 0.02 && open < 0.95 ? 1.6 * (1 - open) : 0);
+    const z = 1 + 0.06 * settle(t, 14);
+    cam(ctx, z, 480, 300, sx, sy, sr);
+    // the hall beyond: blazing white-gold
+    blit(ctx, layer('gate-in', DW, DH, (g) => {
+      vfill(g, 0, DH, [[0, '#ffe8c0'], [0.6, '#fff4dc'], [1, '#ffd690']]);
+      g.globalCompositeOperation = 'lighter'; glow(g, 480, 300, 260, C.white, 0.9);
+    }));
+    // the gate wall (stone, dark) with an opening the doors fill
+    blit(ctx, layer('gate-wall', DW, DH, (g) => {
+      g.fillStyle = '#0b0807'; g.beginPath(); g.rect(0, 0, DW, DH); g.rect(180, 30, 600, 470); g.fill('evenodd');
+      paintPanels(g, 0, 0, 180, DH, { seed: 13, base: [30, 22, 18], hi: [200, 150, 100], min: 30, conduits: 0 });
+      paintPanels(g, 780, 0, 180, DH, { seed: 14, base: [30, 22, 18], hi: [200, 150, 100], min: 30, conduits: 0 });
+      const sh = g.createLinearGradient(0, 0, DW, 0); sh.addColorStop(0, 'rgba(0,0,0,0.8)'); sh.addColorStop(0.2, 'rgba(0,0,0,0.3)'); sh.addColorStop(0.8, 'rgba(0,0,0,0.3)'); sh.addColorStop(1, 'rgba(0,0,0,0.8)');
+      g.fillStyle = sh; g.fillRect(0, 0, DW, DH);
+      // flanking colossi (hooded statues)
+      for (const x of [90, 870]) {
+        g.fillStyle = '#060404'; g.beginPath(); g.moveTo(x - 60, DH); g.lineTo(x - 50, 160); g.quadraticCurveTo(x, 40, x + 50, 160); g.lineTo(x + 60, DH); g.fill();
+        g.strokeStyle = 'rgba(255,200,130,0.25)'; g.lineWidth = 1.4; g.beginPath(); g.moveTo(x + (x < 480 ? 50 : -50), 160); g.quadraticCurveTo(x, 40, x + (x < 480 ? -50 : 50), 160); g.stroke();
+      }
+    }));
+    // ЭХО in the light, between the leaves
+    drawEcho(ctx, 480, 470, 210, t, { sil: true, ring: 0.4 + 0.6 * open });
+    // door leaves sliding apart
+    blit(ctx, doorLeaf(-1), 180 - gap, 30); blit(ctx, doorLeaf(1), 480 + gap, 30);
+    // light pouring through the seam
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    const L = 0.3 + 0.7 * open;
+    glowE(ctx, 480, 270, 30 + gap, 260, 0, C.warm, 0.6 * L);
+    shafts(ctx, 480, 260, Math.PI / 2 + 0.25, 1.4, 520, 10, C.warm, 0.12 * L, t, 81, 0.3);
+    shafts(ctx, 480, 260, -Math.PI / 2 - 0.25, 1.4, 420, 8, C.warm, 0.07 * L, t, 82, 0.3);
+    shafts(ctx, 480, 260, 0, 0.5, 520, 5, C.warm, 0.06 * L, t, 83, 0.2);
+    shafts(ctx, 480, 260, Math.PI, 0.5, 520, 5, C.warm, 0.06 * L, t, 84, 0.2);
+    glowE(ctx, 480, 500, 380 * L, 30, 0, C.gold, 0.3 * L);
+    ctx.restore();
+    // stone dust falling from the lintel as the doors grind
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    flow(60, 19, t, 2.2, (i, u, k, h) => {
+      const x = 480 + (h - 0.5) * (40 + gap * 2), y = 30 + u * u * 470;
+      glow(ctx, x, y, 1.6, C.gold, 0.7 * (1 - u) * (open < 0.98 ? 1 : 0.3));
+    });
+    ctx.restore();
+    motes(ctx, t, 70, 3, 200, 40, 760, 500, C.gold, 0.35, 3, -2);
+    // steps + Mira (foreground, from behind)
+    blit(ctx, layer('gate-steps', DW, DH, (g) => {
+      for (let i = 0; i < 4; i++) { g.fillStyle = rgba(mixc([30, 22, 16], [6, 4, 4], i / 3), 1); g.fillRect(0, 500 + i * 12, DW, 12); g.fillStyle = 'rgba(255,210,150,0.18)'; g.fillRect(200 - i * 40, 500 + i * 12, 560 + i * 80, 1); }
+    }));
+    drawMiraStand(ctx, 400, 560, 120, t, C.warm, { lamp: true });
+    ctx.restore();
+    finish(ctx, t, { bloom: 0.8, grain: 0.09, vigC: [10, 4, 0] });
+  };
+
+  // ════════════════════════════════════════════════════════════════════ echo_reveal
+  /** Endless hall of cryo capsules, each holding a sleeping Mira (cached, perspective rows). */
+  function cloneHall() {
+    return layer('clonehall', DW, DH, (g) => {
+      const VX = 480, VY = 230;
+      vfill(g, 0, DH, [[0, '#01040a'], [0.45, '#06142a'], [1, '#020610']]);
+      g.globalCompositeOperation = 'lighter'; glow(g, VX, VY, 240, [60, 140, 220], 0.4); g.globalCompositeOperation = 'source-over';
+      // ceiling ribs + floor lines converging
+      g.strokeStyle = 'rgba(120,200,255,0.12)'; g.lineWidth = 1;
+      for (let i = -12; i <= 12; i++) { g.beginPath(); g.moveTo(VX, VY); g.lineTo(VX + i * 90, DH); g.stroke(); g.beginPath(); g.moveTo(VX, VY); g.lineTo(VX + i * 90, -20); g.stroke(); }
+      // capsules from far to near, two banks and three tiers
+      for (let d = 40; d >= 1; d--) {
+        const s = 1.6 / (d * 0.32 + 0.6), fog = clamp01(1 - d / 40);
+        for (const side of [-1, 1]) for (let tier = 0; tier < 3; tier++) {
+          const x = VX + side * (110 + 0) * s, y = VY + (tier - 1) * 120 * s + 30 * s;
+          const w = 46 * s, h = 100 * s;
+          if (x + w < -20 || x - w > DW + 20) continue;
+          const px = x + side * w * 0.6;
+          g.save(); g.globalAlpha = 0.2 + 0.8 * fog;
+          const gl = g.createLinearGradient(px - w / 2, 0, px + w / 2, 0);
+          gl.addColorStop(0, 'rgba(70,160,230,0.6)'); gl.addColorStop(0.5, 'rgba(170,230,255,0.85)'); gl.addColorStop(1, 'rgba(50,120,200,0.6)');
+          g.fillStyle = '#0a1422'; g.fillRect(px - w / 2 - 3 * s, y - h / 2 - 4 * s, w + 6 * s, h + 8 * s);
+          g.fillStyle = gl; g.beginPath(); g.roundRect ? g.roundRect(px - w / 2, y - h / 2, w, h, 12 * s) : g.rect(px - w / 2, y - h / 2, w, h); g.fill();
+          // the sleeper: Mira's silhouette against the frosted light
+          g.save(); g.translate(px, y + 4 * s); g.scale(s * 0.9, s * 0.9); g.fillStyle = 'rgba(6,16,30,0.85)';
+          g.beginPath(); g.moveTo(-26, 50); g.quadraticCurveTo(-24, 14, -8, 10); g.lineTo(8, 10); g.quadraticCurveTo(24, 14, 26, 50); g.closePath(); g.fill();
+          g.fillRect(-4, 0, 8, 12); g.beginPath(); g.ellipse(0, -10, 9, 11, 0, 0, TAU); g.fill();
+          g.beginPath(); g.moveTo(-10, -12); g.quadraticCurveTo(-4, -26, 8, -20); g.quadraticCurveTo(13, -14, 11, -4); g.quadraticCurveTo(16, 10, 14, 24); g.quadraticCurveTo(9, 6, 9, -2); g.closePath(); g.fill();
+          g.restore();
+          // frost
+          g.fillStyle = 'rgba(220,245,255,0.25)'; g.fillRect(px - w / 2, y + h * 0.25, w, h * 0.25);
+          g.restore();
+        }
+      }
+      bakeGrain(g, DW, DH, 0.1);
+    });
+  }
+  SCENES.echo_reveal = function (ctx, t) {
+    const TB = 3.2, b = t - TB, hall = sstep(TB, TB + 1.6, t);
+    const [sx, sy, sr] = shake(t, [[TB, 10, 2.5]], t < TB ? 0.6 * sstep(1.5, TB, t) : 0);
+    // the hall (revealed behind the mask)
+    if (hall > 0) {
+      const z = 1.25 - 0.2 * settle(b, 6) + 0.04 * settle(b - 6, 30);
+      cam(ctx, z, 480, 240, sx * 0.4, sy * 0.4, 0);
+      ctx.globalAlpha = hall; blit(ctx, cloneHall()); ctx.globalAlpha = 1;
+      ctx.save(); ctx.globalCompositeOperation = 'lighter';
+      for (let d = 1; d < 20; d++) { // pulse running down the rows
+        const ph = fract(t * 0.25 - d * 0.05), s = 1.6 / (d * 0.32 + 0.6), a2 = Math.exp(-ph * 8) * hall;
+        for (const side of [-1, 1]) glowE(ctx, 480 + side * 110 * s * 1.3, 230 + 30 * s, 40 * s, 140 * s, 0, C.ice, 0.25 * a2);
+      }
+      // one of them opens her eyes
+      const eo = sstep(TB + 5, TB + 6.5, t), ex = 480 + 110 * (1.6 / 0.92) * 1.3 * -1, ey = 230 + 30 * (1.6 / 0.92) - 10 * 1.6 / 0.92 * 0.9;
+      glow(ctx, ex - 4, ey, 2.4, C.ice, 0.9 * eo); glow(ctx, ex + 4, ey, 2.4, C.ice, 0.9 * eo);
+      ctx.restore();
+      ctx.save(); // floor mist
+      flow(14, 5, t, 9, (i, u, k, h) => puff(ctx, h * DW, 470 + Math.sin(i) * 20, 70 + 40 * u, [120, 170, 220], 0.12 * Math.sin(u * Math.PI) * hall));
+      ctx.restore();
+      ctx.restore();
+    }
+    // ЭХО's face, close: crack spreads with light leaking, then the mask bursts outward
+    const fadeMask = 1 - sstep(TB, TB + 1.2, t);
+    if (fadeMask > 0) {
+      ctx.save(); ctx.globalAlpha = 1;
+      if (hall < 1) { ctx.fillStyle = rgba([6, 4, 3], 1 - hall); ctx.fillRect(0, 0, DW, DH); }
+      ctx.translate(sx, sy);
+      const push = 1 + 0.08 * Math.min(t, TB) / TB;
+      ctx.translate(480, 270); ctx.scale(push, push); ctx.translate(-480, -270);
+      ctx.globalAlpha = fadeMask;
+      const H = 1500, y = 270 + 142 * H / 200 - 30;
+      drawEcho(ctx, 480 - 1 * H / 200, y, H, t, { crack: 1, ring: 1 });
+      // light cracks spreading over the mask
+      const ck = sstep(0.3, TB, t), MX = 480, MY = 240;
+      ctx.globalCompositeOperation = 'lighter'; ctx.lineJoin = 'round';
+      for (let i = 0; i < 9; i++) {
+        let x = MX + 40, y2 = MY - 110, ang = 1.9 + (hash(5, i) - 0.5) * 2.2;
+        ctx.strokeStyle = rgba(C.warm, 0.9 * fadeMask); ctx.lineWidth = 2.2; ctx.beginPath(); ctx.moveTo(x, y2);
+        const n = Math.floor(ck * 10);
+        for (let k = 0; k < n; k++) { ang += (hash(i, k) - 0.5) * 1.1; x += Math.cos(ang) * 18; y2 += Math.sin(ang) * 18; ctx.lineTo(x, y2); }
+        ctx.stroke();
+        glow(ctx, x, y2, 14, C.gold, 0.6 * ck * fadeMask);
+      }
+      glow(ctx, MX, MY, 240 * ck, C.warm, 0.35 * ck * fadeMask);
+      ctx.restore();
+    }
+    // mask shards flying at camera
+    if (b > 0) {
+      debrisBurst(ctx, t, TB, 480, 250, 40, 99, 900, 0, '#6a4320', 22);
+      ctx.save(); ctx.globalCompositeOperation = 'lighter';
+      debrisBurst(ctx, t, TB, 480, 250, 30, 98, 700, 0, rgba(C.gold, 0.5 * Math.exp(-b)), 10);
+      ctx.restore();
+    }
+    // the broken ЭХО at the left edge afterwards, watching
+    if (hall > 0.5) {
+      ctx.save(); ctx.globalAlpha = sstep(0.5, 1, hall);
+      drawEcho(ctx, 100, 760, 900, t, { sil: true, ring: 0.7 });
+      ctx.restore();
+    }
+    finish(ctx, t, { bloom: 0.9, grain: 0.1, vigC: [0, 4, 12], flash: b > 0 ? Math.exp(-b * 2.5) : 0, flashC: C.warm });
   };
 
   // ════════════════════════════════════════════════════════════════════ registry
