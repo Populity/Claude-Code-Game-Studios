@@ -2287,8 +2287,10 @@
       ctx.restore();
     }
     // mask shards flying at camera
-    if (b > 0) {
+    if (b > 0 && b < 3) {
+      ctx.globalAlpha = 1 - sstep(1.5, 3, b);
       debrisBurst(ctx, t, TB, 480, 250, 40, 99, 900, 0, '#6a4320', 22);
+      ctx.globalAlpha = 1;
       ctx.save(); ctx.globalCompositeOperation = 'lighter';
       debrisBurst(ctx, t, TB, 480, 250, 30, 98, 700, 0, rgba(C.gold, 0.5 * Math.exp(-b)), 10);
       ctx.restore();
