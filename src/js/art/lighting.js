@@ -19,10 +19,12 @@
 (function () {
   const T = G.TILE, W = G.VIEW_W, H = G.VIEW_H, TAU = Math.PI * 2;
   const Pal = G.Art.Palette;
-  const Q = { high: { q: 0.5, maxShadow: 6, blur: 2, rays: 1 }, medium: { q: 0.4, maxShadow: 3, blur: 0, rays: 1 } };
+  // mq: visibility-mask resolution relative to the light map; < 1 makes bilinear up-sampling soften
+  // the penumbra for free (no canvas filter, no extra pass). blur: optional whole-map soften pass.
+  const Q = { high: { q: 0.5, mq: 0.5, maxShadow: 6, blur: 0 }, medium: { q: 0.4, mq: 0.5, maxShadow: 3, blur: 0 } };
   let quality = 'high';
   const S = {
-    level: null, ver: -1, hs: [], vs: [], acid: [], polyCache: new Map(),
+    level: null, ver: -1, hs: [], vs: [], acid: [], bakes: new Map(),
     map: null, blurBuf: null, tmp: null, mask: null, ms: 0, nLights: 0, nShadow: 0,
   };
 
@@ -95,7 +97,7 @@
         if (!top && x0 >= 0) { S.acid.push({ x0: x0 * T, x1: tx * T, y: ty * T + 6 }); x0 = -1; }
       }
     }
-    S.polyCache.clear();
+    S.bakes.clear();
     S.ver = level.version;
   }
   const solidPx = (x, y) => { const L = S.level, tx = Math.floor(x / T), ty = Math.floor(y / T); return tx >= 0 && ty >= 0 && tx < L.w && ty < L.h && S.sol[ty * L.w + tx] === 1; };
@@ -222,7 +224,7 @@
     // acid surfaces
     for (const a of S.acid) {
       if (a.x1 < vx0 - 80 || a.x0 > vx1 + 80 || a.y < vy0 - 80 || a.y > vy1 + 80) continue;
-      for (let x = a.x0 + 32; x < a.x1; x += 80) add({ x, y: a.y, r: 96, i: 0.45 * flick('soft', t, x * 0.05), col: P.acid.glow });
+      for (let x = a.x0 + 32; x < a.x1; x += 80) add({ nb: 1, x, y: a.y, r: 96, i: 0.45 * flick('soft', t, x * 0.05), col: P.acid.glow });
     }
     // animated tile scatter (strip lights, glow moss, crystals...)
     const ds = G.Art.Decor && G.Art.Decor._state;
@@ -233,7 +235,7 @@
         if (!al || s.x < vx0 || s.x > vx1 || s.y < vy0 || s.y > vy1) continue;
         if (++n > 48) break;
         const col = al[2] === 'cap' ? P.rock.capLight : al[2] === 'detail' ? P.rock.detail : al[2] === 'a2' ? P.accent2 : al[2] || P.accent;
-        add({ x: s.x, y: s.y + 4, r: al[0], i: al[1], col, fl: al[3], seed: s.x * 0.1 });
+        add({ nb: 1, x: s.x, y: s.y + 4, r: al[0], i: al[1], col, fl: al[3], seed: s.x * 0.1 });
       }
     }
     const gain = amb.gain || 1.3;
@@ -253,9 +255,23 @@
 
   function drawShadowed(m, o, view, q) {
     const R = o.r, sz = Math.ceil(R * 2 * q) + 2;
+    const ox = o.x - R, oy = o.y - R; // world origin of the light canvas
+    const blit = (c) => {
+      m.globalAlpha = Math.min(1, o.i); m.drawImage(c, 0, 0, sz, sz, (ox - view.x) * q, (oy - view.y) * q, sz, sz);
+      if (o.i > 1) { m.globalAlpha = Math.min(1, o.i - 1); m.drawImage(c, 0, 0, sz, sz, (ox - view.x) * q, (oy - view.y) * q, sz, sz); }
+      m.globalAlpha = 1;
+    };
+    // static lights: the masked light is baked once per level version and reused (1 draw per frame)
+    let bake = null;
+    if (o.key) {
+      const c = S.bakes.get(o.key);
+      if (c && c.x === o.x && c.y === o.y && c.r === R && c.col === o.col && c.q === q) { blit(c.c); return; }
+      if (S.bakes.size > 24) S.bakes.delete(S.bakes.keys().next().value);
+      bake = { x: o.x, y: o.y, r: R, col: o.col, q, c: mk(sz, sz) };
+    }
     if (!S.tmp || S.tmp.width < sz) { const n = Math.max(sz, 64); S.tmp = mk(n, n); S.mask = mk(n, n); }
-    const tg = S.tmp.getContext('2d'), mg = S.mask.getContext('2d');
-    const ox = o.x - R, oy = o.y - R; // world origin of the tmp canvas
+    const tc = bake ? bake.c : S.tmp;
+    const tg = tc.getContext('2d'), mg = S.mask.getContext('2d');
     tg.setTransform(1, 0, 0, 1, 0, 0); tg.globalCompositeOperation = 'source-over'; tg.globalAlpha = 1; tg.clearRect(0, 0, sz, sz);
     tg.drawImage(sprite(o.col), 0, 0, R * 2 * q, R * 2 * q);
     if (o.cone) { // soft-edged wedge
@@ -263,23 +279,21 @@
       tg.beginPath(); tg.moveTo(R * q, R * q); tg.arc(R * q, R * q, R * q, o.cone.dir - o.cone.half, o.cone.dir + o.cone.half); tg.closePath(); tg.fill();
     }
     // visibility mask (cached for static lights)
-    let poly = null;
-    if (o.key) { const c = S.polyCache.get(o.key); if (c && c.x === o.x && c.y === o.y && c.r === R) poly = c.p; }
-    if (!poly) { const tp = performance.now(); poly = visPoly(o.x, o.y, R); S.tPoly += performance.now() - tp; if (o.key) S.polyCache.set(o.key, { x: o.x, y: o.y, r: R, p: poly }); }
-    mg.setTransform(1, 0, 0, 1, 0, 0); mg.clearRect(0, 0, sz, sz);
-    mg.setTransform(q, 0, 0, q, -ox * q, -oy * q);
+    const tp = performance.now(); const poly = visPoly(o.x, o.y, R); S.tPoly += performance.now() - tp;
+    const mq = q * Q[quality].mq, msz = Math.ceil(sz * Q[quality].mq) + 1;
+    mg.setTransform(1, 0, 0, 1, 0, 0); mg.clearRect(0, 0, msz + 1, msz + 1);
+    mg.setTransform(mq, 0, 0, mq, -ox * mq, -oy * mq);
     mg.beginPath(); mg.moveTo(poly[0], poly[1]);
     for (let i = 2; i < poly.length; i += 2) mg.lineTo(poly[i], poly[i + 1]);
     mg.closePath();
     mg.fillStyle = '#fff'; mg.fill();
     // bleed the light ~9px into the lit faces of the walls, so surfaces facing the light read as lit
-    if (!S.dbgNoStroke) mg.strokeStyle = '#fff'; mg.lineJoin = S.dbgJoin || 'round'; mg.lineWidth = S.dbgNoStroke ? 0.01 : 18; mg.globalAlpha = 0.85; mg.stroke(); mg.globalAlpha = 1;
+    mg.strokeStyle = '#fff'; mg.lineJoin = 'miter'; mg.lineWidth = 16; mg.globalAlpha = 0.85; mg.stroke(); mg.globalAlpha = 1;
     tg.globalCompositeOperation = 'destination-in';
-    tg.drawImage(S.mask, 0, 0, sz, sz, 0, 0, sz, sz);
-    m.globalAlpha = Math.min(1, o.i);
-    m.drawImage(S.tmp, 0, 0, sz, sz, (ox - view.x) * q, (oy - view.y) * q, sz, sz);
-    if (o.i > 1) { m.globalAlpha = Math.min(1, o.i - 1); m.drawImage(S.tmp, 0, 0, sz, sz, (ox - view.x) * q, (oy - view.y) * q, sz, sz); }
-    m.globalAlpha = 1;
+    tg.imageSmoothingEnabled = true;
+    tg.drawImage(S.mask, 0, 0, msz, msz, 0, 0, msz / Q[quality].mq, msz / Q[quality].mq);
+    if (bake) S.bakes.set(o.key, bake);
+    blit(tc);
   }
 
   /** Short soft ellipse on the ground under a body (normal blend, clipped to the ground surface). */
@@ -382,6 +396,7 @@
           ctx.drawImage(sprite(o.col), o.x - o.r * 0.8, o.y - o.r * 0.8, o.r * 1.6, o.r * 1.6); ctx.restore();
           continue;
         }
+        if (o.nb || o.r < 90) continue;
         const rr = Math.min(90, o.r * 0.38);
         ctx.globalAlpha = Math.min(1, 0.16 * o.i * gk);
         ctx.drawImage(sprite(o.col), o.x - rr, o.y - rr, rr * 2, rr * 2);
@@ -403,5 +418,6 @@
     stats() { return { ms: +S.ms.toFixed(2), lights: S.nLights, shadowed: S.nShadow, segs: S.hs.length + S.vs.length, quality, poly: +(S.tPoly || 0).toFixed(2), gather: +(S.tGather || 0).toFixed(2), map: +(S.tMap || 0).toFixed(2) }; },
   };
   Object.defineProperty(Lighting, '_state', { value: S, enumerable: false });
+  Object.defineProperty(Lighting, '_Q', { value: Q, enumerable: false }); // QA only
   G.Art.Lighting = Lighting;
 })();

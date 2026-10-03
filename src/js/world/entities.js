@@ -127,8 +127,9 @@
       this.onGround = r.ground;
       this.groundEntity = r.groundEntity;
       this.surface = r.ground ? L.surfaceOf(r.groundTiles) : { ice: false, conveyor: 0 };
-      // left a moving platform: inherit its velocity
-      if (wasGround && !this.onGround && prevGE && prevGE.vx) this.vx += prevGE.vx * G.CONFIG.momentum.inheritX;
+      // left the ground: a push slide stops at the edge (drops straight down, as in chapter 1);
+      // leaving a moving platform inherits its velocity
+      if (wasGround && !this.onGround) this.vx = prevGE && prevGE.vx ? prevGE.vx * G.CONFIG.momentum.inheritX : 0;
       for (const [tx, ty] of r.groundTiles) L.touchCrumble(tx, ty);
       // don't sink into the player: rest on their head instead
       if (!p.dead && G.overlap(this, p) && this.y < p.y) { this.y = p.y - this.h; this.vy = 0; this.onGround = true; }

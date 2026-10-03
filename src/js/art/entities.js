@@ -19,6 +19,9 @@
  *    (and render scale) and blitted; only the animated layers are drawn live.
  *  - Glows use a cached radial sprite with 'lighter' compositing (no shadowBlur).
  *  - Ambient particles go through G.fx and are rate-limited per entity with level time.
+ *
+ * Chapter 2 types: anchor, wind, dashcrystal, fallplat, sentinel, npc (who 'echo' = ЭХО;
+ * `talking` + `talkMood` drive head tilt, ring pulse, grille and arm gestures). Dash energy = magenta.
  */
 (function () {
   'use strict';
@@ -1791,12 +1794,602 @@
     }
   }
 
+  // ======================================================================================
+  // CHAPTER 2 (docs/chapter2-spec.md §2, §4). All fields read defensively.
+  // ======================================================================================
+  const DASH = '#ff6ad5', ECHO = '#ffd27a', SENT = '#ff3b3b';
+  /** Centre of an entity whether the engine stores a rect (x,y,w,h) or a centre (cx/cy or w=0). */
+  function centre(e) {
+    const cx = e.cx != null ? e.cx : e.x + (e.w || 0) / 2;
+    const cy = e.cy != null ? e.cy : e.y + (e.h || 0) / 2;
+    return [cx, cy];
+  }
+  /** Own clock for a field value: seconds since `e[field]` last changed (for unknown timers). */
+  const since = new WeakMap();
+  function sinceChange(e, field, t) {
+    let m = since.get(e);
+    if (!m) { m = {}; since.set(e, m); }
+    const v = e[field];
+    const s = m[field];
+    if (!s || s.v !== v || t < s.t - 0.01) { m[field] = { v, t: s ? t : t - 99 }; return s ? 0 : 99; }
+    return t - s.t;
+  }
+
+  // ------------------------------------------------------------------ ANCHOR (grapple point)
+  function drawAnchor(ctx, e, t, P) {
+    const [cx, cy] = e.w ? centre(e) : [e.x + T / 2, e.y + T / 2];
+    const att = !!e.attached;
+    const col = att ? C.jump : P.glyph;
+    // reach indicator when the player is airborne and in range
+    const pl = G.game && G.game.player;
+    let near = 0;
+    if (pl && !pl.dead) {
+      const reach = (e.len || (G.CONFIG && G.CONFIG.swing && G.CONFIG.swing.reach) || 4) * T;
+      const d = Math.hypot(pl.x + pl.w / 2 - cx, pl.y + 10 - cy);
+      near = d < reach ? 1 - d / reach * 0.6 : 0;
+      if (!pl.onGround && d < reach && !att) {
+        ctx.save();
+        ctx.strokeStyle = rgba(C.jump, 0.18 + 0.12 * Math.sin(t * 6)); ctx.lineWidth = 1; ctx.setLineDash([3, 5]);
+        ctx.lineDashOffset = -t * 12;
+        ctx.beginPath(); ctx.arc(cx, cy, 14 + 2 * Math.sin(t * 6), 0, TAU); ctx.stroke();
+        ctx.restore();
+      }
+    }
+    // mount: bronze bracket bolted into the rock
+    const body = sprite(`anc:${P.key}`, 24, 24, 3, (g) => {
+      g.fillStyle = 'rgba(0,0,0,0.35)'; g.beginPath(); g.arc(13, 13, 10, 0, TAU); g.fill();
+      const m = P.metal;
+      const gr = g.createLinearGradient(2, 2, 22, 22); gr.addColorStop(0, m[0]); gr.addColorStop(0.5, m[1]); gr.addColorStop(1, m[2]);
+      g.fillStyle = gr;
+      g.beginPath();
+      for (let i = 0; i < 8; i++) { const a = i / 8 * TAU + Math.PI / 8; g.lineTo(12 + Math.cos(a) * 10, 12 + Math.sin(a) * 10); }
+      g.closePath(); g.fill();
+      g.strokeStyle = '#12141d'; g.lineWidth = 1; g.stroke();
+      g.fillStyle = 'rgba(255,255,255,0.25)'; g.fillRect(5, 6, 6, 1);
+      for (let i = 0; i < 4; i++) { const a = i / 4 * TAU + Math.PI / 4; rivet(g, 12 + Math.cos(a) * 7.4, 12 + Math.sin(a) * 7.4, 0.9); }
+      g.fillStyle = '#12141d'; g.beginPath(); g.arc(12, 12, 5, 0, TAU); g.fill();
+    });
+    blit(ctx, body, cx - 12, cy - 12);
+    // energy eye + rotating claw ring
+    const pulse = 0.5 + 0.5 * Math.sin(t * 3 + cx * 0.01);
+    glow(ctx, cx, cy, 16 + near * 8, 16 + near * 8, col, (att ? 0.9 : 0.35 + 0.3 * pulse) + near * 0.25);
+    ctx.fillStyle = col; ctx.beginPath(); ctx.arc(cx, cy, 2.6 + (att ? 0.8 : 0.4 * pulse), 0, TAU); ctx.fill();
+    ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(cx - 0.7, cy - 0.7, 0.9, 0, TAU); ctx.fill();
+    ctx.strokeStyle = rgba(col, 0.9); ctx.lineWidth = 1.2; ctx.lineCap = 'round';
+    const spin = t * (att ? 4 : 0.8);
+    const r = att ? 4.2 : 4.8 + near;
+    for (let i = 0; i < 3; i++) { const a = spin + i / 3 * TAU; ctx.beginPath(); ctx.arc(cx, cy, r, a, a + 1.2); ctx.stroke(); }
+  }
+
+  // ------------------------------------------------------------------ WIND current zone
+  function windIntensity(e, t) {
+    if (e.on === false || e.phase === 'off' || e.phase === 'disabled') return 0.08;
+    if (e.phase === 'warn') return 0.25 + 0.2 * (Math.floor(t * 12) % 2);
+    if (typeof e.phase === 'number') return 0.08 + 0.92 * clamp01(e.phase);
+    return 1;
+  }
+  function drawWind(ctx, e, t, P) {
+    const x = e.x, y = e.y, w = e.w || T, h = e.h || T;
+    const dir = e.dir || 'up';
+    const ux = dir === 'left' ? -1 : dir === 'right' ? 1 : 0, uy = dir === 'up' ? -1 : dir === 'down' ? 1 : 0;
+    const I = windIntensity(e, t);
+    const str = (e.strength || 900) / 900;
+    const along = ux ? w : h, across = ux ? h : w;
+    const col = '#d8f4ff';
+    // faint volume tint
+    ctx.save();
+    const g0 = ux ? ctx.createLinearGradient(ux > 0 ? x : x + w, 0, ux > 0 ? x + w : x, 0) : ctx.createLinearGradient(0, uy > 0 ? y : y + h, 0, uy > 0 ? y + h : y);
+    g0.addColorStop(0, `rgba(190,235,255,${0.10 * I})`); g0.addColorStop(1, 'rgba(190,235,255,0)');
+    ctx.fillStyle = g0; ctx.fillRect(x, y, w, h);
+    // streaks (deterministic lanes, flow along dir)
+    ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+    ctx.globalCompositeOperation = 'lighter'; ctx.lineCap = 'round';
+    const lanes = Math.min(40, Math.max(3, Math.round(across / 7)));
+    const per = Math.min(3, Math.max(1, Math.round(along / 120)));
+    const speed = 220 * Math.sqrt(str) * (0.4 + 0.6 * I);
+    for (let i = 0; i < lanes; i++) {
+      const s = hash1(i * 3.1 + x * 0.013 + y * 0.007);
+      const off = (i + 0.5) / lanes * across + (s - 0.5) * 4;
+      for (let k = 0; k < per; k++) {
+        const L = 10 + 22 * hash1(i * 7.7 + k) * (0.5 + 0.5 * str);
+        const sp = speed * (0.7 + 0.6 * hash1(i * 1.3 + k * 9));
+        const pos = ((t * sp + s * along * 3 + k * along / per) % (along + L)) - L;
+        const wob = Math.sin(t * 5 + i + k) * 1.4;
+        const a = (0.25 + 0.35 * hash1(i + k * 5)) * I;
+        if (a < 0.02) continue;
+        ctx.strokeStyle = rgba(col, a); ctx.lineWidth = 0.8 + hash1(i * 2 + k) * 0.8;
+        ctx.beginPath();
+        if (ux) {
+          const sx = ux > 0 ? x + pos : x + w - pos;
+          ctx.moveTo(sx, y + off + wob); ctx.lineTo(sx + ux * L, y + off - wob * 0.5);
+        } else {
+          const sy = uy > 0 ? y + pos : y + h - pos;
+          ctx.moveTo(x + off + wob, sy); ctx.lineTo(x + off - wob * 0.5, sy + uy * L);
+        }
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
+    // upstream vent grille (bronze louvres) on the source edge
+    ctx.save();
+    const vx = ux ? (ux > 0 ? x : x + w) : x, vy = uy ? (uy > 0 ? y : y + h) : y;
+    const vertical = !!ux;
+    const len = vertical ? h : w;
+    ctx.fillStyle = '#12141d';
+    if (vertical) ctx.fillRect(vx - 3, vy, 6, len); else ctx.fillRect(vx, vy - 3, len, 6);
+    ctx.fillStyle = P.metal[1];
+    if (vertical) ctx.fillRect(vx - 2, vy + 1, 4, len - 2); else ctx.fillRect(vx + 1, vy - 2, len - 2, 4);
+    ctx.fillStyle = P.metal[2];
+    for (let i = 4; i < len - 2; i += 5) { if (vertical) ctx.fillRect(vx - 2, vy + i, 4, 1.4); else ctx.fillRect(vx + i, vy - 2, 1.4, 4); }
+    ctx.fillStyle = rgba(P.glyph, 0.35 + 0.55 * I);
+    if (vertical) ctx.fillRect(vx - 0.5, vy + 2, 1, len - 4); else ctx.fillRect(vx + 2, vy - 0.5, len - 4, 1);
+    ctx.restore();
+    // drifting dust
+    if (I > 0.5 && G.fx && every(e, '_windFx', t, 0.18) && inView(x + w / 2, y + h / 2, 60)) {
+      const r = Math.random();
+      const px = ux ? (ux > 0 ? x + 2 : x + w - 2) : x + r * w, py = uy ? (uy > 0 ? y + 2 : y + h - 2) : y + r * h;
+      G.fx.spawn({ x: px, y: py, vx: ux * 260 * str, vy: uy * 260 * str, life: Math.min(1.2, along / 260), size: 1.4, color: '#e9f6ff', drag: 0.4, gravity: 0 });
+    }
+  }
+
+  // ------------------------------------------------------------------ DASH CRYSTAL
+  function drawDashCrystal(ctx, e, t, P) {
+    const [cx, cy0] = centre(e);
+    const ready = e.ready !== false;
+    const regrow = (G.CONFIG && G.CONFIG.dashcrystal && G.CONFIG.dashcrystal.regrow) || 2.5;
+    const st = sinceChange(e, 'ready', t);
+    const cy = cy0 + Math.sin(t * 2.4 + cx * 0.05) * 2.2;
+    if (!ready) {
+      const k = clamp01(st / regrow);
+      // shattered: an outline that refills from the bottom
+      ctx.save();
+      ctx.strokeStyle = rgba(DASH, 0.25 + 0.3 * k); ctx.lineWidth = 0.8; ctx.setLineDash([2, 2]);
+      crystalPath(ctx, cx, cy, 5.5 + 2.5 * k, t); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.beginPath(); ctx.rect(cx - 10, cy + 10 - 20 * k, 20, 20 * k); ctx.clip();
+      crystalPath(ctx, cx, cy, 5.5 + 2.5 * k, t); ctx.fillStyle = rgba(DASH, 0.25); ctx.fill();
+      ctx.restore();
+      if (st < 0.35) { // pop ring
+        const q = st / 0.35;
+        ctx.strokeStyle = rgba('#ffe2f7', 0.9 * (1 - q)); ctx.lineWidth = 2 * (1 - q) + 0.3;
+        ctx.beginPath(); ctx.arc(cx, cy, 6 + 20 * easeOutCubic(q), 0, TAU); ctx.stroke();
+      }
+      return;
+    }
+    const born = st < 0.3 ? easeOutBack(st / 0.3) : 1;
+    shadow(ctx, cx + 2, cy0 + 16, 7, 1.6, 0.25);
+    glow(ctx, cx, cy, 22, 22, DASH, 0.55 + 0.15 * Math.sin(t * 5));
+    ctx.save();
+    ctx.translate(cx, cy); ctx.scale(born, born); ctx.translate(-cx, -cy);
+    // faceted body: 3 tones split by a rotating ridge (fake 3D spin)
+    const r = 8, ridge = Math.sin(t * 1.7) * 3.2;
+    ctx.fillStyle = '#12141d'; crystalPath(ctx, cx, cy, r + 1.2, t); ctx.fill();
+    ctx.fillStyle = '#b82f8f'; crystalPath(ctx, cx, cy, r, t); ctx.fill();
+    ctx.fillStyle = DASH;
+    ctx.beginPath(); ctx.moveTo(cx, cy - r * 1.45); ctx.lineTo(cx + ridge, cy); ctx.lineTo(cx, cy + r * 1.45); ctx.lineTo(cx - r * 0.95, cy); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#ffd0f4';
+    ctx.beginPath(); ctx.moveTo(cx, cy - r * 1.45); ctx.lineTo(cx + ridge, cy); ctx.lineTo(cx - r * 0.95, cy); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.85)'; ctx.lineWidth = 0.7;
+    ctx.beginPath(); ctx.moveTo(cx, cy - r * 1.45); ctx.lineTo(cx + ridge, cy); ctx.lineTo(cx, cy + r * 1.45); ctx.stroke();
+    // inner core
+    glow(ctx, cx, cy, 6, 6, '#ffffff', 0.6 + 0.3 * Math.sin(t * 7));
+    ctx.restore();
+    // orbiting motes
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < 3; i++) {
+      const a = t * 2.2 + i / 3 * TAU;
+      const ox = Math.cos(a) * 12, oy = Math.sin(a) * 4;
+      ctx.fillStyle = rgba('#ffd0f4', oy < 0 ? 0.35 : 0.85);
+      ctx.fillRect(cx + ox - 0.8, cy + oy - 0.8, 1.6, 1.6);
+    }
+    ctx.restore();
+  }
+  function crystalPath(ctx, cx, cy, r) {
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - r * 1.45); ctx.lineTo(cx + r * 0.95, cy); ctx.lineTo(cx, cy + r * 1.45); ctx.lineTo(cx - r * 0.95, cy); ctx.closePath();
+  }
+
+  // ------------------------------------------------------------------ FALLING PLATFORM
+  function drawFallPlat(ctx, e, t, P) {
+    const state = e.state || 'idle';
+    const w = e.w || 2 * T, hh = Math.min(e.h || 16, 16);
+    let x = e.x, y = e.y;
+    const st = e.t != null ? e.t : sinceChange(e, 'state', t);
+    if (state === 'gone') {
+      // respawn shimmer at home (only when the engine exposes it)
+      const hy = e.homeY != null ? e.homeY : e.y0 != null ? e.y0 : e.home && e.home.y;
+      const hx = e.homeX != null ? e.homeX : e.x0 != null ? e.x0 : e.home && e.home.x != null ? e.home.x : x;
+      const resp = (G.CONFIG && G.CONFIG.fallplat && G.CONFIG.fallplat.respawn) || 3;
+      if (hy != null && st > resp - 0.6) {
+        const k = clamp01((st - (resp - 0.6)) / 0.6);
+        ctx.strokeStyle = rgba(P.glyph, 0.6 * k * (0.6 + 0.4 * Math.sin(t * 30))); ctx.lineWidth = 1;
+        ctx.strokeRect(hx + 0.5, hy + 0.5, w - 1, hh - 1);
+      }
+      return;
+    }
+    let rot = 0;
+    if (state === 'shaking') {
+      const k = clamp01(st / ((G.CONFIG && G.CONFIG.fallplat && G.CONFIG.fallplat.shake) || 0.5));
+      x += Math.sin(t * 90) * (0.6 + 1.4 * k); y += Math.sin(t * 73 + 1) * 0.5 * k;
+      if (G.fx && every(e, '_fpFx', t, 0.08) && inView(x + w / 2, y)) {
+        G.fx.spawn({ x: x + Math.random() * w, y: y + hh, vx: 0, vy: 30, life: 0.6, size: 1.6, color: P.human ? '#8b8f96' : P.stone[1], gravity: 700 });
+      }
+    } else if (state === 'falling') rot = Math.min(0.12, st * 0.15) * (hash1(e.x * 0.1) < 0.5 ? -1 : 1);
+    const key = `fp:${P.key}:${w}:${hh}`;
+    const body = sprite(key, w, hh, 2, (g) => {
+      if (P.human) { bevel(g, 0, 0, w, hh, P.metal, 2, 0.35); hazard(g, 2, 2, w - 4, 3, 4); }
+      else {
+        bevel(g, 0, 0, w, hh, P.stone, 2, 0.3);
+        g.save(); G.roundRect(g, 0, 0, w, hh, 2); g.clip(); grain(g, 0, 0, w, hh, Math.round(w * 7 + hh), true); g.restore();
+        g.fillStyle = P.bronze[1]; g.fillRect(0, 0, w, 2); g.fillStyle = P.bronze[0]; g.fillRect(0, 0, w, 0.8);
+        // under-teeth: it is clearly not anchored
+        g.fillStyle = P.stone[2];
+        for (let i = 3; i < w - 3; i += 7) { g.beginPath(); g.moveTo(i, hh); g.lineTo(i + 3, hh + 2); g.lineTo(i + 6, hh); g.fill(); }
+      }
+      g.strokeStyle = 'rgba(0,0,0,0.5)'; g.lineWidth = 0.8;
+      g.beginPath(); g.moveTo(w * 0.32, 2); g.lineTo(w * 0.36, hh * 0.5); g.lineTo(w * 0.31, hh); g.moveTo(w * 0.7, 2); g.lineTo(w * 0.66, hh * 0.6); g.stroke();
+    });
+    ctx.save();
+    ctx.translate(x + w / 2, y + hh / 2); ctx.rotate(rot); ctx.translate(-w / 2, -hh / 2);
+    blit(ctx, body, 0, 0);
+    // glowing crack + warning glyphs while shaking
+    const warn = state === 'shaking' ? 1 : state === 'falling' ? 0.5 : 0;
+    const a = warn ? 0.5 + 0.5 * Math.sin(t * 40) : 0.25 + 0.1 * Math.sin(t * 2);
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.strokeStyle = rgba(warn ? '#ff7a3a' : P.glyph, a); ctx.lineWidth = 0.8;
+    ctx.beginPath(); ctx.moveTo(w * 0.32, 2); ctx.lineTo(w * 0.36, hh * 0.5); ctx.lineTo(w * 0.31, hh); ctx.moveTo(w * 0.7, 2); ctx.lineTo(w * 0.66, hh * 0.6); ctx.stroke();
+    ctx.fillStyle = rgba(warn ? '#ff7a3a' : P.glyph, a * 0.8);
+    for (let i = 8; i < w - 6; i += 16) ctx.fillRect(i, hh * 0.5 - 0.5, 4, 1);
+    ctx.restore();
+  }
+
+  // ------------------------------------------------------------------ SENTINEL (Architect guard drone)
+  const smem = new WeakMap();
+  function drawSentinel(ctx, e, t, P) {
+    const [cx, cy] = centre(e);
+    const state = e.state || 'patrol';
+    let m = smem.get(e);
+    if (!m || t < m.t - 0.01) { m = { t, tilt: 0, open: 0, ex: 0, ey: 0, heat: 0, face: 1 }; smem.set(e, m); }
+    const dt = clamp01(t - m.t) ; m.t = t;
+    const vx = e.vx || 0, vy = e.vy || 0;
+    const chase = state === 'chase', alert = state === 'alert', stun = state === 'stunned';
+    const heatT = chase ? 1 : alert ? 0.85 : state === 'return' ? 0.25 : stun ? 0 : 0.35;
+    const k = 1 - Math.exp(-10 * dt);
+    m.heat += (heatT - m.heat) * k;
+    m.open += ((chase ? 1 : alert ? 0.7 : stun ? -0.6 : 0) - m.open) * k;
+    if (Math.abs(vx) > 8) m.face = vx > 0 ? 1 : -1;
+    m.tilt += ((stun ? 0.9 * m.face : Math.max(-0.45, Math.min(0.45, vx / 400))) - m.tilt) * (1 - Math.exp(-6 * dt));
+    // eye look target
+    let lx = m.face * 6, ly = 2;
+    if (e.eye && isFinite(e.eye.x)) { const dx = e.eye.x - cx, dy = e.eye.y - cy, d = Math.hypot(dx, dy) || 1; lx = dx / d * 2.4; ly = dy / d * 2.4; }
+    else if (state === 'patrol') { lx = Math.sin(t * 1.3) * 2.4; ly = 1; }
+    else { const d = Math.hypot(lx, ly); lx = lx / d * 2.4; ly = ly / d * 2.4; }
+    m.ex += (lx - m.ex) * (1 - Math.exp(-14 * dt)); m.ey += (ly - m.ey) * (1 - Math.exp(-14 * dt));
+    const at = alert ? (e.alertT != null ? e.alertT : sinceChange(e, 'state', t)) : 0;
+    const jx = alert ? Math.sin(t * 80) * 0.8 : 0;
+    const bob = stun ? 0 : Math.sin(t * 3.2 + cx * 0.02) * 1.2;
+    const heat = m.heat;
+    const eyeCol = stun ? '#5a6d80' : heat > 0.6 ? SENT : '#ffb347';
+    const flick = stun ? (hash1(Math.floor(t * 14)) < 0.18 ? 0.8 : 0.05) : 1;
+
+    // detection cone (patrol scan / chase lock)
+    if (!stun) {
+      const ang = Math.atan2(m.ey, m.ex);
+      const reach = Math.min(90, ((e.range || 7) * T) * 0.4);
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      const cg = ctx.createRadialGradient(cx, cy, 2, cx, cy, reach);
+      cg.addColorStop(0, rgba(eyeCol, 0.16 * heat + 0.04)); cg.addColorStop(1, rgba(eyeCol, 0));
+      ctx.fillStyle = cg;
+      const spread = chase ? 0.18 : 0.35;
+      ctx.beginPath(); ctx.moveTo(cx, cy); ctx.arc(cx, cy, reach, ang - spread, ang + spread); ctx.closePath(); ctx.fill();
+      ctx.restore();
+    }
+    // chase thrust trail
+    if (chase && (Math.abs(vx) + Math.abs(vy)) > 30) {
+      const sp = Math.hypot(vx, vy);
+      ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.lineCap = 'round';
+      for (let i = 0; i < 3; i++) {
+        ctx.strokeStyle = rgba(SENT, 0.35 - i * 0.1); ctx.lineWidth = 3 - i;
+        ctx.beginPath(); ctx.moveTo(cx - vx / sp * 6, cy - vy / sp * 6 + (i - 1) * 3);
+        ctx.lineTo(cx - vx / sp * (18 + sp * 0.05), cy - vy / sp * (18 + sp * 0.05) + (i - 1) * 3); ctx.stroke();
+      }
+      ctx.restore();
+    }
+    glow(ctx, cx, cy + 12, 10, 4, eyeCol, stun ? 0 : 0.3);
+    ctx.save();
+    ctx.translate(cx + jx, cy + bob);
+    ctx.rotate(m.tilt);
+    // fins (open with heat; limp when stunned)
+    const op = m.open;
+    for (const s of [-1, 1]) {
+      ctx.save();
+      ctx.translate(s * 7, -2); ctx.rotate(s * (0.5 - op * 0.55));
+      ctx.fillStyle = '#12141d';
+      ctx.beginPath(); ctx.moveTo(0, -2.4); ctx.lineTo(s * 11, -6 - op * 2); ctx.lineTo(s * 9, 1.5); ctx.lineTo(0, 2.6); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = P.human ? '#5f6a7a' : '#6e5532';
+      ctx.beginPath(); ctx.moveTo(s * 1, -1.4); ctx.lineTo(s * 9.6, -5 - op * 2); ctx.lineTo(s * 8, 0.6); ctx.lineTo(s * 1, 1.6); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = rgba(eyeCol, 0.5 + 0.5 * heat); ctx.fillRect(s > 0 ? 3 : -8, -1.6 - op, 5, 0.8);
+      ctx.restore();
+    }
+    // hull: kite-shaped bronze/stone wedge
+    const hull = sprite(`sent:${P.key}`, 22, 26, 2, (g) => {
+      g.translate(11, 11);
+      g.fillStyle = '#12141d';
+      g.beginPath(); g.moveTo(0, -11); g.lineTo(10, -2); g.lineTo(5, 9); g.lineTo(0, 14); g.lineTo(-5, 9); g.lineTo(-10, -2); g.closePath(); g.fill();
+      const gr = g.createLinearGradient(-8, -10, 8, 12);
+      const m = P.human ? P.metal : ['#8f7a5c', '#4b3d2b', '#1f1810'];
+      gr.addColorStop(0, m[0]); gr.addColorStop(0.45, m[1]); gr.addColorStop(1, m[2]);
+      g.fillStyle = gr;
+      g.beginPath(); g.moveTo(0, -9.6); g.lineTo(8.6, -2); g.lineTo(4.2, 8.2); g.lineTo(0, 12.4); g.lineTo(-4.2, 8.2); g.lineTo(-8.6, -2); g.closePath(); g.fill();
+      g.fillStyle = 'rgba(255,240,210,0.35)'; g.beginPath(); g.moveTo(0, -9.6); g.lineTo(-8.6, -2); g.lineTo(-7, -2); g.lineTo(0, -8); g.fill();
+      g.strokeStyle = 'rgba(0,0,0,0.5)'; g.lineWidth = 0.7;
+      g.beginPath(); g.moveTo(-8, -2); g.lineTo(8, -2); g.moveTo(-4, 8); g.lineTo(4, 8); g.moveTo(0, 8); g.lineTo(0, 12); g.stroke();
+      rivet(g, -5.5, -3.6, 0.6); rivet(g, 5.5, -3.6, 0.6);
+      // eye socket
+      g.fillStyle = '#06080c'; g.beginPath(); g.ellipse(0, 1.6, 4.6, 3.8, 0, 0, TAU); g.fill();
+      g.strokeStyle = m[0]; g.lineWidth = 0.6; g.stroke();
+    });
+    blit(ctx, hull, -11, -11);
+    // stinger antenna
+    ctx.strokeStyle = '#12141d'; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.moveTo(0, 13); ctx.lineTo(Math.sin(t * 4) * 1.2, 18); ctx.stroke();
+    ctx.fillStyle = rgba(eyeCol, flick * (0.4 + 0.6 * ((t * (chase ? 6 : 1.5)) % 1 < 0.4 ? 1 : 0)));
+    ctx.beginPath(); ctx.arc(Math.sin(t * 4) * 1.2, 18, 1.1, 0, TAU); ctx.fill();
+    // glyph seam
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.strokeStyle = rgba(eyeCol, (0.25 + 0.6 * heat) * flick); ctx.lineWidth = 0.8;
+    ctx.beginPath(); ctx.moveTo(-7, -2.6); ctx.lineTo(-3, -6); ctx.moveTo(7, -2.6); ctx.lineTo(3, -6); ctx.stroke();
+    // eye
+    const ex = m.ex * 0.8, ey = 1.6 + m.ey * 0.6;
+    glow(ctx, ex, ey, 9 + 6 * heat, 9 + 6 * heat, eyeCol, (0.45 + 0.5 * heat) * flick);
+    const pr = chase ? 1.3 : alert ? 1 + 0.6 * Math.abs(Math.sin(t * 20)) : 1.9;
+    ctx.fillStyle = rgba(eyeCol, flick); ctx.beginPath(); ctx.ellipse(ex, ey, 2.6, chase ? 1.6 : 2.3, 0, 0, TAU); ctx.fill();
+    ctx.fillStyle = rgba('#fff1d6', flick); ctx.beginPath(); ctx.arc(ex, ey, pr * 0.55, 0, TAU); ctx.fill();
+    ctx.globalCompositeOperation = 'source-over';
+    // brow plate: angry slant when chasing
+    ctx.fillStyle = '#12141d';
+    ctx.beginPath(); ctx.moveTo(-5, -2.2 + op * 1.6); ctx.lineTo(5, -2.2 + op * 1.6); ctx.lineTo(5, -2.2 - op * 0.2); ctx.lineTo(0, -1.6 + op * 2.4); ctx.lineTo(-5, -2.2 - op * 0.2); ctx.closePath(); ctx.fill();
+    ctx.restore();
+    // alert telegraph: lock-on brackets closing in + "!" glyph
+    if (alert) {
+      const q = clamp01(at / ((G.CONFIG && G.CONFIG.sentinel && G.CONFIG.sentinel.alertTime) || 0.45));
+      const R = 20 - 10 * q;
+      ctx.save(); ctx.globalCompositeOperation = 'lighter';
+      ctx.strokeStyle = rgba(SENT, 0.5 + 0.5 * Math.sin(t * 40)); ctx.lineWidth = 1.2;
+      for (let i = 0; i < 4; i++) {
+        const a = i / 4 * TAU + Math.PI / 4 + q;
+        ctx.beginPath(); ctx.arc(cx, cy, R, a - 0.3, a + 0.3); ctx.stroke();
+      }
+      ctx.fillStyle = rgba(SENT, 0.9);
+      ctx.fillRect(cx - 1, cy - 26 - 2 * q, 2, 6); ctx.fillRect(cx - 1, cy - 18.5 - 2 * q, 2, 2);
+      ctx.restore();
+    }
+    // stunned: arcs + sparks
+    if (stun) {
+      ctx.save(); ctx.globalCompositeOperation = 'lighter';
+      ctx.strokeStyle = rgba('#9fe8ff', 0.8); ctx.lineWidth = 0.8;
+      const n = Math.floor(t * 18);
+      for (let i = 0; i < 2; i++) {
+        if (hash1(n + i * 7) < 0.4) continue;
+        ctx.beginPath();
+        let px = cx + (hash1(n * 3 + i) - 0.5) * 18, py = cy + (hash1(n * 5 + i) - 0.5) * 16;
+        ctx.moveTo(px, py);
+        for (let j = 0; j < 4; j++) { px += (hash1(n + j * 11 + i) - 0.5) * 9; py += (hash1(n + j * 13 + i) - 0.5) * 9; ctx.lineTo(px, py); }
+        ctx.stroke();
+      }
+      ctx.restore();
+      if (every(e, '_stFx', t, 0.3)) sparks(cx, cy, { count: 3, color: ['#9fe8ff', '#ffffff'], speed: 110 });
+    }
+  }
+
+  // ------------------------------------------------------------------ NPC: ЭХО (Architect custodian automaton)
+  const ECHO_MOODS = {
+    neutral:    { tilt: 0.06, ring: 1, spin: 1, eye: 0.85, slit: 0.35, col: [255, 210, 122], arm: 0, lean: 0 },
+    happy:      { tilt: 0.16, ring: 1.12, spin: 1.4, eye: 1, slit: 0.2, col: [255, 226, 150], arm: 0.5, lean: -0.02 },
+    sad:        { tilt: 0.22, ring: 0.8, spin: 0.35, eye: 0.5, slit: 0.6, col: [200, 170, 120], arm: -0.3, lean: 0.08 },
+    angry:      { tilt: -0.05, ring: 1.05, spin: 2.6, eye: 1, slit: 0.75, col: [255, 120, 70], arm: 0.8, lean: 0.06 },
+    scared:     { tilt: -0.1, ring: 0.9, spin: 3.2, eye: 1, slit: 0.1, col: [255, 236, 190], arm: -0.4, lean: -0.08 },
+    surprised:  { tilt: -0.08, ring: 1.3, spin: 1.8, eye: 1.2, slit: 0, col: [255, 240, 200], arm: 0.6, lean: -0.05 },
+    thinking:   { tilt: 0.28, ring: 0.95, spin: 0.5, eye: 0.7, slit: 0.45, col: [255, 200, 110], arm: 1.2, lean: 0.03 },
+    determined: { tilt: -0.02, ring: 1.05, spin: 1.2, eye: 1, slit: 0.55, col: [255, 196, 90], arm: 0.3, lean: 0 },
+  };
+  const nmem = new WeakMap();
+  function drawNpc(ctx, e, t, P) {
+    if (e.who && e.who !== 'echo') { drawNpcFallback(ctx, e, t); return; }
+    const fx = e.x + (e.w || T) / 2, fy = e.y + (e.h || T);
+    const talking = !!e.talking;
+    const tm = talking ? (ECHO_MOODS[e.talkMood] || ECHO_MOODS.neutral) : ECHO_MOODS.neutral;
+    let m = nmem.get(e);
+    if (!m || t < m.t - 0.01) { m = { t, v: Object.assign({}, tm), col: tm.col.slice(), face: e.facing || -1, talk: 0 }; nmem.set(e, m); }
+    const dt = clamp01(t - m.t); m.t = t;
+    const k = 1 - Math.exp(-6 * dt);
+    for (const key in tm) if (typeof tm[key] === 'number') m.v[key] += (tm[key] - m.v[key]) * k;
+    for (let i = 0; i < 3; i++) m.col[i] += (tm.col[i] - m.col[i]) * k;
+    m.talk += ((talking ? 1 : 0) - m.talk) * (1 - Math.exp(-8 * dt));
+    // facing: explicit, else toward the player
+    let fTarget = e.facing || 0;
+    const pl = G.game && G.game.player;
+    if (!fTarget) fTarget = pl ? (pl.x + pl.w / 2 < fx ? -1 : 1) : -1;
+    m.face += (fTarget - m.face) * (1 - Math.exp(-5 * dt));
+    const V = m.v;
+    const col = '#' + m.col.map((c) => Math.round(c).toString(16).padStart(2, '0')).join('');
+    const syl = talking ? Math.abs(Math.sin(t * 9.5) * Math.sin(t * 3.7 + 0.6)) : 0;
+    const breath = Math.sin(t * 1.1);
+    const sway = Math.sin(t * 0.55) * 0.025 + V.lean;
+    // idle head tilt beats + talking tilt
+    const idleTilt = Math.sin(t * 0.37) * 0.05 + (Math.sin(t * 0.21) > 0.85 ? 0.12 : 0);
+    const headA = V.tilt * m.talk + idleTilt * (1 - m.talk * 0.6) + (talking ? Math.sin(t * 2.2) * 0.06 : 0);
+    const B = ['#e9c98a', '#a27843', '#4a3218'];   // bronze
+    const D = '#12141d';
+
+    shadow(ctx, fx + 3, fy, 16, 3, 0.45);
+    glow(ctx, fx, fy - 60, 34, 34, col, 0.18 + 0.12 * m.talk + 0.15 * syl);
+    ctx.save();
+    ctx.translate(fx, fy);
+    ctx.scale(m.face < 0 ? -1 : 1, 1);
+    const sx = Math.abs(m.face) < 0.999 ? Math.max(0.35, Math.abs(m.face)) : 1;  // turning squash
+    ctx.scale(sx, 1);
+
+    // --- legs: long, thin; right leg plated, left leg bare mechanism (asymmetry)
+    const hipY = -30;
+    ctx.lineCap = 'round';
+    const leg = (x0, x1, w, c1, c2) => {
+      ctx.strokeStyle = D; ctx.lineWidth = w + 1.6; ctx.beginPath(); ctx.moveTo(x0, hipY); ctx.lineTo(x0 + 1, -15); ctx.lineTo(x1, -1.5); ctx.stroke();
+      ctx.strokeStyle = c1; ctx.lineWidth = w; ctx.stroke();
+      ctx.strokeStyle = c2; ctx.lineWidth = w * 0.3; ctx.beginPath(); ctx.moveTo(x0 - w * 0.2, hipY); ctx.lineTo(x0 + 1 - w * 0.2, -15); ctx.stroke();
+    };
+    leg(-3, -4.5, 2.2, '#5c4a35', '#9c8364');
+    leg(2.5, 3.5, 3.4, B[1], B[0]);
+    ctx.fillStyle = D; ctx.fillRect(-7.5, -2.5, 6, 2.5); ctx.fillRect(1, -3, 7, 3);
+    ctx.fillStyle = B[1]; ctx.fillRect(1.6, -2.4, 5.8, 1.6);
+    // knee joint
+    ctx.fillStyle = D; ctx.beginPath(); ctx.arc(-2, -15, 1.9, 0, TAU); ctx.fill();
+    ctx.fillStyle = col; ctx.beginPath(); ctx.arc(-2, -15, 0.8, 0, TAU); ctx.fill();
+
+    ctx.save();
+    ctx.translate(0, hipY); ctx.rotate(sway);
+    // --- tabard of overlapping plates (sways)
+    for (let i = 0; i < 5; i++) {
+      const px = -6 + i * 3, sw = Math.sin(t * 1.3 + i * 0.9) * 0.6;
+      ctx.fillStyle = D; ctx.beginPath(); ctx.moveTo(px - 0.6, -1); ctx.lineTo(px + 3.6, -1); ctx.lineTo(px + 3 + sw, 11 - (i % 2) * 2); ctx.lineTo(px + sw, 12 - (i % 2) * 2); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = i % 2 ? B[2] : B[1]; ctx.beginPath(); ctx.moveTo(px, 0); ctx.lineTo(px + 3, 0); ctx.lineTo(px + 2.5 + sw, 10 - (i % 2) * 2); ctx.lineTo(px + 0.5 + sw, 10.8 - (i % 2) * 2); ctx.closePath(); ctx.fill();
+    }
+    // --- torso: narrow, tall bronze shell with exposed ribs on the left
+    const chestY = -24 - breath * 0.3;
+    ctx.fillStyle = D;
+    ctx.beginPath(); ctx.moveTo(-5.5, 1); ctx.lineTo(-6.5, chestY + 4); ctx.lineTo(-4, chestY); ctx.lineTo(5, chestY - 1); ctx.lineTo(7.5, chestY + 5); ctx.lineTo(5, 1); ctx.closePath(); ctx.fill();
+    const tg = ctx.createLinearGradient(-6, chestY, 6, 2); tg.addColorStop(0, B[0]); tg.addColorStop(0.5, B[1]); tg.addColorStop(1, B[2]);
+    ctx.fillStyle = tg;
+    ctx.beginPath(); ctx.moveTo(-1, 0); ctx.lineTo(-2.5, chestY + 1); ctx.lineTo(4.4, chestY + 0.2); ctx.lineTo(6.5, chestY + 5); ctx.lineTo(4.2, 0); ctx.closePath(); ctx.fill();
+    // ribs (exposed side)
+    ctx.strokeStyle = '#7d6446'; ctx.lineWidth = 0.9;
+    for (let i = 0; i < 5; i++) { const y = chestY + 4 + i * 3.6; ctx.beginPath(); ctx.moveTo(-5.2, y); ctx.quadraticCurveTo(-3.6, y - 1, -1.6, y); ctx.stroke(); }
+    // spine of cables
+    ctx.strokeStyle = '#2a2016'; ctx.lineWidth = 0.7; ctx.beginPath(); ctx.moveTo(-1.4, 0); ctx.lineTo(-2.2, chestY + 1); ctx.stroke();
+    // chest core (pulses with speech)
+    glow(ctx, 1.8, chestY + 9, 7 + 4 * syl, 7 + 4 * syl, col, 0.55 + 0.4 * syl);
+    ctx.fillStyle = D; ctx.fillRect(0.2, chestY + 6.5, 3.4, 5);
+    ctx.fillStyle = col; ctx.fillRect(0.8, chestY + 7.2 + 3 * (1 - syl * 0.6) * 0.3, 2.2, 3.4);
+    // glyph channels on the plate
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    ctx.strokeStyle = rgba(col, 0.35 + 0.35 * m.talk); ctx.lineWidth = 0.6;
+    ctx.beginPath(); ctx.moveTo(4.5, chestY + 3); ctx.lineTo(3.2, chestY + 5); ctx.lineTo(5.2, chestY + 13); ctx.lineTo(3.4, chestY + 18); ctx.stroke();
+    ctx.restore();
+    // --- far arm (thin, long, hangs; slight finger twitch)
+    const shY = chestY + 1.5;
+    const tw = Math.sin(t * 7) * (Math.sin(t * 0.9) > 0.7 ? 0.25 : 0);
+    ctx.strokeStyle = D; ctx.lineWidth = 2.4;
+    ctx.beginPath(); ctx.moveTo(-3.5, shY); ctx.lineTo(-5.5, shY + 11); ctx.lineTo(-5 + tw, shY + 22); ctx.stroke();
+    ctx.strokeStyle = '#5c4a35'; ctx.lineWidth = 1.2; ctx.stroke();
+    // --- big asymmetric pauldron (near shoulder)
+    ctx.fillStyle = D; ctx.beginPath(); ctx.ellipse(4.2, shY - 0.5, 5.6, 3.8, -0.25, 0, TAU); ctx.fill();
+    const pg = ctx.createLinearGradient(0, shY - 4, 8, shY + 3); pg.addColorStop(0, B[0]); pg.addColorStop(1, B[2]);
+    ctx.fillStyle = pg; ctx.beginPath(); ctx.ellipse(4.2, shY - 0.7, 4.8, 3.1, -0.25, 0, TAU); ctx.fill();
+    ctx.fillStyle = 'rgba(0,0,0,0.4)'; ctx.fillRect(1.5, shY + 0.4, 6, 0.6);
+    // --- near arm: gesture (raise / palm out / chin) from mood + speech beat
+    const gest = m.talk * (0.35 + 0.65 * Math.max(0, Math.sin(t * 1.9))) * (1 + Math.max(0, V.arm)) * 0.6;
+    const chin = talking && e.talkMood === 'thinking' ? 1 : 0;
+    const ua = 1.35 - gest * 1.2 - chin * 0.9 + (V.arm < 0 ? -V.arm * 0.2 : 0);   // upper arm angle from +x (down = PI/2)
+    const fa = ua - 0.3 - gest * 1.1 - chin * 1.9;
+    const ex = 5 + Math.cos(ua) * 10, ey = shY + 2 + Math.sin(ua) * 10;
+    const hx = ex + Math.cos(fa) * 10, hy = ey + Math.sin(fa) * 10;
+    ctx.strokeStyle = D; ctx.lineWidth = 3.4;
+    ctx.beginPath(); ctx.moveTo(5, shY + 2); ctx.lineTo(ex, ey); ctx.lineTo(hx, hy); ctx.stroke();
+    ctx.strokeStyle = B[1]; ctx.lineWidth = 2; ctx.stroke();
+    ctx.strokeStyle = B[0]; ctx.lineWidth = 0.6; ctx.beginPath(); ctx.moveTo(5, shY + 1.5); ctx.lineTo(ex, ey - 0.5); ctx.stroke();
+    ctx.fillStyle = D; ctx.beginPath(); ctx.arc(ex, ey, 1.6, 0, TAU); ctx.fill();
+    // three long fingers
+    ctx.strokeStyle = D; ctx.lineWidth = 0.9;
+    for (let i = -1; i <= 1; i++) {
+      const a = fa + i * 0.35 + (gest > 0.2 ? -0.4 : 0.2) + Math.sin(t * 3 + i) * 0.05;
+      ctx.beginPath(); ctx.moveTo(hx, hy); ctx.lineTo(hx + Math.cos(a) * 3.6, hy + Math.sin(a) * 3.6); ctx.stroke();
+    }
+    if (gest > 0.3) glow(ctx, hx, hy, 6, 6, col, 0.35 * gest);
+
+    // --- head: neck rods, cracked mask, ring of light
+    const neckY = chestY - 1;
+    ctx.strokeStyle = D; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.moveTo(0.5, neckY + 1); ctx.lineTo(1, neckY - 4); ctx.moveTo(2.5, neckY + 1); ctx.lineTo(2.2, neckY - 4); ctx.stroke();
+    ctx.save();
+    ctx.translate(1.6, neckY - 9); ctx.rotate(headA);
+    const ringA = t * 0.6 * V.spin;
+    const rr = 11 * V.ring * (1 + 0.06 * syl);
+    const ringTilt = 0.28;
+    const drawRing = (back) => {
+      ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.lineCap = 'round';
+      for (let i = 0; i < 9; i++) {
+        const a0 = ringA + i / 9 * TAU, a1 = a0 + TAU / 9 * 0.62;
+        const mid = (a0 + a1) / 2;
+        const isBack = Math.sin(mid) < 0;
+        if (isBack !== back) continue;
+        ctx.strokeStyle = rgba(col, (back ? 0.35 : 0.85) * (0.6 + 0.4 * (i % 3 === 0 ? 1 : 0.5)) * (0.75 + 0.25 * m.talk + 0.3 * syl));
+        ctx.lineWidth = back ? 1 : 1.6;
+        ctx.beginPath(); ctx.ellipse(0, -1, rr, rr * ringTilt, -0.18, a0, a1); ctx.stroke();
+      }
+      ctx.restore();
+    };
+    drawRing(true);
+    // mask (tall oval, chin narrow); crack across the left eye
+    const mask = (q) => { q.beginPath(); q.moveTo(0, -7.5); q.bezierCurveTo(5.4, -7.5, 6.2, -1, 4.6, 3.5); q.quadraticCurveTo(3, 7.5, 0.4, 7.8); q.quadraticCurveTo(-3.6, 7, -4.6, 2); q.bezierCurveTo(-5.6, -3, -4.4, -7.5, 0, -7.5); q.closePath(); };
+    mask(ctx); ctx.lineWidth = 1.6; ctx.strokeStyle = D; ctx.stroke();
+    const mg = ctx.createLinearGradient(-4, -7, 5, 7); mg.addColorStop(0, '#f6e6c4'); mg.addColorStop(0.5, '#c9a46a'); mg.addColorStop(1, '#6b4c26');
+    ctx.fillStyle = mg; ctx.fill();
+    ctx.save(); mask(ctx); ctx.clip();
+    ctx.fillStyle = 'rgba(60,35,10,0.35)'; ctx.fillRect(-6, 3, 12, 6);
+    // eye slits (near eye bright, far eye behind the crack flickers)
+    const eo = V.eye * (1 + 0.2 * syl), sl = V.slit;
+    glow(ctx, 2.6, -1, 5 * eo, 5 * eo, col, 0.55 * eo);
+    ctx.fillStyle = D; ctx.beginPath(); ctx.ellipse(2.6, -1, 1.9, 1.2 * (1 - sl * 0.7) + 0.2, -0.15, 0, TAU); ctx.fill();
+    ctx.fillStyle = col; ctx.beginPath(); ctx.ellipse(2.8, -1, 1.2, (0.8 * (1 - sl * 0.75) + 0.12) * eo, -0.15, 0, TAU); ctx.fill();
+    const farOn = hash1(Math.floor(t * 9)) < 0.82 ? 1 : 0.2;
+    ctx.fillStyle = D; ctx.beginPath(); ctx.ellipse(-2, -1.2, 1.3, 1.1 * (1 - sl * 0.6) + 0.2, 0.1, 0, TAU); ctx.fill();
+    ctx.fillStyle = rgba(col, 0.75 * farOn * eo); ctx.beginPath(); ctx.ellipse(-2, -1.2, 0.7, 0.55 * (1 - sl * 0.6) + 0.1, 0.1, 0, TAU); ctx.fill();
+    // mouth grille: bars light up with speech
+    for (let i = 0; i < 4; i++) {
+      const on = talking ? Math.abs(Math.sin(t * 11 + i * 1.3)) * syl : 0;
+      ctx.fillStyle = on > 0.25 ? rgba(col, 0.4 + 0.6 * on) : 'rgba(40,24,8,0.75)';
+      ctx.fillRect(-0.6 + i * 1.3, 3.6, 0.7, 2.2);
+    }
+    // crack: dark fissure leaking light
+    ctx.strokeStyle = D; ctx.lineWidth = 0.9;
+    ctx.beginPath(); ctx.moveTo(-1.4, -7.8); ctx.lineTo(-0.6, -4.5); ctx.lineTo(-2.4, -2.6); ctx.lineTo(-1.6, 0.6); ctx.lineTo(-3.4, 3.4); ctx.moveTo(-2.4, -2.6); ctx.lineTo(-4.6, -3.4); ctx.stroke();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.strokeStyle = rgba(col, 0.25 + 0.35 * syl); ctx.lineWidth = 0.4; ctx.stroke();
+    ctx.globalCompositeOperation = 'source-over';
+    // key-light rim
+    ctx.strokeStyle = 'rgba(255,248,225,0.6)'; ctx.lineWidth = 0.7;
+    ctx.beginPath(); ctx.arc(0.4, 0, 6.6, Math.PI * 1.1, Math.PI * 1.5); ctx.stroke();
+    ctx.restore();
+    // crest fin on top of the mask (asymmetric)
+    ctx.fillStyle = D; ctx.beginPath(); ctx.moveTo(-1, -7); ctx.lineTo(-4.5, -12); ctx.lineTo(1.5, -7.6); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = B[1]; ctx.beginPath(); ctx.moveTo(-0.6, -7.4); ctx.lineTo(-3.6, -11); ctx.lineTo(0.8, -7.7); ctx.closePath(); ctx.fill();
+    drawRing(false);
+    ctx.restore();
+    ctx.restore();
+    ctx.restore();
+    // dust motes drifting through its light
+    if (G.fx && every(e, '_echoFx', t, talking ? 0.35 : 0.8) && inView(fx, fy - 40)) {
+      G.fx.spawn({ x: fx + (Math.random() - 0.5) * 30, y: fy - 50 - Math.random() * 20, vx: (Math.random() - 0.5) * 8, vy: -6 - Math.random() * 6, life: 1.6, size: 1.2, color: col, glow: true, gravity: 0 });
+    }
+  }
+  /** Generic placeholder for unknown npc `who`: a lit silhouette, never throws. */
+  function drawNpcFallback(ctx, e, t) {
+    const fx = e.x + (e.w || T) / 2, fy = e.y + (e.h || T);
+    const colr = (G.Characters && G.Characters[e.who] && G.Characters[e.who].color) || '#c8c8c8';
+    shadow(ctx, fx + 2, fy, 10, 2.5, 0.4);
+    ctx.fillStyle = '#12141d';
+    ctx.fillRect(fx - 5, fy - 34, 10, 34);
+    ctx.beginPath(); ctx.arc(fx, fy - 40, 6, 0, TAU); ctx.fill();
+    glow(ctx, fx, fy - 40, 12, 12, colr.length === 7 ? colr : '#c8c8c8', 0.3 + (e.talking ? 0.3 * Math.abs(Math.sin(t * 10)) : 0));
+  }
+
   // ------------------------------------------------------------------ dispatcher
   const DRAW = {
     door: drawDoor, bridge: drawBridge, lever: drawLever, plate: drawPlate, terminal: drawTerminal,
     part: drawPart, socket: drawSocket, mplatform: drawMPlatform, crate: drawCrate, laser: drawLaser,
     saw: drawSaw, checkpoint: drawCheckpoint, exit: drawExit, shard: drawShard, jumppad: drawJumppad, sign: drawSign,
+    anchor: drawAnchor, wind: drawWind, dashcrystal: drawDashCrystal, fallplat: drawFallPlat, sentinel: drawSentinel, npc: drawNpc,
   };
+  const failed = {};
 
   G.Art.Entities = {
     /**
@@ -1812,7 +2405,10 @@
       if (!fn) return;
       const P = palette(level || (G.game && G.game.level));
       ctx.save();
-      try { fn(ctx, e, t, P); } finally { ctx.restore(); }
+      try { fn(ctx, e, t, P); } catch (err) {
+        // never let one bad entity (e.g. half-initialised Chapter 2 fields) kill the frame; report once per type
+        if (!failed[e.type]) { failed[e.type] = true; console.warn('Art.Entities draw failed for', e.type, err); if (G.errors) G.errors.push('art:' + e.type + ': ' + (err && err.message)); }
+      } finally { ctx.restore(); }
     },
     /**
      * Draw a repair-item icon (fuse, cell, gear, lens, chip, core, valve, antenna) centred at

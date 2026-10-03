@@ -3,7 +3,7 @@
  *
  * Public API (contract: docs/level-format.md §4):
  *   G.Art.Portraits.draw(ctx, who, mood, x, y, size, t, talking)   VIEW space, square, pre-clipped
- *     who  ∈ mira | orion | lum | voice
+ *     who  ∈ mira | orion | lum | voice | echo (ЭХО) | boss (corrupted machine eye, glitching)
  *     mood ∈ neutral happy sad angry scared surprised thinking determined
  *
  * Everything is drawn in a normalised 100×100 space. Mood parameters (brows, lids, gaze, mouth,
@@ -620,10 +620,205 @@
     ctx.restore();
   }
 
+  // ================================================================== ЭХО (Architect custodian)
+  const ECHO_MOODS = {
+    neutral:    { col: [255, 210, 122], tilt: 0.05, eye: 0.85, slit: 0.35, spin: 1, ring: 1, leak: 0.3, grille: 0.2 },
+    happy:      { col: [255, 228, 160], tilt: 0.14, eye: 1, slit: 0.15, spin: 1.4, ring: 1.08, leak: 0.35, grille: 0.35 },
+    sad:        { col: [205, 170, 120], tilt: 0.2, eye: 0.45, slit: 0.6, spin: 0.35, ring: 0.9, leak: 0.55, grille: 0.1 },
+    angry:      { col: [255, 116, 66], tilt: -0.06, eye: 1.1, slit: 0.75, spin: 2.6, ring: 1, leak: 0.7, grille: 0.5 },
+    scared:     { col: [255, 236, 196], tilt: -0.1, eye: 1, slit: 0, spin: 3.2, ring: 0.94, leak: 0.4, grille: 0.25 },
+    surprised:  { col: [255, 242, 205], tilt: -0.08, eye: 1.25, slit: 0, spin: 1.8, ring: 1.18, leak: 0.45, grille: 0.3 },
+    thinking:   { col: [255, 200, 110], tilt: 0.24, eye: 0.7, slit: 0.45, spin: 0.5, ring: 1, leak: 0.5, grille: 0.15 },
+    determined: { col: [255, 194, 88], tilt: -0.02, eye: 1, slit: 0.55, spin: 1.2, ring: 1.04, leak: 0.35, grille: 0.3 },
+  };
+  function drawEcho(ctx, mood, t, talking) {
+    const P = blended('echo', ECHO_MOODS[mood] || ECHO_MOODS.neutral, t);
+    const col = P.col.map(Math.round).join(',');
+    const syl = talking ? Math.abs(Math.sin(t * 9.5) * Math.sin(t * 3.7 + 0.6)) : 0;
+    // archive backdrop: warm dark with shelves of tablets
+    const bg = ctx.createLinearGradient(0, 0, 0, 100);
+    bg.addColorStop(0, '#20160c'); bg.addColorStop(1, '#0b0805');
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, 100, 100);
+    ctx.fillStyle = 'rgba(255,210,122,0.06)';
+    for (let r = 0; r < 4; r++) for (let i = 0; i < 9; i++) if (hash1(r * 9 + i) < 0.7) ctx.fillRect(i * 11 + 2, r * 26 + 6, 7, 16);
+    glow(ctx, 50, 44, 60, col, 0.22 + 0.15 * syl);
+    const jit = mood === 'scared' ? Math.sin(t * 40) * 0.6 : 0;
+    ctx.save();
+    ctx.translate(50 + jit, 50); ctx.rotate(P.tilt + Math.sin(t * 0.6) * 0.03 + (talking ? Math.sin(t * 2.2) * 0.025 : 0)); ctx.translate(-50, -50);
+    // shoulders: big pauldron one side, exposed ribs/cables the other
+    ctx.fillStyle = LINE; ctx.beginPath(); ctx.moveTo(10, 100); ctx.lineTo(18, 80); ctx.lineTo(42, 72); ctx.lineTo(60, 72); ctx.lineTo(90, 78); ctx.lineTo(98, 100); ctx.closePath(); ctx.fill();
+    const pg = ctx.createLinearGradient(55, 70, 95, 100); pg.addColorStop(0, '#f0d29a'); pg.addColorStop(0.5, '#a27843'); pg.addColorStop(1, '#3d2912');
+    ctx.fillStyle = pg; ctx.beginPath(); ctx.ellipse(76, 86, 22, 12, -0.2, 0, TAU); ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.45)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.ellipse(76, 88, 17, 8, -0.2, 0.2, Math.PI - 0.2); ctx.stroke();
+    ctx.strokeStyle = '#6e5636'; ctx.lineWidth = 2;
+    for (let i = 0; i < 4; i++) { ctx.beginPath(); ctx.moveTo(20 + i * 6, 100); ctx.quadraticCurveTo(26 + i * 5, 86, 40 + i * 2, 78); ctx.stroke(); }
+    // neck rods
+    ctx.strokeStyle = LINE; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(45, 78); ctx.lineTo(46, 62); ctx.moveTo(55, 78); ctx.lineTo(54, 62); ctx.stroke();
+    // ring of light (back half)
+    const ringA = t * 0.6 * P.spin, R = 40 * P.ring * (1 + 0.04 * syl);
+    const ring = (back) => {
+      ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.lineCap = 'round';
+      for (let i = 0; i < 12; i++) {
+        const a0 = ringA + i / 12 * TAU, a1 = a0 + TAU / 12 * 0.62, mid = (a0 + a1) / 2;
+        if ((Math.sin(mid) < 0) !== back) continue;
+        ctx.strokeStyle = `rgba(${col},${(back ? 0.35 : 0.9) * (i % 3 === 0 ? 1 : 0.6) * (0.8 + 0.4 * syl)})`;
+        ctx.lineWidth = back ? 2 : 3.2;
+        ctx.beginPath(); ctx.ellipse(50, 34, R, R * 0.26, -0.16, a0, a1); ctx.stroke();
+      }
+      ctx.restore();
+    };
+    ring(true);
+    // mask
+    const mask = (c) => { c.beginPath(); c.moveTo(50, 8); c.bezierCurveTo(70, 8, 74, 32, 68, 50); c.quadraticCurveTo(62, 66, 51, 67); c.quadraticCurveTo(38, 66, 32, 50); c.bezierCurveTo(26, 32, 30, 8, 50, 8); c.closePath(); };
+    mask(ctx); ctx.lineWidth = 3; ctx.strokeStyle = LINE; ctx.stroke();
+    const mg = ctx.createLinearGradient(32, 10, 70, 66); mg.addColorStop(0, '#fbeccc'); mg.addColorStop(0.45, '#cfa96c'); mg.addColorStop(1, '#5e4220');
+    ctx.fillStyle = mg; ctx.fill();
+    ctx.save(); mask(ctx); ctx.clip();
+    // grime + verdigris
+    ctx.fillStyle = 'rgba(70,40,12,0.35)'; ctx.fillRect(30, 50, 42, 20);
+    ctx.fillStyle = 'rgba(90,140,110,0.22)'; ctx.beginPath(); ctx.ellipse(36, 22, 5, 8, 0.4, 0, TAU); ctx.fill();
+    // brow ridge
+    ctx.fillStyle = 'rgba(60,35,10,0.4)'; ctx.fillRect(32, 28 - P.slit * 2, 38, 3);
+    // eye slits
+    const eo = P.eye * (1 + 0.18 * syl), sl = P.slit;
+    glow(ctx, 59, 34, 14 * eo, col, 0.6 * eo);
+    ctx.fillStyle = LINE; ctx.beginPath(); ctx.ellipse(59, 34, 6.5, 4.6 * (1 - sl * 0.7) + 0.6, -0.12, 0, TAU); ctx.fill();
+    ctx.fillStyle = `rgba(${col},1)`; ctx.beginPath(); ctx.ellipse(59.5, 34, 4.2, (3.0 * (1 - sl * 0.75) + 0.4) * eo, -0.12, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#fff8e8'; ctx.beginPath(); ctx.arc(60, 34, 1.2 * eo, 0, TAU); ctx.fill();
+    // far eye behind the crack: dark socket... with something organic in it (a green iris, faint)
+    ctx.fillStyle = LINE; ctx.beginPath(); ctx.ellipse(41, 34, 6, 4.2 * (1 - sl * 0.6) + 0.6, 0.1, 0, TAU); ctx.fill();
+    const seen = 0.25 + P.leak * 0.6;
+    ctx.fillStyle = `rgba(95,138,90,${seen})`; ctx.beginPath(); ctx.arc(41.5 + Math.sin(t * 0.7) * 0.8, 34.2, 2.4 * (1 - sl * 0.5), 0, TAU); ctx.fill();
+    ctx.fillStyle = `rgba(10,10,10,${seen})`; ctx.beginPath(); ctx.arc(41.5 + Math.sin(t * 0.7) * 0.8, 34.2, 1, 0, TAU); ctx.fill();
+    const farOn = hash1(Math.floor(t * 9)) < 0.8 ? 1 : 0.15;
+    ctx.fillStyle = `rgba(${col},${0.35 * farOn})`; ctx.beginPath(); ctx.ellipse(41, 34, 4, 1.2, 0.1, 0, TAU); ctx.fill();
+    // mouth grille
+    for (let i = 0; i < 6; i++) {
+      const on = talking ? Math.abs(Math.sin(t * 11 + i * 1.3)) * syl : P.grille * 0.4;
+      ctx.fillStyle = on > 0.2 ? `rgba(${col},${0.35 + 0.65 * on})` : 'rgba(40,22,6,0.8)';
+      ctx.fillRect(43 + i * 3, 52, 1.6, 7);
+    }
+    // crack across the far eye, leaking light
+    const crack = (c) => { c.beginPath(); c.moveTo(44, 7); c.lineTo(47, 18); c.lineTo(40, 26); c.lineTo(43, 38); c.lineTo(35, 48); c.lineTo(37, 58); c.moveTo(40, 26); c.lineTo(31, 22); c.moveTo(43, 38); c.lineTo(50, 44); };
+    crack(ctx); ctx.strokeStyle = LINE; ctx.lineWidth = 2.4; ctx.stroke();
+    ctx.globalCompositeOperation = 'lighter';
+    crack(ctx); ctx.strokeStyle = `rgba(${col},${P.leak * (0.6 + 0.4 * Math.sin(t * 3)) + 0.3 * syl})`; ctx.lineWidth = 1; ctx.stroke();
+    ctx.globalCompositeOperation = 'source-over';
+    // key rim + cool rim
+    ctx.strokeStyle = 'rgba(255,248,225,0.7)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(50, 37, 27, Math.PI * 1.1, Math.PI * 1.5); ctx.stroke();
+    ctx.strokeStyle = 'rgba(120,160,255,0.35)'; ctx.beginPath(); ctx.arc(50, 37, 27, Math.PI * 1.85, Math.PI * 0.25); ctx.stroke();
+    ctx.restore();
+    // crest fin
+    ctx.fillStyle = LINE; ctx.beginPath(); ctx.moveTo(46, 10); ctx.lineTo(34, -2); ctx.lineTo(54, 8); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#a27843'; ctx.beginPath(); ctx.moveTo(47, 9); ctx.lineTo(37, 0); ctx.lineTo(52, 8); ctx.closePath(); ctx.fill();
+    ring(false);
+    if (mood === 'thinking') {
+      for (let i = 0; i < 3; i++) { ctx.fillStyle = `rgba(${col},${Math.floor(t * 2.5) % 3 === i ? 0.95 : 0.25})`; ctx.fillRect(80 + i * 5, 14, 3, 3); }
+    }
+    ctx.restore();
+    // dust + vignette
+    ctx.fillStyle = `rgba(${col},0.5)`;
+    for (let i = 0; i < 8; i++) { const y = (100 - ((t * 4 + i * 13) % 100)); ctx.fillRect((hash1(i) * 100 + Math.sin(t + i) * 2), y, 0.9, 0.9); }
+    const vg = ctx.createRadialGradient(50, 45, 30, 50, 50, 75);
+    vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,0.55)');
+    ctx.fillStyle = vg; ctx.fillRect(0, 0, 100, 100);
+  }
+
+  // ================================================================== BOSS (corrupted machine eye)
+  const BOSS_MOODS = {
+    neutral:    { col: [255, 50, 60], lens: 1, slit: 0.35, glitch: 0.35, spin: 1 },
+    happy:      { col: [255, 90, 120], lens: 1.05, slit: 0.15, glitch: 0.5, spin: 1.6 },
+    sad:        { col: [190, 40, 70], lens: 0.85, slit: 0.5, glitch: 0.25, spin: 0.4 },
+    angry:      { col: [255, 30, 30], lens: 0.95, slit: 0.8, glitch: 1, spin: 3 },
+    scared:     { col: [255, 140, 120], lens: 0.75, slit: 0, glitch: 0.9, spin: 3.6 },
+    surprised:  { col: [255, 110, 90], lens: 1.25, slit: 0, glitch: 0.6, spin: 2 },
+    thinking:   { col: [230, 50, 90], lens: 0.95, slit: 0.4, glitch: 0.3, spin: 0.6 },
+    determined: { col: [255, 40, 40], lens: 1, slit: 0.6, glitch: 0.6, spin: 1.8 },
+  };
+  let bc = null, bctx = null;
+  function drawBossScene(c, mood, t, talking, P) {
+    const col = P.col.map(Math.round).join(',');
+    const syl = talking ? Math.abs(Math.sin(t * 12) * Math.sin(t * 4.1 + 1)) : 0;
+    c.fillStyle = '#0a0204'; c.fillRect(0, 0, 100, 100);
+    // cabling / plating silhouette
+    c.strokeStyle = 'rgba(80,20,25,0.6)'; c.lineWidth = 3;
+    for (let i = 0; i < 7; i++) { c.beginPath(); c.moveTo(-5, 10 + i * 14); c.bezierCurveTo(25, 4 + i * 15, 70, 20 + i * 12, 105, 6 + i * 15); c.stroke(); }
+    glow(c, 50, 50, 55, col, 0.35 + 0.3 * syl);
+    const cx = 50, cy = 50;
+    // armoured housing with teeth
+    c.fillStyle = '#1a0d0f'; c.beginPath(); c.arc(cx, cy, 38, 0, TAU); c.fill();
+    c.strokeStyle = '#3d1c1f'; c.lineWidth = 3; c.stroke();
+    for (let i = 0; i < 16; i++) {
+      const a = i / 16 * TAU + t * 0.15 * P.spin;
+      c.fillStyle = i % 2 ? '#2d1416' : '#4a2326';
+      c.beginPath(); c.moveTo(cx + Math.cos(a) * 30, cy + Math.sin(a) * 30); c.lineTo(cx + Math.cos(a + 0.18) * 38, cy + Math.sin(a + 0.18) * 38); c.lineTo(cx + Math.cos(a - 0.18) * 38, cy + Math.sin(a - 0.18) * 38); c.closePath(); c.fill();
+    }
+    // segmented iris ring
+    c.lineWidth = 2.4;
+    for (let i = 0; i < 10; i++) {
+      const a0 = i / 10 * TAU - t * 0.5 * P.spin;
+      c.strokeStyle = `rgba(${col},${i % 2 ? 0.9 : 0.4})`;
+      c.beginPath(); c.arc(cx, cy, 27, a0, a0 + TAU / 10 * 0.7); c.stroke();
+    }
+    // lens
+    const lr = 21 * P.lens * (1 + 0.06 * syl);
+    c.save();
+    c.beginPath(); c.ellipse(cx, cy, lr, lr * (1 - P.slit * 0.6), 0, 0, TAU); c.clip();
+    const lg = c.createRadialGradient(cx - 5, cy - 5, 1, cx, cy, lr);
+    lg.addColorStop(0, '#fff2f0'); lg.addColorStop(0.22, `rgba(${col},1)`); lg.addColorStop(0.7, `rgba(${col},0.35)`); lg.addColorStop(1, '#14030a');
+    c.fillStyle = lg; c.fillRect(cx - lr, cy - lr, lr * 2, lr * 2);
+    c.strokeStyle = 'rgba(20,0,4,0.6)'; c.lineWidth = 1;
+    for (let i = 0; i < 9; i++) { const a = i / 9 * TAU + t * 0.7 * P.spin; c.beginPath(); c.moveTo(cx + Math.cos(a) * 4, cy + Math.sin(a) * 4); c.lineTo(cx + Math.cos(a + 0.6) * lr, cy + Math.sin(a + 0.6) * lr); c.stroke(); }
+    // vertical slit pupil (predatory)
+    const pw = (talking ? 3 + syl * 2.5 : 3.4) * (mood === 'surprised' || mood === 'scared' ? 0.6 : 1);
+    c.fillStyle = '#080002'; c.beginPath(); c.ellipse(cx, cy, pw, lr * 0.8, 0, 0, TAU); c.fill();
+    c.restore();
+    c.strokeStyle = `rgba(${col},0.95)`; c.lineWidth = 1.6; c.beginPath(); c.ellipse(cx, cy, lr, lr * (1 - P.slit * 0.6), 0, 0, TAU); c.stroke();
+    c.fillStyle = 'rgba(255,255,255,0.8)'; c.beginPath(); c.ellipse(cx - lr * 0.45, cy - lr * 0.35, 3, 1.6, -0.6, 0, TAU); c.fill();
+    // cracked glass
+    c.strokeStyle = 'rgba(255,220,220,0.55)'; c.lineWidth = 0.7;
+    c.beginPath(); c.moveTo(cx + 6, cy - 22); c.lineTo(cx + 2, cy - 10); c.lineTo(cx + 9, cy - 3); c.lineTo(cx + 5, cy + 8); c.moveTo(cx + 2, cy - 10); c.lineTo(cx - 8, cy - 14); c.stroke();
+    // waveform under
+    if (talking) {
+      c.strokeStyle = `rgba(${col},0.8)`; c.lineWidth = 1.2; c.beginPath();
+      for (let x = 14; x <= 86; x += 2) c.lineTo(x, 92 + Math.sin(x * 0.7 + t * 30) * 3 * syl * Math.sin(x * 0.09));
+      c.stroke();
+    }
+    c.fillStyle = 'rgba(0,0,0,0.25)';
+    for (let y = (t * 30) % 3; y < 100; y += 3) c.fillRect(0, y, 100, 1);
+  }
+  function drawBoss(ctx, mood, t, talking, x, y, size) {
+    const P = blended('boss', BOSS_MOODS[mood] || BOSS_MOODS.neutral, t);
+    const px = Math.max(1, Math.ceil(size));
+    if (!bc || bc.width !== px) { bc = document.createElement('canvas'); bc.width = bc.height = px; bctx = bc.getContext('2d'); }
+    bctx.setTransform(px / 100, 0, 0, px / 100, 0, 0);
+    drawBossScene(bctx, mood, t, talking, P);
+    // glitch: horizontal slice displacement + RGB split bursts
+    const n = Math.floor(t * 18);
+    const burst = hash1(n * 0.37) < 0.25 + 0.4 * P.glitch;
+    const g = P.glitch * (burst ? 1 : 0.2) * (talking ? 1.3 : 1);
+    ctx.drawImage(bc, x, y, size, size);
+    const slices = burst ? 3 + Math.floor(hash1(n) * 4) : 1;
+    for (let i = 0; i < slices; i++) {
+      const sy = hash1(n * 3 + i) * 0.9, sh = 0.02 + hash1(n * 5 + i) * 0.08;
+      const off = (hash1(n * 7 + i) - 0.5) * 18 * g;
+      ctx.drawImage(bc, 0, sy * px, px, sh * px, x + off * size / 100, y + sy * size, size, sh * size);
+    }
+    if (burst && g > 0.3) {
+      ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.35 * g;
+      ctx.drawImage(bc, x + 2 * g * size / 100, y, size, size);
+      ctx.fillStyle = 'rgba(0,255,255,0.08)'; ctx.fillRect(x - 2 * g * size / 100, y, size, size);
+      ctx.restore();
+    }
+    // dead pixels / static
+    ctx.fillStyle = 'rgba(255,60,60,0.5)';
+    for (let i = 0; i < (burst ? 10 : 3); i++) ctx.fillRect(x + hash1(n + i * 1.7) * size, y + hash1(n * 1.3 + i) * size, size * 0.02, size * 0.01);
+  }
+
   /**
    * Draw a character portrait into the square (x, y, size). VIEW space; caller has clipped.
    * @param {CanvasRenderingContext2D} ctx
-   * @param {'mira'|'orion'|'lum'|'voice'} who
+   * @param {'mira'|'orion'|'lum'|'voice'|'echo'|'boss'} who
    * @param {string} mood neutral|happy|sad|angry|scared|surprised|thinking|determined
    * @param {number} x
    * @param {number} y
@@ -635,10 +830,12 @@
     ctx.save();
     try {
       if (who === 'voice') { drawVoice(ctx, mood, t, talking, x, y, size); return; }
+      if (who === 'boss') { drawBoss(ctx, mood, t, talking, x, y, size); return; }
       ctx.translate(x, y); ctx.scale(size / 100, size / 100);
       if (who === 'mira') drawMira(ctx, mood, t, talking);
       else if (who === 'orion') drawOrion(ctx, mood, t, talking);
       else if (who === 'lum') drawLum(ctx, mood, t, talking);
+      else if (who === 'echo') drawEcho(ctx, mood, t, talking);
       else {
         ctx.fillStyle = (G.Characters && G.Characters[who] && G.Characters[who].color) || '#888';
         ctx.globalAlpha = 0.5; ctx.fillRect(8, 8, 84, 84);

@@ -84,7 +84,7 @@ G.CONFIG.bosses = {
     attackGap: [1.8, 1.5, 1.2],
     bodyKill: true,          // touching its legs/body kills
     // fans (level-placed bossproj kind 'fan', powered by a lever)
-    fanPush: 520,            // px/s^2 push on the player inside a powered fan zone
+    fanPush: 120,            // px/s drift applied to the player inside a powered fan zone
     deflectFlight: 1.0,      // s: a fan-caught shell flies back to the vent in this time
     // back valve
     valveR: 22,              // px grab radius around the back vent valve
