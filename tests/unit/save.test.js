@@ -33,11 +33,11 @@ test('persist() writes JSON round-trippable save', () => {
   const back = JSON.parse(st[KEY]); assert.eq(back.deaths, 7);
   assert(st.tessera_settings_v1, 'settings persisted too');
 });
-test('LEVEL_ORDER has all 12 campaign levels in order with 3 cutscenes', () => {
+test('LEVEL_ORDER has all 15 campaign levels in order with 5 cutscenes', () => {
   const { G } = boot({});
-  assert.eq(G.LEVEL_ORDER.map((e) => e.id).join(','), 'p1,p2,l01,l02,l03,l04,l05,l06,l07,l08,l09,l10');
-  assert.eq(G.LEVEL_ORDER.filter((e) => e.before || e.after).map((e) => e.before || e.after).join(','), 'intro,crash,ending');
-  for (const c of ['intro', 'crash', 'ending']) assert(G.Cutscenes[c] && G.Cutscenes[c].length, 'cutscene ' + c);
+  assert.eq(G.LEVEL_ORDER.map((e) => e.id).join(','), 'p1,p2,l01,l02,l03,l04,l05,l06,l07,l08,l09,l10,l11,l12,l13');
+  assert.eq(G.LEVEL_ORDER.filter((e) => e.before || e.after).map((e) => e.before || e.after).join(','), 'intro,crash,ending,ch2_intro,ch2_end');
+  for (const c of ['intro', 'crash', 'ending', 'ch2_intro', 'ch2_end']) assert(G.Cutscenes[c] && G.Cutscenes[c].length, 'cutscene ' + c);
 });
 test('afterLevel(i) unlocks/advances and persists; final level leads to credits', () => {
   const st = {}; const { G } = boot(st);
@@ -50,7 +50,11 @@ test('afterLevel(i) unlocks/advances and persists; final level leads to credits'
     const sc = G.App.scene;
     const entry = G.LEVEL_ORDER[i];
     if (i === G.LEVEL_ORDER.length - 1) { assert(sc instanceof G.CutsceneScene, 'ending cutscene expected'); sc.cs.end(); flush(G); assert(G.App.scene instanceof G.CreditsScene, 'credits'); }
-    else if (entry.after) { assert(sc instanceof G.CutsceneScene, 'cutscene after ' + entry.id); sc.cs.end(); flush(G); assert(G.App.scene instanceof G.GameScene && G.App.scene.index === i + 1, 'level after cutscene'); }
+    else if (entry.after || G.LEVEL_ORDER[i + 1].before) {
+      assert(sc instanceof G.CutsceneScene, 'cutscene after ' + entry.id); sc.cs.end(); flush(G);
+      if (entry.after && G.LEVEL_ORDER[i + 1].before) { assert(G.App.scene instanceof G.CutsceneScene, 'second cutscene'); G.App.scene.cs.end(); flush(G); }
+      assert(G.App.scene instanceof G.GameScene && G.App.scene.index === i + 1, 'level after cutscene');
+    }
     else assert(sc instanceof G.GameScene && sc.index === i + 1, `level ${i + 1} expected after ${entry.id}, got ${sc && sc.constructor.name}`);
   }
 });

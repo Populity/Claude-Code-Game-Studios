@@ -60,7 +60,7 @@ const DECO = ['cryo_pod', 'console', 'pipes', 'cable_bundle', 'locker', 'window_
   'pod_wreck', 'debris', 'fire', 'rock', 'bones', 'monolith', 'singing_pillar', 'dune_grass', 'spire_far',
   'pillar', 'broken_pillar', 'statue', 'glyph_wall', 'arch', 'vines', 'helmet',
   'stalagmite', 'mushroom', 'pipe_outlet', 'glow_moss', 'footprints', 'crystal_cluster', 'crystal_big', 'geode',
-  'antenna', 'beacon_core', 'storm_rod', 'lamp', 'sign_post'];
+  'antenna', 'beacon_core', 'storm_rod', 'lamp', 'sign_post', 'tablet_shelf', 'data_pillar', 'echo_statue', 'ring_machine', 'conduit'];
 const ITEMS = ['fuse', 'cell', 'gear', 'lens', 'chip', 'core', 'valve', 'antenna'];
 
 const only = process.argv.slice(2);
