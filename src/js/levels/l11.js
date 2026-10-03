@@ -1,24 +1,26 @@
 /**
- * l11 «Архив Зодчих» — Глава 2 · 2-1 (ruins, variant 'archive'). 198×24 tiles. ~4 min first play.
- * Map is built procedurally below (same style as bossarena.js); floor surface = top of row 20 unless noted.
- * ROUTE (QA):
- *  A  Hall x1-26: start (3,19). ЭХО npc (14,19) «l11_echo_meet» stands on the only path, BEFORE the
+ * l11 «Архив Зодчих» — Глава 2 · 2-1 (ruins, variant 'archive'). 198×24 tiles, built procedurally below
+ * (same style as bossarena.js). Floor surface = top of row 20 unless noted. ~4 min first play.
+ * ROUTE (QA, every jump/dash chain below was replayed in a headless engine sim):
+ *  A  Hall x1-26: start (3,19). ЭХО npc (14,19) «l11_echo_meet» stands on the only path BEFORE the
  *     grant trigger x21 rows 16-19 (grant:'dash', l11_dash_get).
- *  B  C (25,19). Dash school: spike pit x29-34 (6 wide: jump + →dash). Wall x40-46 top row 15
- *     (5 high: jump + ↑dash).
- *  C  C (44,14). CRYSTAL CHAIN over the spike pit x47-66: crystals (51,13) (57,12) (62,13) →
- *     jump, →dash, touch, →dash/↗dash, touch, →dash → ledge x67-72 (stand row 14).
- *  D  C (75,19). ICE run x73-89 → 5-wide spike pit x90-94 (full ice speed or dash) → left conveyor
- *     x95-107 (net 130 px/s) → 4-wide spike pit x108-111 (needs jump + →dash: the belt eats your speed).
- *  E  C (114,19). ICE SHAFT x116-121 (ice walls = no wall-jump, spike floor): jump + ↑dash, crystals
- *     (118,14) (119,10) (118,6) each refill, last ↗dash onto the corridor x123+ (stand row 4).
- *  F  Crumble bridge x131-146 over a spike pit: X pairs 134-135, 139-140, 144-145 → ledge x147-152.
- *  G  Drop to C (154,19) right before the ARCHIVIST arena x156-189 (boss targets gate + exit).
- *     Fight: hide behind a pillar so its sweeping laser burns it (3 pillars) → shield drops →
- *     crystals appear → dash into the core. ×3 phases. Gate x190 opens → exit (194,19), l11_end trigger.
- * SHARDS: (57,8) above the crystal chain (↑dash from crystal 2, then recover via crystal 3);
- *  (101,14) above the left belt (jump + ↑dash, land back on the belt before the pit);
- *  (138,9) inside the crumble pit beside a crystal (137,10): drop, grab, ↗dash back to X 139/144.
+ *  B  C (25,19). Dash school: spike pit x29-34 (6 wide: jump, →dash near the apex). Wall x40-46,
+ *     top row 15 (5 high: jump + ↑dash).
+ *  C  C (44,14). CRYSTAL CHAIN over the spike pit x47-64: jump at the edge, →dash at the apex,
+ *     crystal (50,11) → ↗dash, crystal (53,9) → →dash, crystal (58,9) → ↗dash → ledge x65-72 (row 14).
+ *  D  C (75,19). ICE run x73-89 (slow to accelerate) → 5-wide spike pit x90-94 (jump + →dash) →
+ *     LEFT conveyor x95-107 (net 130 px/s) → 5-wide spike pit x108-112 (full-speed jump or jump+dash).
+ *  E  C (114,19). ICE SHAFT x116-121 (ice walls = no wall-jump, spikes x118-121). Walk under
+ *     the ice lip to x116, jump, ↑dash → crystal (116,12), ↗dash → (119,9), ↖dash → (116,6),
+ *     ↗dash → (120,4), →dash onto the corridor (stand row 4).
+ *  F  Crumble bridge: X pairs 133-134, 137-138, 141-142, 145-146 over a spike pit (2-wide gaps,
+ *     keep hopping: 0.45 s per block) → ledge x147-152.
+ *  G  Drop to C (154,19), right before the ARCHIVIST arena x156-189 (boss targets gate + exit).
+ *     Hide behind a pillar so its sweeping laser burns it (×3) → shield drops → crystals appear →
+ *     dash into the core; ×3 phases. Gate x190 opens → exit (194,19), trigger l11_end at x192.
+ * SHARDS: (57,6) chain detour: from crystal 2 ↗dash instead of →dash, refill on (58,6), →dash home;
+ *  (101,14) above the left belt: jump + ↑dash, land back on the belt;
+ *  (140,7) in the crumble pit: walk off X 138, grab it falling, ↑dash through the gap, drift onto X 141.
  */
 (function () {
   const W = 198, H = 24;

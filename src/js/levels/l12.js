@@ -1,6 +1,28 @@
 /**
- * l12 «Ветряные трубы» — Глава 2 · 2-2 (canyon). Map built procedurally below. ~4 min first play.
- * ROUTE (QA): see the block comment written at the end of tuning (top of file is authoritative).
+ * l12 «Ветряные трубы» — Глава 2 · 2-2 (canyon). 227×24 tiles, built procedurally below. Dash allowed
+ * (abilities). Floor surface = top of row 20 (stand row 19) or top of row 12 (stand row 11). Pits are
+ * bottomless. ~4 min first play. Every section was replayed in a headless engine sim / bot.
+ * ROUTE (QA):
+ *  A  Start (3,19). Trigger l12_wind x19 (first pulsing wind).
+ *  B1 UP-DRAFT chasm x22-31: wind x23-26 (3.6k up, on 2.0 s of 3.2). Jump in while it blows, ride
+ *     to the ceiling, →dash to the high ledge x32-42 (stand 11). The wall is too high without it.
+ *  B2 C (34,11). GUST BRIDGE: 3 fallplats (46/51/56, row 12) over the pit x43-60 with a LEFT gust
+ *     (1.3k, on 1.1 s of 3.4). Go the moment the gust ends and hop without stopping (dash saves a
+ *     short hop) → ledge x61-76.
+ *  C  C (69,11). ANCHOR CHASM x77-100: jump at the edge, E on anchor (82,5), release early on the
+ *     forward swing, E on anchor (91,5), release → ledge x101+.
+ *  D  Trigger l12_sentinel (talk) x102: first Страж hovers at (112,8), visible, 10 tiles off (range 7).
+ *     C (103,11). SENTINEL CORRIDOR x113-151 (ceiling row 5): spike pits 117-120 / 127-130 /
+ *     138-141, a patroller (126↔140), a pulsing laser at x124 (stuns sentinels, kills you), a guard (143,7).
+ *     Outrun them (250 vs 170 px/s), dash past on the alert flash, lure chasers under the laser.
+ *  E  C (153,11). SWING + DOWN-DRAFT: anchor (160,4) → crystal (166,8) → anchor (172,4) across the pit
+ *     x156-177; a down-draft x164-167 pulses (on 1.0 of 2.6) — cross while it rests or ↗dash out.
+ *     The pillar x183 forces you down to C (181,19) before the arena.
+ *  F  COLOSSUS arena x184-219 (boss targets gate + exit). Lever (186,19) powers the fan (188,19) that
+ *     blows its shells back into the vent, or swing on anchors (202,7)/(212,7) and rip the back valve
+ *     while it reloads; 6 hits. Gate x220 → trigger l12_end x222 → exit (224,19).
+ * SHARDS: (26,4) top of the up-draft (stay in the wind until the ceiling); (57,7) above the last
+ *  fallplat (a full jump while the gust may return); (128,9) over the 2nd spike pit, on the patroller's line.
  */
 (function () {
   const W = 227, H = 24;
