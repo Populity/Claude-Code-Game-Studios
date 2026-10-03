@@ -763,16 +763,26 @@
       this.filled = 0; this.socketsTotal = 3; this.exposed = false; this.openT = 0; this.exposeT = 0;
       this.spawnT = 2.5; this.hatchT = 0; this.sockets = null;
       this.cells = [];
-      for (let n = 0; n < 3; n++) {
-        const c = l.add({ type: 'part', item: this.cfg.cellItem, x: 0, y: 0 });
-        if (c) { c.taken = true; c.hidden = true; c.delivered = false; this.cells.push(c); }
-      }
+    }
+    /**
+     * Drop pool of energy cells: level-placed `{type:'part', item:'cell', bossCell:true}` inside the arena
+     * are adopted (hidden until a seeker dies; this keeps the static level validator happy), and any
+     * missing ones are created at runtime.
+     */
+    adoptCells(game) {
+      if (this._cellsReady) return;
+      this._cellsReady = true;
+      const L = game.level;
+      this.cells = L.entities.filter((e) => e.type === 'part' && e.item === this.cfg.cellItem && e.bossCell);
+      while (this.cells.length < this.socketsTotal) { const c = L.add({ type: 'part', item: this.cfg.cellItem, x: 0, y: 0 }); if (!c) break; this.cells.push(c); }
+      for (const c of this.cells) { c.taken = true; c.hidden = true; c.delivered = false; }
     }
     findSockets(game) {
       if (this.sockets) return;
       const A = this.arena;
       this.sockets = game.level.entities.filter((e) => e.type === 'socket' && e.needs === this.cfg.cellItem && G.overlap(e, A));
       this.socketsTotal = this.sockets.length || 3;
+      this.adoptCells(game);
     }
     phaseFor() { return Math.min(2, this.filled); }
     idle(dt) { this.openT = G.approach(this.openT, this.exposed ? 1 : 0, dt * 2); this.armK = G.approach(this.armK, 0, dt * 2); this.layArms(); }

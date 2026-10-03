@@ -48,6 +48,10 @@
       { type: 'socket', x: 92, y: 19, needs: 'cell', targets: [] },
       { type: 'socket', x: 107, y: 19, needs: 'cell', targets: [] },
       { type: 'socket', x: 122, y: 19, needs: 'cell', targets: [] },
+      // drop pool: hidden until a seeker dies in a beam (warden adopts parts flagged bossCell)
+      { type: 'part', x: 100, y: 19, item: 'cell', bossCell: true },
+      { type: 'part', x: 101, y: 19, item: 'cell', bossCell: true },
+      { type: 'part', x: 102, y: 19, item: 'cell', bossCell: true },
       { type: 'door', id: 'gC', x: 124, y: 17, h: 3 },
     ],
   });
