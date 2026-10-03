@@ -2318,6 +2318,7 @@
   }
   G.Art.Party = { draw: drawParty };
 
-  G.Art.Player = { draw: drawPlayer, drawItem };
+  G.Art.Player = {
+    drawsShield: true, draw: drawPlayer, drawItem };
   G.Art.Drone = { draw: drawDrone };
 })();

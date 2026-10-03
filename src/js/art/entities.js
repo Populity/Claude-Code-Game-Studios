@@ -2522,6 +2522,8 @@
   const failed = {};
 
   G.Art.Entities = {
+    /** True when this module has a dedicated drawer for `type`. */
+    has(type) { return !!DRAW[type]; },
     /**
      * Draw one entity in WORLD space. Style adapts to `level.biome` (human ship/wreck vs
      * Architect tech). Restores all ctx state before returning.
