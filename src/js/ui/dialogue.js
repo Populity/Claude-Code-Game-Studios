@@ -296,7 +296,7 @@
       if (fin > 0) { ctx.fillStyle = `rgba(0,0,0,${fin})`; ctx.fillRect(0, 0, W, H); }
       // letterbox
       ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, 34); ctx.fillRect(0, H - 34, W, 34);
-      if (s && s.caption) {
+      if (s && s.caption && !G.CONFIG.ui.noText) {
         ctx.fillStyle = 'rgba(255,255,255,' + Math.min(1, this.shotT) * 0.85 + ')';
         ctx.font = `600 15px ${FONT}`;
         ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
@@ -308,7 +308,7 @@
       const touch = G.input.touchActive;
       const pad = G.input.lastDevice === 'gamepad';
       const key = touch ? '⏸' : pad ? 'Start' : 'Esc';
-      const label = 'Удерживайте, чтобы пропустить';
+      const label = G.CONFIG.ui.noText ? '' : 'Удерживайте, чтобы пропустить';
       ctx.textBaseline = 'middle';
       ctx.font = `500 13px ${FONT}`;
       const lw = ctx.measureText(label).width;

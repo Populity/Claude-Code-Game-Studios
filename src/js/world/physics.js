@@ -143,10 +143,34 @@
       return hits.length ? hits : null;
     },
 
-    /** Wall contact on side dir (-1 left, +1 right), static solids & doors only (not crates/platforms). */
+    /**
+     * Wall contact on side dir (-1 left, +1 right), static solids & doors only (not crates/platforms).
+     * Ice tiles are too slick to cling to: they never count as a wall (no slide, no wall jump).
+     */
     wallAt(body, dir, level) {
       const r = { x: dir > 0 ? body.x + body.w : body.x - 1, y: body.y + 4, w: 1, h: body.h - 10 };
-      return solidsOverlapping(r, level, body, false).some((h) => h.tile || (h.entity && h.entity.climbable));
+      return solidsOverlapping(r, level, body, false).some((h) => (h.tile && !(level.isIceTile && level.isIceTile(h.tx, h.ty))) || (h.entity && h.entity.climbable));
+    },
+
+    /**
+     * Tile line-of-sight (grid DDA, Amanatides–Woo): true if the segment (x0,y0)→(x1,y1) crosses
+     * no solid tile. Dynamic solids are ignored (doors/crates do not block sight or ropes).
+     * `skip(tx,ty)` may exempt tiles (e.g. the anchor's own tile).
+     */
+    lineClear(level, x0, y0, x1, y1, skip) {
+      let tx = Math.floor(x0 / T), ty = Math.floor(y0 / T);
+      const ex = Math.floor(x1 / T), ey = Math.floor(y1 / T);
+      const dx = x1 - x0, dy = y1 - y0;
+      const sx = dx > 0 ? 1 : -1, sy = dy > 0 ? 1 : -1;
+      const tdx = dx !== 0 ? Math.abs(T / dx) : Infinity, tdy = dy !== 0 ? Math.abs(T / dy) : Infinity;
+      let tmx = dx !== 0 ? ((sx > 0 ? (tx + 1) * T - x0 : x0 - tx * T) / Math.abs(dx)) : Infinity;
+      let tmy = dy !== 0 ? ((sy > 0 ? (ty + 1) * T - y0 : y0 - ty * T) / Math.abs(dy)) : Infinity;
+      for (let guard = 0; guard < 512; guard++) {
+        if (level.isSolidTile(tx, ty) && !(skip && skip(tx, ty))) return false;
+        if (tx === ex && ty === ey) return true;
+        if (tmx < tmy) { if (tmx > 1) return true; tmx += tdx; tx += sx; } else { if (tmy > 1) return true; tmy += tdy; ty += sy; }
+      }
+      return true;
     },
   };
 

@@ -345,7 +345,7 @@
         const can = !e.canInteract || e.canInteract(this);
         const missing = e.missingHint ? e.missingHint(this) : null;
         if (!can && !missing) continue;
-        if (d < bd) { bd = d; best = { e, can, missing }; }
+        if (d < bd) { bd = d; best = { e, can, missing, missingItem: missing ? e.needs : null }; }
       }
       return best;
     }
@@ -465,12 +465,14 @@
       else drawDebugTiles(ctx, view, L);
 
       const Ent = G.Art.Entities;
-      const order = ['exit', 'checkpoint', 'sign', 'terminal', 'socket', 'lever', 'door', 'bridge', 'plate', 'jumppad', 'laser', 'wind', 'fallplat', 'mplatform', 'crate', 'part', 'shard', 'anchor', 'dashcrystal', 'npc', 'saw', 'sentinel'];
+      const order = ['exit', 'checkpoint', 'sign', 'terminal', 'socket', 'lever', 'door', 'bridge', 'plate', 'jumppad', 'laser', 'wind', 'fallplat', 'mplatform', 'crate', 'part', 'shard', 'anchor', 'dashcrystal', 'npc', 'saw', 'sentinel', 'boss', 'bossproj'];
       for (const type of order) {
         for (const e of L.entities) {
           if (e.type !== type) continue;
           const vis = e.type === 'laser' ? true : onScreen(e, e.type === 'saw' ? 64 : 96);
-          if (vis && Ent && Ent.draw) Ent.draw(ctx, e, time, L);
+          if (!vis) continue;
+          if ((type === 'boss' || type === 'bossproj') && G.Art.Bosses) G.Art.Bosses.draw(ctx, e, time, L);
+          else if (Ent && Ent.draw) Ent.draw(ctx, e, time, L);
         }
       }
       if (this.drone.enabled && G.Art.Drone && G.Art.Drone.draw) G.Art.Drone.draw(ctx, this.drone, time);
@@ -483,7 +485,7 @@
       if (Decor.drawForeground && !low) Decor.drawForeground(ctx, view, L, time);
 
       // world-space UI: hints + interaction prompt
-      for (const e of L.entities) if (e.type === 'hint' && e.alpha > 0.01) drawHint(ctx, e);
+      if (!G.CONFIG.ui.noText) for (const e of L.entities) if (e.type === 'hint' && e.alpha > 0.01) drawHint(ctx, e);
       if (this.focus && !this.puzzle) drawPrompt(ctx, this.focus, t);
       ctx.restore();
 
@@ -504,13 +506,14 @@
         const k = Math.min(1, this.deathT / G.CONFIG.death.respawnDelay);
         ctx.fillStyle = `rgba(0,0,0,${Math.max(0, (k - 0.5) * 2) * 0.9})`; ctx.fillRect(0, 0, W, H);
       }
-      if (this.completeT >= 0) drawComplete(ctx, this);
+      if (this.completeT >= 0 && !G.CONFIG.ui.noText) drawComplete(ctx, this);
+      else if (this.completeT >= 0) { ctx.fillStyle = `rgba(0,0,0,${Math.min(0.6, this.completeT * 0.4)})`; ctx.fillRect(0, 0, W, H); }
     }
 
     drawHUD(ctx, t) {
       const def = this.def;
       // level banner
-      if (this.bannerT < 4.5 && !this.dialogue.active) {
+      if (!G.CONFIG.ui.noText && this.bannerT < 4.5 && !this.dialogue.active) {
         const a = Math.min(1, this.bannerT * 2, (4.5 - this.bannerT) * 1.5);
         ctx.save(); ctx.globalAlpha = Math.max(0, a);
         ctx.textAlign = 'center';
@@ -522,7 +525,7 @@
         ctx.restore();
       }
       // objective
-      if (this.objective) {
+      if (this.objective && !G.CONFIG.ui.noText) {
         const a = Math.min(1, this.objectiveT * 2);
         ctx.save(); ctx.globalAlpha = a;
         ctx.font = `600 14px ${FONT}`;
@@ -552,7 +555,7 @@
         ctx.restore();
       }
       // carried item
-      if (this.player.carry) {
+      if (this.player.carry && !G.CONFIG.ui.noText) {
         ctx.save(); ctx.font = `600 13px ${FONT}`; ctx.fillStyle = '#ffe17a'; ctx.textAlign = 'right';
         ctx.fillText('В руках: ' + (G.ITEM_NAMES[this.player.carry] || this.player.carry), W - 18, 56);
         ctx.restore();
@@ -608,6 +611,7 @@
   function drawPrompt(ctx, f, t) {
     const e = f.e;
     const key = G.input.touchActive ? 'E' : G.input.lastDevice === 'gamepad' ? 'X' : 'E';
+    if (G.CONFIG.ui.noText) { drawPromptIcon(ctx, f, t, key); return; }
     const text = f.can ? e.prompt || 'Действие' : 'Нужно: ' + f.missing;
     ctx.save();
     ctx.font = `700 13px ${FONT}`;
@@ -624,6 +628,19 @@
     } else {
       ctx.fillStyle = '#ffd0d0'; ctx.textAlign = 'center'; ctx.fillText(text, x + w / 2, y + 12.5);
     }
+    ctx.restore();
+  }
+
+  /** Text-free interaction prompt: a key-cap (or a red ✕ when the needed part is missing). */
+  function drawPromptIcon(ctx, f, t, key) {
+    const e = f.e, x = e.cx, y = e.y - 22 + Math.sin(t * 4) * 2;
+    ctx.save();
+    ctx.globalAlpha = 0.92;
+    ctx.fillStyle = f.can ? '#7ef9ff' : 'rgba(255,90,100,0.9)';
+    G.roundRect(ctx, x - 11, y - 10, 22, 20, 5); ctx.fill();
+    ctx.fillStyle = '#04101a'; ctx.font = `800 13px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(f.can ? key : '✕', x, y + 1);
+    if (!f.can && f.missingItem && G.Art.Entities && G.Art.Entities.drawItem) G.Art.Entities.drawItem(ctx, f.missingItem, x + 22, y, 14, true, 0);
     ctx.restore();
   }
 

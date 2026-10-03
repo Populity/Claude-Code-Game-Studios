@@ -116,6 +116,9 @@ G.CONFIG = {
 
   death: { respawnDelay: 1.0 },
 
+  /** UI: noText hides hints, objective, level banners, item labels, captions (menus/puzzles/dialogue keep text). */
+  ui: { noText: true },
+
   camera: { lookAhead: 70, smooth: 6, verticalSmooth: 5, deadzoneY: 40 },
 
   /**
