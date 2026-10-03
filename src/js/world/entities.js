@@ -92,31 +92,53 @@
       G.Physics.move(this, dx, 0, level);
       if (Math.abs(dx) > 0 && Math.random() < 0.3) G.fx.dust(dx > 0 ? this.x : this.x + this.w, this.y + this.h, 1);
       this.pushedT = 0.1;
+      this.pushedNow = true;
+      this.vx = Math.sign(dx) * G.CONFIG.player.pushSpeed; // slides a little after release (friction)
     }
     update(dt, game) {
       super.update(dt);
       this.pushedT = Math.max(0, (this.pushedT || 0) - dt);
-      const C = G.CONFIG.crate;
-      this.vy = Math.min(this.vy + C.gravity * dt, C.maxFall);
+      const C = G.CONFIG.crate, L = game.level, p = game.player;
+      const wind = L.winds && L.winds.length ? L.windAt(this) : null;
+      this.vy = Math.min(this.vy + (C.gravity + (wind ? wind.ay * G.CONFIG.wind.crateFactor : 0)) * dt, C.maxFall);
+      // ---- horizontal: friction, belts, wind, inherited platform velocity ----
+      if (wind) this.vx += wind.ax * G.CONFIG.wind.crateFactor * dt;
+      if (this.onGround) {
+        const ice = this.surface && this.surface.ice;
+        this.vx = G.approach(this.vx, 0, C.friction * (ice ? G.CONFIG.surface.iceDecel : 1) * dt);
+      }
+      this.vx = G.clamp(this.vx, -C.maxSlide, C.maxSlide);
+      const belt = this.onGround && this.surface && this.surface.conveyor ? this.surface.conveyor * G.CONFIG.surface.conveyorSpeed : 0;
+      const mx = (this.pushedNow ? 0 : this.vx) + belt;
+      this.pushedNow = false;
+      if (mx) {
+        const ox = this.x;
+        const r = G.Physics.move(this, mx * dt, 0, L);
+        if (!p.dead && G.overlap(this, p) && !(this.y + this.h <= p.y + 2)) { this.x = ox; this.vx = 0; }
+        else if (r.hitX) this.vx = 0;
+      }
       const pre = this.vy;
-      const r = G.Physics.move(this, 0, this.vy * dt, game.level);
+      const wasGround = this.onGround, prevGE = this.groundEntity;
+      const r = G.Physics.move(this, 0, this.vy * dt, L);
       if (r.ground) {
         if (!this.onGround && pre > 300) { G.Audio.play('crateland'); G.fx.dust(this.cx, this.y + this.h, 6); }
         this.vy = 0;
       }
       this.onGround = r.ground;
       this.groundEntity = r.groundEntity;
-      for (const [tx, ty] of r.groundTiles) game.level.touchCrumble(tx, ty);
+      this.surface = r.ground ? L.surfaceOf(r.groundTiles) : { ice: false, conveyor: 0 };
+      // left a moving platform: inherit its velocity
+      if (wasGround && !this.onGround && prevGE && prevGE.vx) this.vx += prevGE.vx * G.CONFIG.momentum.inheritX;
+      for (const [tx, ty] of r.groundTiles) L.touchCrumble(tx, ty);
       // don't sink into the player: rest on their head instead
-      const p = game.player;
       if (!p.dead && G.overlap(this, p) && this.y < p.y) { this.y = p.y - this.h; this.vy = 0; this.onGround = true; }
-      if (this.y > game.level.pxH + 64 || game.level.hazardAt({ x: this.x + 6, y: this.y + 6, w: this.w - 12, h: this.h - 6 }) === 'acid') {
-        G.fx.burst(this.cx, Math.min(this.cy, game.level.pxH), { count: 12, color: '#a08060', speed: 150, life: 0.6 });
-        this.x = this.snapshot.x; this.y = this.snapshot.y; this.vy = 0;
+      if (this.y > L.pxH + 64 || L.hazardAt({ x: this.x + 6, y: this.y + 6, w: this.w - 12, h: this.h - 6 }) === 'acid') {
+        G.fx.burst(this.cx, Math.min(this.cy, L.pxH), { count: 12, color: '#a08060', speed: 150, life: 0.6 });
+        this.x = this.snapshot.x; this.y = this.snapshot.y; this.vy = 0; this.vx = 0;
         G.Audio.play('respawnCrate');
       }
     }
-    restore() { this.x = this.snapshot.x; this.y = this.snapshot.y; this.vy = 0; }
+    restore() { this.x = this.snapshot.x; this.y = this.snapshot.y; this.vy = 0; this.vx = 0; }
   };
 
   // ------------------------------------------------------------------ shard (collectible)
@@ -318,6 +340,8 @@
       this.waitT = 0;
       this.mode = d.mode || 'pingpong';
       this.dx = 0; this.dy = 0;
+      this.vx = 0; this.vy = 0; // px/s (momentum inheritance)
+      this.mover = true;
     }
     isSolid() { return true; }
     get running() { return !this.wired || this.powered; }
@@ -345,6 +369,7 @@
         }
       }
       this.dx = this.x - ox; this.dy = this.y - oy;
+      this.vx = dt > 0 ? this.dx / dt : 0; this.vy = dt > 0 ? this.dy / dt : 0;
       // carry riders (and whatever stands on them: Mira on a crate on a lift moves too)
       if (this.dx || this.dy) carryRiders(this, this.dx, this.dy, game, 0);
     }
@@ -474,6 +499,7 @@
         // requirement not met yet: stay "outside" so it fires as soon as it is met, even if she never left the zone
         if (this.requires && !(game.level.byId[this.requires] && game.level.byId[this.requires].active)) { this.inside = false; return; }
         this.fired = true;
+        if (this.grant) G.grantAbility(game, this.grant);
         if (this.objective) game.setObjective(this.objective);
         if (this.dialogue) game.playDialogue(this.dialogue);
         if (this.say) game.dialogue.playInline(this.say, this.mode || 'bark');
@@ -490,6 +516,271 @@
     update(dt, game) {
       const near = Math.abs(game.player.cx - this.cx) < (this.range || 5) * T && Math.abs(game.player.cy - this.cy) < 4 * T;
       this.alpha = G.approach(this.alpha, near ? 1 : 0, dt * 3);
+    }
+  };
+
+
+  // ================================================================== Chapter 2 (docs/chapter2-spec.md §2)
+
+  /**
+   * Grant an ability ('dash') for this run and in the save, then show the icon hint.
+   * Works without a full GameScene (unit tests): G.save / game.onAbilityGranted are optional.
+   */
+  G.grantAbility = (game, name) => {
+    game.level.granted[name] = true;
+    if (G.save) { G.save.abilities = G.save.abilities || {}; G.save.abilities[name] = true; if (G.persist) G.persist(); }
+    if (name === 'dash') { game.player.canDash = true; game.player.dashCharges = G.CONFIG.dash.charges; }
+    if (game.onAbilityGranted) game.onAbilityGranted(name);
+    G.Audio.play('solved');
+  };
+
+  // ------------------------------------------------------------------ anchor (grapple point)
+  /** {x,y,[len=4 tiles]}. Art: attached. Rope state lives on the player (p.rope). */
+  Types.anchor = class extends Entity {
+    constructor(d, l) {
+      super(d, l);
+      this.reach = (d.len || G.CONFIG.swing.reach) * T;
+      this.attached = false;
+    }
+  };
+
+  // ------------------------------------------------------------------ wind (current zone)
+  /**
+   * {x,y,w,h,dir,[strength=900],[period],[on],[offset]}. Pulses like a laser if `period` is set.
+   * If something targets its id, it blows only while powered. Art: phase ('on'|'warn'|'off'), strength, k (0..1).
+   */
+  Types.wind = class extends Entity {
+    constructor(d, l) {
+      super(d, l);
+      const W = G.CONFIG.wind;
+      this.w = (d.w || 1) * T; this.h = (d.h || 1) * T;
+      this.dir = d.dir || 'up';
+      this.strength = d.strength || W.strength;
+      this.period = d.period || 0;
+      this.onTime = d.on == null ? (this.period ? this.period / 2 : 0) : d.on;
+      this.offset = d.offset || 0;
+      const v = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] }[this.dir] || [0, -1];
+      this.ux = v[0]; this.uy = v[1];
+      this.phase = 'on'; this.k = 1;
+    }
+    /** Force factor 0..1 at level time (ramps in/out). */
+    factor(time) {
+      if (this.wired && !this.powered) return 0;
+      if (!this.period) return 1;
+      const R = G.CONFIG.wind.ramp;
+      const ph = ((time + this.offset) % this.period + this.period) % this.period;
+      if (ph >= this.onTime) return 0;
+      return Math.min(1, ph / R, (this.onTime - ph) / R);
+    }
+    computePhase(time) {
+      if (this.wired && !this.powered) return 'off';
+      if (!this.period) return 'on';
+      const ph = ((time + this.offset) % this.period + this.period) % this.period;
+      if (ph < this.onTime) return 'on';
+      if (ph > this.period - G.CONFIG.wind.warn) return 'warn';
+      return 'off';
+    }
+    /** Acceleration {ax, ay} in px/s² at level time. */
+    force(time) {
+      const k = this.factor(time) * this.strength;
+      return { ax: this.ux * k, ay: this.uy * k };
+    }
+    update(dt, game) {
+      super.update(dt);
+      this.phase = this.computePhase(game.level.time);
+      this.k = this.factor(game.level.time);
+    }
+  };
+
+  // ------------------------------------------------------------------ dashcrystal
+  /** {x,y}: refills the dash on touch, regrows after dashcrystal.regrow s. Art: ready, regrowT (s left). */
+  Types.dashcrystal = class extends Entity {
+    constructor(d, l) { super(d, l); this.ready = true; this.regrowT = 0; }
+    update(dt, game) {
+      super.update(dt);
+      const C = G.CONFIG.dashcrystal, p = game.player;
+      if (!this.ready) { this.regrowT = Math.max(0, this.regrowT - dt); if (this.regrowT <= 0) { this.ready = true; G.Audio.play('crystalRegrow'); } return; }
+      if (p.canDash && p.touchesCircle(this.cx, this.cy, C.radius) && p.refillDash()) {
+        this.ready = false; this.regrowT = C.regrow;
+        G.Audio.play('crystal');
+        G.fx.burst(this.cx, this.cy, { count: 14, color: ['#7ef9ff', '#ffffff'], speed: 160, life: 0.5, size: 3, gravity: 0, glow: true });
+      }
+    }
+  };
+
+  // ------------------------------------------------------------------ fallplat
+  /** {x,y,[w=2]}: one-way; shakes 0.5s when stood on, falls, respawns. Art: state, t. */
+  Types.fallplat = class extends Entity {
+    constructor(d, l) {
+      super(d, l);
+      const F = G.CONFIG.fallplat;
+      this.w = (d.w || 2) * T; this.h = F.h;
+      this.home = { x: this.x, y: this.y };
+      this.oneWay = true; this.solid = true; this.mover = true;
+      this.state = 'idle'; this.vy = 0; this.vx = 0; this.dx = 0; this.dy = 0;
+    }
+    isSolid() { return this.state !== 'gone'; }
+    setState(s) { this.state = s; this.t = 0; }
+    update(dt, game) {
+      this.t += dt;
+      const F = G.CONFIG.fallplat, L = game.level;
+      const riders = [game.player, ...L.crates].filter((b) => b.groundEntity === this && !b.dead);
+      this.dy = 0;
+      if (this.state === 'idle' && riders.length) { this.setState('shaking'); G.Audio.play('crumble'); }
+      else if (this.state === 'shaking' && this.t >= F.shake) this.setState('falling');
+      else if (this.state === 'falling') {
+        this.vy = Math.min(this.vy + F.gravity * dt, F.maxFall);
+        this.dy = this.vy * dt; this.y += this.dy;
+        carryRiders(this, 0, this.dy, game, 0);
+        if (this.t >= F.fallTime || this.y > L.pxH + 64) { this.setState('gone'); this.vy = 0; }
+      } else if (this.state === 'gone' && this.t >= F.respawn) {
+        const r = { x: this.home.x, y: this.home.y, w: this.w, h: this.h };
+        if (![game.player, ...L.crates].some((b) => G.overlap(b, r))) { this.x = this.home.x; this.y = this.home.y; this.setState('idle'); }
+      }
+      this.vy = this.state === 'falling' ? this.vy : 0;
+    }
+  };
+
+  // ------------------------------------------------------------------ sentinel (enemy drone)
+  /**
+   * {x,y,[range=7],[speed=170],[path:[[x,y],…]]}. Patrol → alert → chase (≤4 s, LOS) → return → cooldown.
+   * Touch kills ('sentinel'); a live laser beam stuns it (falls, harmless) for stunTime.
+   * x,y = top-left of a 2·bodyR box; centre = cx, cy. Art: state, eye{x,y}, alertT, vx, vy, stunT.
+   */
+  Types.sentinel = class extends Entity {
+    constructor(d, l) {
+      super(d, l);
+      const S = G.CONFIG.sentinel;
+      this.w = this.h = S.bodyR * 2;
+      this.x = d.x * T + T / 2 - S.bodyR; this.y = d.y * T + T / 2 - S.bodyR;
+      this.home = { x: this.x, y: this.y };
+      this.range = (d.range || S.range) * T;
+      this.speed = d.speed || S.speed;
+      this.pts = (d.path || []).map(([x, y]) => ({ x: x * T + T / 2 - S.bodyR, y: y * T + T / 2 - S.bodyR }));
+      if (this.pts.length) this.pts.unshift({ x: this.x, y: this.y });
+      this.ptIdx = 1; this.ptDir = 1;
+      this.reset();
+    }
+    reset() {
+      this.x = this.home.x; this.y = this.home.y;
+      this.vx = 0; this.vy = 0;
+      this.state = 'patrol'; this.stateT = 0;
+      this.alertT = 0; this.chaseT = 0; this.loseT = 0; this.cooldownT = 0; this.stunT = 0;
+      this.eye = { x: this.cx + 20, y: this.cy };
+      this.ptIdx = 1; this.ptDir = 1;
+    }
+    setState(s) { if (this.state !== s) { this.state = s; this.stateT = 0; } }
+    sees(p, L) {
+      if (p.dead || p.frozen) return false;
+      const dx = p.cx - this.cx, dy = p.cy - this.cy;
+      if (dx * dx + dy * dy > this.range * this.range) return false;
+      return G.Physics.lineClear(L, this.cx, this.cy, p.cx, p.cy);
+    }
+    /** Distance from centre down to the first solid tile (max 4 tiles). */
+    floorGap(L) {
+      const tx = Math.floor(this.cx / T);
+      for (let ty = Math.floor(this.cy / T); ty < Math.floor(this.cy / T) + 4; ty++) if (L.isSolidTile(tx, ty) || L.isOneWayTile(tx, ty)) return ty * T - this.cy;
+      return Infinity;
+    }
+    steer(tx, ty, speed, accel, dt) {
+      const dx = tx - this.x, dy = ty - this.y, d = Math.hypot(dx, dy) || 1;
+      const s = Math.min(speed, d * 4);
+      this.vx = G.approach(this.vx, (dx / d) * s, accel * dt);
+      this.vy = G.approach(this.vy, (dy / d) * s, accel * dt);
+      return d;
+    }
+    update(dt, game) {
+      super.update(dt);
+      const S = G.CONFIG.sentinel, L = game.level, p = game.player;
+      this.stateT += dt;
+      this.cooldownT = Math.max(0, this.cooldownT - dt);
+      // laser stun
+      if (this.state !== 'stunned' && L.lasers) for (const lz of L.lasers) if (lz.phase === 'on' && G.overlap(this, lz.beam)) {
+        this.setState('stunned'); this.stunT = S.stunTime; this.vx = 0; this.vy = 0;
+        G.Audio.play('sentinelStun'); G.fx.burst(this.cx, this.cy, { count: 12, color: ['#ff6a5a', '#ffffff'], speed: 160, life: 0.5, size: 3, gravity: 300 });
+        break;
+      }
+      const sees = this.state !== 'stunned' && this.sees(p, L);
+      switch (this.state) {
+        case 'patrol': {
+          if (this.pts.length > 1) {
+            const tgt = this.pts[this.ptIdx];
+            if (this.steer(tgt.x, tgt.y, S.patrolSpeed, S.accel, dt) < 3) {
+              if (this.ptIdx + this.ptDir < 0 || this.ptIdx + this.ptDir >= this.pts.length) this.ptDir = -this.ptDir;
+              this.ptIdx += this.ptDir;
+            }
+          } else this.steer(this.home.x, this.home.y + Math.sin(this.t * 2) * 4, S.patrolSpeed, S.accel, dt);
+          this.eye = { x: this.cx + Math.sign(this.vx || 1) * 20, y: this.cy + 4 };
+          if (sees && this.cooldownT <= 0) { this.setState('alert'); this.alertT = 0; G.Audio.play('sentinelAlert'); }
+          break;
+        }
+        case 'alert':
+          this.alertT += dt;
+          this.vx = G.approach(this.vx, 0, S.accel * dt); this.vy = G.approach(this.vy, 0, S.accel * dt);
+          this.eye = { x: p.cx, y: p.cy };
+          if (!sees) { this.setState('return'); break; }
+          if (this.alertT >= S.alertTime) { this.setState('chase'); this.chaseT = 0; this.loseT = 0; }
+          break;
+        case 'chase': {
+          this.chaseT += dt;
+          this.loseT = sees ? 0 : this.loseT + dt;
+          this.eye = { x: p.cx, y: p.cy };
+          this.steer(p.cx - this.w / 2, p.cy - this.h / 2, this.speed, S.accel, dt);
+          if (this.chaseT >= S.chaseTime || this.loseT >= S.loseTime || p.dead) this.setState('return');
+          break;
+        }
+        case 'return': {
+          const d = this.steer(this.home.x, this.home.y, S.returnSpeed, S.accel, dt);
+          this.eye = { x: this.home.x + this.w / 2, y: this.home.y + this.h / 2 };
+          if (d < 4 || this.stateT > 8) { if (this.stateT > 8) { this.x = this.home.x; this.y = this.home.y; } this.setState('patrol'); this.cooldownT = S.cooldown; this.vx = this.vy = 0; }
+          break;
+        }
+        case 'stunned':
+          this.stunT -= dt;
+          this.vy = Math.min(this.vy + S.gravity * dt, 900); this.vx = G.approach(this.vx, 0, 400 * dt);
+          this.eye = { x: this.cx, y: this.cy + 20 };
+          if (this.stunT <= 0) { this.setState('return'); this.cooldownT = S.cooldown; }
+          break;
+      }
+      // keep hovering above the ground (not while stunned)
+      if (this.state !== 'stunned') {
+        const gap = this.floorGap(L);
+        if (gap < S.hover) this.vy = Math.min(this.vy, -(S.hover - gap) * 6);
+      }
+      const rx = G.Physics.move(this, this.vx * dt, 0, L);
+      if (rx.hitX) this.vx = 0;
+      const ry = G.Physics.move(this, 0, this.vy * dt, L);
+      if (ry.hitY) this.vy = 0;
+      if (this.state !== 'stunned' && p.touchesCircle(this.cx, this.cy, S.hitR)) p.kill('sentinel');
+    }
+  };
+
+  // ------------------------------------------------------------------ npc
+  /** {x,y,who,dialogue,[facing]}: talk with E; repeat talks play dialogue+'_again' if it exists. Art: who, facing, talking, t. */
+  Types.npc = class extends Entity {
+    constructor(d, l) {
+      super(d, l);
+      this.y = (d.y - 1) * T; this.h = 2 * T;
+      this.interactable = true; this.prompt = 'Говорить';
+      this.facing = d.facing || -1;
+      this.talking = false; this.talkMood = 'neutral'; this.talks = 0;
+    }
+    canInteract(game) { return !game.dialogue.blocking; }
+    currentDialogue() {
+      const again = this.dialogue + '_again';
+      return this.talks > 0 && G.Script && G.Script[again] ? again : this.dialogue;
+    }
+    interact(game) {
+      const id = this.currentDialogue();
+      this.talks++;
+      this.facing = game.player.cx >= this.cx ? 1 : -1;
+      game.player.facing = -this.facing;
+      if (id) game.playDialogue(id);
+    }
+    update(dt, game) {
+      super.update(dt);
+      const p = game.player, R = G.CONFIG.npc.faceRange * T;
+      if (!this.talking && Math.abs(p.cx - this.cx) < R && Math.abs(p.cy - this.cy) < R) this.facing = p.cx >= this.cx ? 1 : -1;
     }
   };
 

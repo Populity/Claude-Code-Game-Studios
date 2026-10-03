@@ -37,7 +37,7 @@
     const g = c.getContext('2d'), img = g.createImageData(N, N), d = img.data, rgb = Pal.rgbOf(col);
     for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
       const u = (x + 0.5) / N * 2 - 1, v = (y + 0.5) / N * 2 - 1, r = Math.sqrt(u * u + v * v);
-      const a = r >= 1 ? 0 : Math.pow(1 - r, 1.7) * (0.75 + 0.25 * Math.exp(-r * r * 18));
+      const a = r >= 1 ? 0 : Math.pow(1 - r, 1.35) * (0.75 + 0.25 * Math.exp(-r * r * 18));
       const i = (y * N + x) * 4;
       d[i] = rgb[0]; d[i + 1] = rgb[1]; d[i + 2] = rgb[2]; d[i + 3] = Math.min(255, a * 255);
     }
@@ -179,7 +179,7 @@
     if (p && !p.dead) {
       const f = p.facing || 1, lx = p.x + p.w / 2 + f * 5, ly = p.y + 14;
       if (amb.lamp > 0.05) {
-        add({ x: lx, y: ly, r: 330, i: 0.85 * amb.lamp, col: '#ffe4b8', shadow: true, cone: { dir: f > 0 ? 0.12 : Math.PI - 0.12, half: 0.55 }, prio: 3 });
+        add({ x: lx, y: ly, r: 330, i: 0.85 * amb.lamp, col: '#ffe4b8', shadow: true, cone: { dir: f > 0 ? 0.1 : Math.PI - 0.1, half: 0.62 }, prio: 3 });
         add({ x: p.x + p.w / 2, y: p.y + p.h / 2, r: 120, i: 0.45 * amb.lamp, col: '#ffd8b0' });
       }
     }
@@ -236,7 +236,8 @@
         add({ x: s.x, y: s.y + 4, r: al[0], i: al[1], col, fl: al[3], seed: s.x * 0.1 });
       }
     }
-    for (const o of L) if (o.fl) o.i *= flick(o.fl, t, o.seed || 0);
+    const gain = amb.gain || 1.3;
+    for (const o of L) { if (o.fl) o.i *= flick(o.fl, t, o.seed || 0); o.i *= gain; }
     return L;
   }
 
@@ -264,7 +265,7 @@
     // visibility mask (cached for static lights)
     let poly = null;
     if (o.key) { const c = S.polyCache.get(o.key); if (c && c.x === o.x && c.y === o.y && c.r === R) poly = c.p; }
-    if (!poly) { poly = visPoly(o.x, o.y, R); if (o.key) S.polyCache.set(o.key, { x: o.x, y: o.y, r: R, p: poly }); }
+    if (!poly) { const tp = performance.now(); poly = visPoly(o.x, o.y, R); S.tPoly += performance.now() - tp; if (o.key) S.polyCache.set(o.key, { x: o.x, y: o.y, r: R, p: poly }); }
     mg.setTransform(1, 0, 0, 1, 0, 0); mg.clearRect(0, 0, sz, sz);
     mg.setTransform(q, 0, 0, q, -ox * q, -oy * q);
     mg.beginPath(); mg.moveTo(poly[0], poly[1]);
@@ -272,11 +273,12 @@
     mg.closePath();
     mg.fillStyle = '#fff'; mg.fill();
     // bleed the light ~9px into the lit faces of the walls, so surfaces facing the light read as lit
-    mg.strokeStyle = '#fff'; mg.lineJoin = 'round'; mg.lineWidth = 18; mg.globalAlpha = 0.85; mg.stroke(); mg.globalAlpha = 1;
+    if (!S.dbgNoStroke) mg.strokeStyle = '#fff'; mg.lineJoin = S.dbgJoin || 'round'; mg.lineWidth = S.dbgNoStroke ? 0.01 : 18; mg.globalAlpha = 0.85; mg.stroke(); mg.globalAlpha = 1;
     tg.globalCompositeOperation = 'destination-in';
     tg.drawImage(S.mask, 0, 0, sz, sz, 0, 0, sz, sz);
     m.globalAlpha = Math.min(1, o.i);
     m.drawImage(S.tmp, 0, 0, sz, sz, (ox - view.x) * q, (oy - view.y) * q, sz, sz);
+    if (o.i > 1) { m.globalAlpha = Math.min(1, o.i - 1); m.drawImage(S.tmp, 0, 0, sz, sz, (ox - view.x) * q, (oy - view.y) * q, sz, sz); }
     m.globalAlpha = 1;
   }
 
@@ -332,7 +334,9 @@
       const m = S.map.getContext('2d');
       m.globalCompositeOperation = 'source-over'; m.globalAlpha = 1; m.filter = 'none';
       m.fillStyle = ambientColor(amb, t); m.fillRect(0, 0, bw, bh);
+      S.tPoly = 0; const tg0 = performance.now();
       const lights = gather(view, level, t, game, amb);
+      S.tGather = performance.now() - tg0;
       // shadow budget: strongest lights near the view centre
       const vcx = view.x + W / 2, vcy = view.y + H / 2;
       let cand = [];
@@ -347,17 +351,22 @@
       for (const o of lights) {
         if (shadowed.has(o)) { drawShadowed(m, o, view, q); continue; }
         if (o.cone) continue; // cones without a shadow slot fall back to the round fill light only
-        m.globalAlpha = Math.min(1, o.i);
-        m.drawImage(sprite(o.col), (o.x - o.r - view.x) * q, (o.y - o.r - view.y) * q, o.r * 2 * q, o.r * 2 * q);
+        const sx = (o.x - o.r - view.x) * q, sy = (o.y - o.r - view.y) * q, sw = o.r * 2 * q;
+        m.globalAlpha = Math.min(1, o.i); m.drawImage(sprite(o.col), sx, sy, sw, sw);
+        if (o.i > 1) { m.globalAlpha = Math.min(1, o.i - 1); m.drawImage(sprite(o.col), sx, sy, sw, sw); }
       }
       m.globalAlpha = 1;
       // 3. composite (multiply), softened by a blur pass at half resolution
-      let src = S.map;
+      S.tMap = performance.now() - t0;
+      const src = S.map;
       if (Qs.blur) {
-        S.blurBuf = ensure(S.blurBuf, bw, bh);
+        // cheap separable-free blur: down-sample 2x and blend back (canvas 'filter' costs ~2 ms in software)
+        const hw = Math.ceil(bw / 2), hh = Math.ceil(bh / 2);
+        S.blurBuf = ensure(S.blurBuf, hw, hh);
         const b = S.blurBuf.getContext('2d');
-        b.globalCompositeOperation = 'copy'; b.filter = `blur(${Qs.blur}px)`; b.drawImage(S.map, 0, 0); b.filter = 'none';
-        src = S.blurBuf;
+        b.globalCompositeOperation = 'copy'; b.imageSmoothingEnabled = true; b.drawImage(S.map, 0, 0, hw, hh);
+        m.globalCompositeOperation = 'source-over'; m.imageSmoothingEnabled = true; m.globalAlpha = 0.6;
+        m.drawImage(S.blurBuf, 0, 0, hw, hh, 0, 0, bw, bh); m.globalAlpha = 1;
       }
       ctx.save();
       ctx.globalCompositeOperation = 'multiply';
@@ -391,7 +400,7 @@
       return 0.5 + 0.5 * lum;
     },
     /** QA: timing + counts for the last frame. */
-    stats() { return { ms: +S.ms.toFixed(2), lights: S.nLights, shadowed: S.nShadow, segs: S.hs.length + S.vs.length, quality }; },
+    stats() { return { ms: +S.ms.toFixed(2), lights: S.nLights, shadowed: S.nShadow, segs: S.hs.length + S.vs.length, quality, poly: +(S.tPoly || 0).toFixed(2), gather: +(S.tGather || 0).toFixed(2), map: +(S.tMap || 0).toFixed(2) }; },
   };
   Object.defineProperty(Lighting, '_state', { value: S, enumerable: false });
   G.Art.Lighting = Lighting;
