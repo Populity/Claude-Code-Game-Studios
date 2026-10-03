@@ -71,6 +71,10 @@
       this.anchors = this.entities.filter((e) => e.type === 'anchor');
       this.winds = this.entities.filter((e) => e.type === 'wind');
       this.lasers = this.entities.filter((e) => e.type === 'laser');
+      /** Entities updated before the player each tick so riders are carried (mplatform, saw, fallplat). */
+      this.movers = this.entities.filter((e) => e.mover);
+      /** Abilities granted at runtime (trigger grant) in addition to def.abilities and the save. */
+      this.granted = {};
       this.buildSignalGraph();
     }
 
@@ -134,6 +138,14 @@
     }
 
     isOneWayTile(tx, ty) { return this.tileCode(tx, ty) === TILE.ONEWAY; }
+
+    /**
+     * Is an ability ('dash') available here? True if the level lists it in def.abilities,
+     * a trigger granted it this run, or the save has it (G.save.abilities[name]).
+     */
+    hasAbility(name) {
+      return !!((this.def.abilities && this.def.abilities.includes(name)) || this.granted[name] || (G.save && G.save.abilities && G.save.abilities[name]));
+    }
 
     /** Ice tile? (low friction, no wall jump) */
     isIceTile(tx, ty) { return this.tileCode(tx, ty) === TILE.ICE; }

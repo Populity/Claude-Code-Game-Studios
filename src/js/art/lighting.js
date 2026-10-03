@@ -252,8 +252,7 @@
 
   function drawShadowed(m, o, view, q) {
     const R = o.r, sz = Math.ceil(R * 2 * q) + 2;
-    S.tmp = ensure(S.tmp && S.tmp.width >= sz ? S.tmp : null, Math.max(sz, S.tmp ? S.tmp.width : 0), Math.max(sz, S.tmp ? S.tmp.height : 0));
-    S.mask = ensure(S.mask && S.mask.width === S.tmp.width ? S.mask : null, S.tmp.width, S.tmp.height);
+    if (!S.tmp || S.tmp.width < sz) { const n = Math.max(sz, 64); S.tmp = mk(n, n); S.mask = mk(n, n); }
     const tg = S.tmp.getContext('2d'), mg = S.mask.getContext('2d');
     const ox = o.x - R, oy = o.y - R; // world origin of the tmp canvas
     tg.setTransform(1, 0, 0, 1, 0, 0); tg.globalCompositeOperation = 'source-over'; tg.globalAlpha = 1; tg.clearRect(0, 0, sz, sz);
@@ -266,9 +265,8 @@
     let poly = null;
     if (o.key) { const c = S.polyCache.get(o.key); if (c && c.x === o.x && c.y === o.y && c.r === R) poly = c.p; }
     if (!poly) { poly = visPoly(o.x, o.y, R); if (o.key) S.polyCache.set(o.key, { x: o.x, y: o.y, r: R, p: poly }); }
+    mg.setTransform(1, 0, 0, 1, 0, 0); mg.clearRect(0, 0, sz, sz);
     mg.setTransform(q, 0, 0, q, -ox * q, -oy * q);
-    mg.globalCompositeOperation = 'copy'; mg.fillStyle = '#000'; mg.fillRect(ox, oy, 1, 1);
-    mg.globalCompositeOperation = 'source-over'; mg.clearRect(ox - 2, oy - 2, R * 2 + 4, R * 2 + 4);
     mg.beginPath(); mg.moveTo(poly[0], poly[1]);
     for (let i = 2; i < poly.length; i += 2) mg.lineTo(poly[i], poly[i + 1]);
     mg.closePath();
@@ -276,7 +274,7 @@
     // bleed the light ~9px into the lit faces of the walls, so surfaces facing the light read as lit
     mg.strokeStyle = '#fff'; mg.lineJoin = 'round'; mg.lineWidth = 18; mg.globalAlpha = 0.85; mg.stroke(); mg.globalAlpha = 1;
     tg.globalCompositeOperation = 'destination-in';
-    tg.drawImage(S.mask, 0, 0);
+    tg.drawImage(S.mask, 0, 0, sz, sz, 0, 0, sz, sz);
     m.globalAlpha = Math.min(1, o.i);
     m.drawImage(S.tmp, 0, 0, sz, sz, (ox - view.x) * q, (oy - view.y) * q, sz, sz);
     m.globalAlpha = 1;

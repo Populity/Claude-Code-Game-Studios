@@ -2223,6 +2223,8 @@
       ctx.restore();
     },
 
+    /** Storm lightning brightness 0..1 for the current level (lighting ambience follows it). */
+    flash(t) { return S.biome === 'tower' && S.variant !== 'core' ? lightning(t).b : 0; },
     /** CSS colour for footstep / landing dust. */
     dustColor(level) { return Pal.get(level).dust; },
     /** CSS colour for crumble debris. */
@@ -2288,7 +2290,9 @@
 
   /** Linear edge-band gradients: grade tint top/bottom + vignette on all four edges (or a red alarm rim). */
   function buildEdgeGradients(ctx, P) {
-    const v = P ? P.vignette * 0.8 : 0;
+    // the dynamic lighting pass already darkens the frame: scale the vignette down so edges don't double-darken
+    const ls = P && G.Art.Lighting && G.Art.Lighting.vignetteScale && !G.lowGfx() ? G.Art.Lighting.vignetteScale(S.level) : 1;
+    const v = P ? P.vignette * 0.8 * ls : 0;
     const col = P ? (a) => `rgba(0,0,0,${a})` : (a) => `rgba(255,30,50,${a})`;
     const k = P ? 1 : 0.2;
     const lin = (x0, y0, x1, y1, a) => { const g = ctx.createLinearGradient(x0, y0, x1, y1); g.addColorStop(0, col(a)); g.addColorStop(1, col(0)); return g; };
