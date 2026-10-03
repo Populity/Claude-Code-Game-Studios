@@ -68,14 +68,16 @@
    */
   function isStriking(p) {
     if (p.state === 'dash' || p.dashing === true) return true;
+    if (typeof p.dashT === 'number' && p.dashT < BC().common.strikeGrace) return true; // just-ended dash still carries the blow
     if (p.canDash === undefined && !p.onGround) return Math.hypot(p.vx, p.vy) > BC().common.strikeMinSpeed;
     return false;
   }
   /** Refill the dash (crystals). Works with the spec fields; harmless if the engine has no dash. */
   function refillDash(p) {
+    if (typeof p.refillDash === 'function') return !!p.refillDash();
     const max = (G.CONFIG.dash && G.CONFIG.dash.charges) || 1;
-    if (typeof p.dashCharges === 'number') p.dashCharges = Math.max(p.dashCharges, max);
-    if (typeof p.refillDash === 'function') p.refillDash();
+    if (typeof p.dashCharges === 'number' && p.dashCharges < max) { p.dashCharges = max; return true; }
+    return false;
   }
   const say = (id) => !!(id && G.Script && G.Script[id]);
 
@@ -180,9 +182,8 @@
         }
         case 'crystal': {
           if (!this.ready) { this.regrowT -= dt; if (this.regrowT <= 0) this.ready = true; }
-          else if (!p.dead && circleRect(this.px, this.py, 16, p)) {
+          else if (!p.dead && circleRect(this.px, this.py, 16, p) && refillDash(p)) {
             this.ready = false; this.regrowT = (G.CONFIG.dashcrystal && G.CONFIG.dashcrystal.regrow) || 2.5;
-            refillDash(p);
             G.Audio.play('jumppad', { volume: 0.5 });
             G.fx.burst(this.px, this.py, { count: 12, color: ['#ff7ad9', '#ffffff'], speed: 160, life: 0.5, gravity: 0, glow: true });
           }
@@ -379,7 +380,7 @@
       p.frozen = true; p.vx = 0;
       G.Audio.play('rumble');
       G.fx.shake(4, 1.2);
-      if (typeof game.cineFocus === 'function') game.cineFocus(this.bx, this.by, 1.15, BC().common.introTime);
+      if (typeof game.cineFocus === 'function') game.cineFocus(this.bx, this.by, BC().common.introZoom, BC().common.introTime);
     }
     updateIntro(dt, game) {
       const C = BC().common;

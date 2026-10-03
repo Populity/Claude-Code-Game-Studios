@@ -19,7 +19,9 @@ G.CONFIG.bosses = {
     deathTime: 3.0,          // s of the death explosion sequence before `active = true`
     projectilePool: 28,      // pooled bossproj entities per boss
     wakePad: 0,              // tiles of padding added to the arena rect for waking
-    strikeMinSpeed: 420,     // px/s: fallback "strike" if the engine has no dash state yet
+    strikeMinSpeed: 420,
+    strikeGrace: 0.24,       // s after a dash STARTS during which contact still counts as a strike
+    introZoom: 1.08,         // game.cineFocus zoom during the intro (bosses are huge: keep it gentle)     // px/s: fallback "strike" if the engine has no dash state yet
     killCause: 'boss',
   },
 
