@@ -119,7 +119,7 @@
       const act = buttonAt(p);
       activeTouches.set(e.pointerId, act);
       recomputeTouchHeld();
-      if (act) return; // on-screen button, not a UI click
+      if (act) { tapped[act] = true; return; } // on-screen button, not a UI click
     } else {
       input.lastDevice = 'mouse';
     }
@@ -144,6 +144,50 @@
   };
   window.addEventListener('pointerup', end);
   window.addEventListener('pointercancel', end);
+
+  // Stop the browser / host app from treating game touches as scroll, zoom or swipe-back
+  // (that turns them into pointercancel and the on-screen buttons "do nothing").
+  const block = (e) => { if (e.cancelable) e.preventDefault(); };
+  if (!window.PointerEvent) {
+    // Legacy Touch Events path: mirror the pointer logic above.
+    const tdown = (e) => {
+      block(e);
+      if (G.Audio && G.Audio.unlock) G.Audio.unlock();
+      input.touchActive = true; input.lastDevice = 'touch';
+      for (const t of e.changedTouches) {
+        const p = toView(t.clientX, t.clientY);
+        input.pointer.x = p.x; input.pointer.y = p.y;
+        const act = buttonAt(p);
+        activeTouches.set('t' + t.identifier, act);
+        if (act) tapped[act] = true; else { input.pointer.down = true; input.pointer.clicked = true; }
+      }
+      recomputeTouchHeld();
+    };
+    const tmove = (e) => {
+      block(e);
+      for (const t of e.changedTouches) {
+        const p = toView(t.clientX, t.clientY);
+        input.pointer.x = p.x; input.pointer.y = p.y; input.pointer.moved = true;
+        if (activeTouches.has('t' + t.identifier)) activeTouches.set('t' + t.identifier, buttonAt(p));
+      }
+      recomputeTouchHeld();
+    };
+    const tend = (e) => {
+      block(e);
+      for (const t of e.changedTouches) activeTouches.delete('t' + t.identifier);
+      if (!e.touches.length) input.pointer.down = false;
+      recomputeTouchHeld();
+    };
+    window.addEventListener('touchstart', tdown, { passive: false });
+    window.addEventListener('touchmove', tmove, { passive: false });
+    window.addEventListener('touchend', tend, { passive: false });
+    window.addEventListener('touchcancel', tend, { passive: false });
+  } else {
+    window.addEventListener('touchstart', block, { passive: false });
+    window.addEventListener('touchmove', block, { passive: false });
+  }
+  window.addEventListener('gesturestart', block, { passive: false }); // iOS pinch-zoom
+  window.addEventListener('contextmenu', (e) => e.preventDefault());  // long-press menu
 
   // ---- Gamepad ----
   function pollGamepad() {

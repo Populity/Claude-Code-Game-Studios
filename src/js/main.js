@@ -25,6 +25,8 @@
 
   window.addEventListener('error', (e) => { G.errors.push(String(e.message || e)); });
 
+  // Touch-first devices: show on-screen controls immediately (don't wait for the first tap).
+  try { if (window.matchMedia && matchMedia('(pointer: coarse)').matches) G.input.touchActive = true; } catch (e) { /* */ }
   G.applySettings();
   if (G.Art.Decor && G.Art.Decor.boot) try { G.Art.Decor.boot(); } catch (e) { console.error(e); }
 
@@ -102,6 +104,20 @@
     ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.clip();
     G.App.draw(ctx);
     ctx.restore();
+    // Phone held upright: the 16:9 game is tiny — show a rotate-device icon (no text).
+    if (G.input.touchActive && window.innerHeight > window.innerWidth * 1.1) drawRotateHint();
+  }
+
+  function drawRotateHint() {
+    const cw = canvas.width, ch = canvas.height, s = Math.min(cw, ch) / 6, t = performance.now() / 1000;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.fillStyle = 'rgba(0,0,0,0.78)'; ctx.fillRect(0, 0, cw, ch);
+    ctx.translate(cw / 2, ch / 2);
+    ctx.rotate(-Math.PI / 2 * Math.min(1, Math.max(0, Math.sin(t * 2) * 1.2 + 0.2)));
+    ctx.strokeStyle = '#7ef9ff'; ctx.lineWidth = s * 0.08;
+    G.roundRect(ctx, -s * 0.5, -s * 0.9, s, s * 1.8, s * 0.15); ctx.stroke();
+    ctx.beginPath(); ctx.arc(0, s * 0.72, s * 0.06, 0, 7); ctx.fillStyle = '#7ef9ff'; ctx.fill();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
   }
 
   /** Test hook: advance the game deterministically by n frames (used by QA scripts). */

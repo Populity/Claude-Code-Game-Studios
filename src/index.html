@@ -10,7 +10,8 @@
     :root { --bg: #000; }
     html, body { margin: 0; height: 100%; background: var(--bg); overflow: hidden; touch-action: none; }
     body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
-    canvas { display: block; }
+    canvas { display: block; touch-action: none; -webkit-touch-callout: none; }
+    html { touch-action: none; overscroll-behavior: none; }
   </style>
 </head>
 <body>

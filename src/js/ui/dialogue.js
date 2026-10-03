@@ -274,7 +274,7 @@
       if (this.done) return;
       this.t += dt; this.shotT += dt;
       this.dialogue.update(dt);
-      if (G.input.down('pause') || G.input.down('back')) { this.skipHold += dt; if (this.skipHold > 0.6) { G.input.reset(); this.end(); return; } }
+      if (G.input.down('pause') || G.input.down('back') || (G.input.touchActive && G.input.pointer.down)) { this.skipHold += dt; if (this.skipHold > 0.6) { G.input.reset(); this.end(); return; } }
       else this.skipHold = 0;
       const s = this.shots[this.shot];
       if (!s) return;
