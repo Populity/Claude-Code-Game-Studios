@@ -36,7 +36,7 @@
     let k = 0;
     if (e.state === 'dying') k = 2 + e.deathT * 3;
     if (e.hurtT > 0) k = Math.max(k, e.hurtT * 8);
-    if (e.state === 'intro' && e.roarT < 1) k = Math.max(k, (1 - e.roarT) * 5);
+    if (e.roarT < 1) k = Math.max(k, (1 - e.roarT) * 5);
     return k ? { x: Math.sin(t * 61) * k, y: Math.cos(t * 47) * k * 0.6 } : { x: 0, y: 0 };
   }
   function flash(e) { return e.hurtT > 0 ? Math.min(1, e.hurtT * 2.2) * (Math.sin(e.hurtT * 60) > 0 ? 1 : 0.5) : 0; }
@@ -256,7 +256,7 @@
     if (ct > 0) { glow(ctx, 66, 0, 20 + ct * 40, '#ff8a3a', ct); glow(ctx, 66, 0, 8 + ct * 10, '#ffffff', ct * ct); }
     ctx.restore();
     const salvoN = G.CONFIG.bosses.colossus.salvo[Math.min(e.phase, 2)];
-    for (let i = 0; i < salvoN; i++) { const used = e.atk && e.atk.name === 'salvo' && i < e.atk.n; ctx.fillStyle = used ? '#3a2a1a' : col; ctx.beginPath(); ctx.arc(-W * 0.1 + i * 14, ty + 16, 4, 0, TAU); ctx.fill(); }
+    for (let i = 0; i < salvoN; i++) { const used = e.ventOpen || (e.atk && e.atk.name === 'salvo' && i < e.atk.n); ctx.fillStyle = used ? '#3a2a1a' : col; ctx.beginPath(); ctx.arc(-W * 0.1 + i * 14, ty + 16, 4, 0, TAU); ctx.fill(); }
     if (f) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = f * 0.7; ctx.fillStyle = '#fff'; ctx.fillRect(-W / 2, -H, W, H); }
     ctx.restore();
     roarRings(ctx, e, x, fy - H * 0.6, col);
@@ -270,7 +270,7 @@
     const x = e.bx + s.x, y = e.by + s.y, f = flash(e);
     glow(ctx, x, y, 300, col, 0.15);
     // support pylon to the ceiling
-    ctx.fillStyle = lin(ctx, x - 20, 0, x + 20, 0, ['#2a2430', '#5a5060', '#1a1620']); ctx.fillRect(x - 16, e.y, 32, y - e.y - 50);
+    ctx.fillStyle = lin(ctx, x - 20, 0, x + 20, 0, ['#2a2430', '#5a5060', '#1a1620']); ctx.fillRect(x - 16, e.y, 32, Math.max(0, y - e.y - 50));
     // beam arms
     drawArms(ctx, e, t);
     // outer rotating ring with socket lamps (one lamp per filled socket)
@@ -473,7 +473,7 @@
     if (b.hudA <= 0.01) return;
     const col = SIG[b.kind] || '#fff';
     const n = b.maxHp, gap = 6, segW = Math.min(64, 360 / n), w = n * segW + (n - 1) * gap;
-    const x0 = (VW - w) / 2 + 16, y0 = 30 + (b.state === 'intro' ? (1 - ease(clamp01(b.introT / 1.2))) * -40 : 0);
+    const x0 = (VW - w) / 2 + 16, y0 = 30 + (b.letterbox > 0.001 ? G.CONFIG.bosses.common.letterbox * ease(b.letterbox) : 0);
     ctx.save(); ctx.globalAlpha = b.hudA;
     ctx.fillStyle = 'rgba(4,6,12,0.65)'; G.roundRect(ctx, x0 - 46, y0 - 16, w + 58, 32, 10); ctx.fill();
     ctx.strokeStyle = col + '88'; ctx.lineWidth = 1; ctx.stroke();

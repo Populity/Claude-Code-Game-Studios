@@ -54,11 +54,7 @@ G.CONFIG = {
   },
   momentum: {
     inheritX: 1.0,          // share of a moving platform's horizontal velocity given on jump / walk-off
-<<<<<<< Updated upstream
     inheritUp: 0,         // share of its upward velocity (downward motion never weakens a jump)
-=======
-    inheritUp: 0.5,         // share of its upward velocity (downward motion never weakens a jump)
->>>>>>> Stashed changes
     conveyorInherit: 1.0,   // share of conveyor speed kept when jumping off a belt
   },
   surface: {
