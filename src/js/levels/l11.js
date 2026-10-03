@@ -8,6 +8,10 @@
  *     top row 15 (5 high: jump + ↑dash).
  *  C  C (44,14). CRYSTAL CHAIN over the spike pit x47-64: jump at the edge, →dash at the apex,
  *     crystal (50,11) → ↗dash, crystal (53,9) → →dash, crystal (58,9) → ↗dash → ledge x65-72 (row 14).
+ *     REBALANCE (companions-spec §5): ledges widened (x40-48, x63-72) + mid-pit safe pillar x54-57
+ *     (stand row 14) → two 5-wide gaps (jump+dash, or glider from (46,14)); extra crystals (51,13),
+ *     (60,12); medkit on the pillar. Рекс recruit (42,14) at C2: throw (9 far / 5 high) from x46 lands
+ *     on the pillar, a second throw from x57 lands on the far ledge.
  *  D  C (75,19). ICE run x73-89 (slow to accelerate) → 5-wide spike pit x90-94 (jump + →dash) →
  *     LEFT conveyor x95-107 (net 130 px/s) → 5-wide spike pit x108-112 (full-speed jump or jump+dash).
  *  E  C (114,19). ICE SHAFT x116-121 (ice walls = no wall-jump, spikes x118-121). Walk under
@@ -37,6 +41,10 @@
   // C crystal chain pit
   fill(47, 4, 64, 19, '.'); fill(47, 20, 64, 20, '^');
   fill(65, 4, 72, 14, '.');                                         // ledge stand row 14
+  // C rebalance (companions-spec §5): wider landings + a mid-pit safe pillar → two 5-wide gaps
+  fill(47, 15, 48, 20, '#');                                        // checkpoint ledge extended to x48
+  fill(54, 15, 57, 20, '#');                                        // mid-pit safe pillar (stand row 14)
+  fill(63, 15, 64, 20, '#');                                        // far ledge extended to x63
   // D ice + conveyors
   fill(73, 8, 113, 19, '.');
   fill(73, 20, 89, 20, 'I');
@@ -78,7 +86,13 @@
     map,
     entities: [
       { type: 'npc', x: 14, y: 19, who: 'echo', dialogue: 'l11_echo_meet', facing: -1 },
-      // C crystal chain
+      // C crystal chain (rebalanced: Rex at checkpoint 2, glider, mid-pit pillar x54-57, extra crystals)
+      { type: 'npc', x: 42, y: 14, who: 'rex', dialogue: 'l11_rex_meet', recruit: 'rex', facing: -1 },
+      { type: 'hint', x: 46, y: 13, text: 'Рекс может перебросить Миру через пропасть (G)', range: 3 },
+      { type: 'pickup', kind: 'glider', x: 46, y: 14 },
+      { type: 'pickup', kind: 'medkit', x: 56, y: 14 },
+      { type: 'dashcrystal', x: 51, y: 13 },
+      { type: 'dashcrystal', x: 60, y: 12 },
       { type: 'dashcrystal', x: 50, y: 11 },
       { type: 'dashcrystal', x: 53, y: 9 },
       { type: 'dashcrystal', x: 58, y: 9 },

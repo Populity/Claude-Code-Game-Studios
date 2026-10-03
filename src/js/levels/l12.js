@@ -21,6 +21,9 @@
  *  F  COLOSSUS arena x184-219 (boss targets gate + exit). Lever (186,19) powers the fan (188,19) that
  *     blows its shells back into the vent, or swing on anchors (202,7)/(212,7) and rip the back valve
  *     while it reloads; 6 hits. Gate x220 → trigger l12_end x222 → exit (224,19).
+ * REBALANCE (companions-spec §5): glider (40,11) before B2, jetpack (74,11) before C; Rex-throw pillar
+ *  x84-88 (stand 12) in the anchor chasm: a throw from x76 lands on it (medkit), one swing on (91,5)
+ *  finishes. Mine (15,19), stalactite (147,6); medkits (86,12) (150,11) (182,19).
  * SHARDS: (26,4) top of the up-draft (stay in the wind until the ceiling); (57,7) above the last
  *  fallplat (a full jump while the gust may return); (128,9) over the 2nd spike pit, on the patroller's line.
  */
@@ -41,6 +44,7 @@
   fill(61, 2, 76, 11, '.');
   // C anchor chasm
   fill(77, 2, 100, 23, '.');
+  fill(84, 13, 88, 23, '#');                                        // Rex-throw shortcut pillar (stand row 12)
   // D sentinel corridor (stand row 11, ceiling row 5)
   fill(101, 4, 112, 11, '.');
   fill(113, 6, 151, 11, '.');
@@ -73,6 +77,15 @@
     startDialogue: 'l12_start',
     map,
     entities: [
+      // companions-spec §5 rebalance: pickups, medkits, telegraphed sudden hazards
+      { type: 'mine', x: 15, y: 19 },                     // A: flat run-up, rock decor (12,19) nearby
+      { type: 'pickup', kind: 'glider', x: 40, y: 11 },   // before the gust bridge chasm
+      { type: 'pickup', kind: 'jetpack', x: 74, y: 11 },  // before the anchor chasm
+      { type: 'hint', x: 76, y: 10, text: 'Рекс: бросок на скальный столб (G)', range: 3 },
+      { type: 'pickup', kind: 'medkit', x: 86, y: 12 },   // on the Rex pillar
+      { type: 'pickup', kind: 'medkit', x: 150, y: 11 },  // after the sentinel corridor
+      { type: 'stalactite', x: 147, y: 6 },               // corridor ceiling row 5, past the guard
+      { type: 'pickup', kind: 'medkit', x: 182, y: 19 },  // before the Colossus
       // B1 up-draft
       { type: 'wind', x: 23, y: 3, w: 4, h: 21, dir: 'up', strength: 3600, period: 3.2, on: 2.0 },
       // B2 gust bridge
