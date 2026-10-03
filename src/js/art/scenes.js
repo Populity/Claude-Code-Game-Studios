@@ -1283,7 +1283,7 @@
     ctx.drawImage(img, x - img.lw / 2, by - h * 1.02, img.lw, img.lh);
     ctx.save();
     ctx.strokeStyle = o.fill || '#0c0a12'; ctx.lineWidth = Math.max(1, h * 0.01);
-    for (let i = 0; i < 3; i++) {
+    if (!o.noRings) for (let i = 0; i < 3; i++) {
       const yy = by - (0.66 + i * 0.05) * h + Math.sin(t * 0.8 + i) * h * 0.005;
       ctx.beginPath(); ctx.ellipse(x, yy, h * (0.11 - i * 0.025), h * 0.016, 0, 0, TAU); ctx.stroke();
     }
@@ -1291,7 +1291,7 @@
       ctx.globalCompositeOperation = 'lighter';
       const c = o.lightC || C.cyan, L = o.light;
       glow(ctx, x, by - h, h * 0.25, c, L * 0.45); glow(ctx, x, by - h, h * 0.05, C.white, L * 0.9);
-      for (let i = 0; i < 3; i++) {
+      if (!o.noRings) for (let i = 0; i < 3; i++) {
         const yy = by - (0.66 + i * 0.05) * h;
         glowE(ctx, x, yy, h * (0.12 - i * 0.025), h * 0.02, 0, c, L * 0.35);
       }
@@ -1934,7 +1934,10 @@
       paintHaze(g, 430, 500, [40, 70, 110], 0.4);
     }), sx * 0.3, sy * 0.3);
     // the Spire crown (huge, close)
-    drawSpire2(ctx, BX, BY + 960 * 0.98, 960, t, { key: 'crown', fill: '#070910', rim: 'rgba(126,249,255,0.35)', glyph: C.cyan, light: 0.3 + 0.9 * on });
+    drawSpire2(ctx, BX, BY + 960 * 0.98, 960, t, { key: 'crown', fill: '#070910', rim: 'rgba(126,249,255,0.35)', glyph: C.cyan, light: 0.3 + 0.9 * on, noRings: true });
+    ctx.save(); ctx.strokeStyle = 'rgba(126,249,255,0.5)'; ctx.lineWidth = 2;
+    for (let i = 0; i < 3; i++) { const yy = BY + 40 + i * 26 + Math.sin(t * 0.8 + i) * 3; ctx.beginPath(); ctx.ellipse(BX, yy, 70 + i * 26, 9 + i * 3, 0, 0, TAU); ctx.stroke(); }
+    ctx.restore();
     ctx.save(); ctx.globalCompositeOperation = 'lighter';
     glow(ctx, BX, BY, 90 + 30 * on, C.cyan, 0.3 + 0.6 * on); glow(ctx, BX, BY, 26, C.white, 0.5 + 0.5 * on);
     flare(ctx, BX, BY, 260 * on, C.beam, 0.8 * on);
@@ -1977,7 +1980,8 @@
       const gr = g.createRadialGradient(HX, HY - 80, 10, HX, HY, 300);
       gr.addColorStop(0, 'rgba(230,250,255,0.9)'); gr.addColorStop(0.5, 'rgba(120,200,255,0.5)'); gr.addColorStop(1, 'rgba(150,90,255,0.15)');
       g.fillStyle = gr; g.fillRect(0, 0, DW, DH);
-      g.fillStyle = 'rgba(0,0,0,0.55)'; for (let y = 0; y < DH; y += 3) g.fillRect(0, y, DW, 1.2);
+      g.fillStyle = 'rgba(0,0,0,0.6)'; for (let y = 0; y < DH; y += 3) g.fillRect(0, y, DW, 1.4);
+      const fade = g.createLinearGradient(0, HY + 40, 0, HY + 260); fade.addColorStop(0, 'rgba(0,0,0,0)'); fade.addColorStop(1, 'rgba(0,0,0,1)'); g.globalCompositeOperation = 'destination-out'; g.fillStyle = fade; g.fillRect(0, HY + 40, DW, 300); g.globalCompositeOperation = 'source-atop';
       // closed eyes + mouth line, carved as darker strokes
       g.fillStyle = 'rgba(10,20,40,0.7)'; g.fillRect(HX - 36, HY - 86, 16, 3); g.fillRect(HX + 18, HY - 86, 16, 3); g.fillRect(HX - 10, HY - 34, 22, 2.5);
     });
@@ -1985,8 +1989,9 @@
     for (let s = 0; s < 6; s++) {
       const y0 = (s / 6) * DH, h = DH / 6, off = (hash(Math.floor(t * 12), s) - 0.5) * 30 * gl;
       ctx.save(); ctx.beginPath(); ctx.rect(0, y0, DW, h); ctx.clip();
-      ctx.globalAlpha = 0.5 * form * (0.85 + 0.15 * Math.sin(t * 20 + s));
+      ctx.globalAlpha = 0.26 * form * (0.85 + 0.15 * Math.sin(t * 20 + s));
       ctx.drawImage(holo, off + Math.sin(t * 0.5) * 3, 0, DW, DH);
+      ctx.globalAlpha = 0.12 * form; ctx.drawImage(holo, off - 6 - 10 * gl, 2, DW, DH); ctx.drawImage(holo, off + 6 + 10 * gl, -2, DW, DH);
       ctx.restore();
     }
     ctx.globalAlpha = 1;
@@ -2091,7 +2096,7 @@
     for (let i = 0; i < 44; i++) {
       const x = 80 + i * 19 + Math.sin(t * 0.3 + i * 0.4) * 20 + dx * 0.4, h = 120 + 80 * Math.sin(i * 0.5 + t * 0.2);
       const y = 120 + 30 * Math.sin(i * 0.31 + t * 0.15);
-      glowE(ctx, x, y, 14, h, 0.1 * Math.sin(i), i % 3 ? [80, 255, 190] : [140, 120, 255], 0.06 + 0.04 * Math.sin(t * 0.7 + i));
+      glowE(ctx, x, y, 14, h, 0.1 * Math.sin(i), i % 3 ? [80, 255, 190] : [140, 120, 255], 0.13 + 0.07 * Math.sin(t * 0.7 + i));
     }
     ctx.restore();
     starTwinkle(ctx, t, 8, 333, 0.8, 300);
@@ -2259,10 +2264,16 @@
       const push = 1 + 0.08 * Math.min(t, TB) / TB;
       ctx.translate(480, 270); ctx.scale(push, push); ctx.translate(-480, -270);
       ctx.globalAlpha = fadeMask;
-      const H = 1500, y = 270 + 142 * H / 200 - 30;
+      const H = 2300, y = 250 + 142 * H / 200;
       drawEcho(ctx, 480 - 1 * H / 200, y, H, t, { crack: 1, ring: 1 });
+      const dk = ctx.createRadialGradient(470, 220, 60, 470, 260, 520);
+      dk.addColorStop(0, 'rgba(8,4,2,0)'); dk.addColorStop(0.5, 'rgba(8,4,2,0.55)'); dk.addColorStop(1, 'rgba(4,2,1,0.95)');
+      ctx.fillStyle = dk; ctx.fillRect(0, 0, DW, DH);
+      ctx.save(); ctx.globalCompositeOperation = 'overlay'; ctx.globalAlpha = 0.5 * fadeMask;
+      ctx.drawImage(layer('mask-tex', DW, DH, (g) => { g.fillStyle = '#808080'; g.fillRect(0, 0, DW, DH); paintPanels(g, 330, 40, 300, 380, { seed: 44, base: [128, 128, 128], hi: [255, 255, 255], lo: [0, 0, 0], min: 26, conduits: 0 }); }), 0, 0, DW, DH);
+      ctx.restore();
       // light cracks spreading over the mask
-      const ck = sstep(0.3, TB, t), MX = 480, MY = 240;
+      const ck = sstep(0.3, TB, t), MX = 470, MY = 200;
       ctx.globalCompositeOperation = 'lighter'; ctx.lineJoin = 'round';
       for (let i = 0; i < 9; i++) {
         let x = MX + 40, y2 = MY - 110, ang = 1.9 + (hash(5, i) - 0.5) * 2.2;

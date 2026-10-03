@@ -18,6 +18,7 @@ const suites = [
   { group: 'unit', name: 'unit: puzzles (500 seeds)', cmd: [path.join(R, 'unit/puzzles.test.js')] },
   { group: 'unit', name: 'unit: save data + flow', cmd: [path.join(R, 'unit/save.test.js')] },
   { group: 'unit', name: 'unit: chapter 2 mechanics', cmd: [path.join(R, 'unit/chapter2.test.js')] },
+  { group: 'unit', name: 'unit: bosses', cmd: [path.join(R, 'unit/bosses.test.js')] },
   { group: 'bots', name: 'route bots (12 levels)', cmd: [path.join(R, 'bots/run-bots.js')] },
   { group: 'browser', name: 'browser smoke', cmd: [path.join(R, 'browser/smoke.js')] },
 ].filter((s) => (!only || only.includes(s.group)) && !(args.includes('--skip-browser') && s.group === 'browser'));
