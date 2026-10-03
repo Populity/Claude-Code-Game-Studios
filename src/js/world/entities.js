@@ -894,7 +894,7 @@
     }
   };
 
-  /** {type:'geyser', x, y, [period=3], [on=0.8], [h=6]}. Art: phase 'idle'|'warn'|'on', k (0..1 of the phase), colH (px). */
+  /** {type:'geyser', x, y, [period=3], [on=0.8], [h=6]}. Art: state (= phase) 'idle'|'warn'|'on', t, k (0..1 of the phase), colH (px). */
   Types.geyser = class extends Base {
     constructor(d, l) {
       super(d, l); const C = G.CONFIG.hazards.geyser;
@@ -909,6 +909,7 @@
       if (ph < this.onTime) { this.phase = 'on'; this.k = ph / this.onTime; }
       else if (ph > this.period - C.warn) { this.phase = 'warn'; this.k = (ph - (this.period - C.warn)) / C.warn; }
       else { this.phase = 'idle'; this.k = 0; }
+      this.state = this.phase; // art reads e.state (same values as phase)
       if (this.phase === 'on' && prev !== 'on' && game.isNear(this.cx, this.cy, 600)) G.Audio.play('jumppad', { volume: 0.5 });
       if (this.phase !== 'on') return;
       const v = Math.sqrt(2 * G.CONFIG.player.gravity * this.colH) * C.launch;
