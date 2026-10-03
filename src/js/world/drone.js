@@ -41,6 +41,7 @@
         if (this.stateTime > 1.2) this.setState('follow');
         return;
       }
+      if (this.state === 'controlled' || this.state === 'down') return; // driven by G.Party (party.js)
       // target: behind and above the player
       const tx = p.cx - p.facing * 34;
       const ty = p.y - 18 + Math.sin(this.t * 2.2) * 5;

@@ -11,7 +11,7 @@
   const SAVE_KEY = 'tessera_save_v1';
 
   // ------------------------------------------------------------------ save + settings
-  G.save = Object.assign({ unlocked: 0, current: 0, shards: {}, deaths: 0, best: {}, abilities: {} }, G.store.get(SAVE_KEY, {}));
+  G.save = Object.assign({ unlocked: 0, current: 0, shards: {}, deaths: 0, best: {}, abilities: {}, party: ['lum'] }, G.store.get(SAVE_KEY, {}));
   G.settings = Object.assign({ music: 0.6, sfx: 0.8, reduceShake: false, touch: 'auto', quality: 'auto', autoLow: false }, G.store.get('tessera_settings_v1', {}));
   /** Effective low-graphics mode: chosen explicitly, or picked by the auto fallback (main.js frame timer). */
   G.lowGfx = () => G.settings.quality === 'low' || (G.settings.quality === 'auto' && !!G.settings.autoLow);
@@ -246,6 +246,13 @@
       this.level = new G.Level(def);
       this.player = new G.Player(this.level.spawn.x, this.level.spawn.y);
       this.drone = new G.Drone(this.level, this.player);
+      // party (docs/companions-spec.md §4): Рекс is present once recruited, from his recruit level onward
+      const recruited = (G.save.party || []).includes('rex');
+      const rIdx = G.LEVEL_ORDER.findIndex((e) => G.levels[e.id] && (G.levels[e.id].entities || []).some((x) => x.recruit === 'rex'));
+      const rexHere = recruited && def.rex !== false && (typeof index === 'string' || rIdx < 0 || index >= rIdx);
+      this.party = new G.Party(this, { rex: rexHere });
+      if (recruited) for (const e of this.level.entities) if (e.type === 'npc' && e.recruit === 'rex') e.gone = true;
+      this.heartBonus = 0;
       this.dialogue = new G.Dialogue();
       this.puzzle = null;
       this.paused = false;
@@ -288,7 +295,20 @@
     /** Called by G.grantAbility: shows the icon-only key-cap hint. */
     onAbilityGranted(name) { this.abilityHint = { name, t: 0 }; this.player.canDash = this.level.hasAbility('dash'); }
     isNear(x, y, d) { return Math.abs(x - this.player.cx) < d && Math.abs(y - this.player.cy) < d; }
-    playDialogue(id) { this.dialogue.play(id); }
+    playDialogue(id, onDone) { this.dialogue.play(id, onDone); }
+    /** Everyone hazards can hurt (Mira + present companions). */
+    actors() { return this.party ? this.party.actors() : [this.player]; }
+    /** npc recruit:'rex' finished talking: he joins the party (persisted). */
+    recruit(npc) {
+      if (npc.gone) return;
+      const who = npc.recruit;
+      G.save.party = G.save.party || ['lum'];
+      if (!G.save.party.includes(who)) G.save.party.push(who);
+      G.persist();
+      npc.gone = true; npc.interactable = false;
+      if (who === 'rex') { const r = this.party.addRex(npc.cx, npc.y + npc.h); r.facing = npc.facing; }
+      G.Audio.play('objective');
+    }
     setObjective(text) { if (text !== this.objective) { this.objective = text; this.objectiveT = 0; G.Audio.play('objective'); } }
     showSign(title, text) { this.sign = { title, text, t: 0 }; }
     openPuzzle(terminal) { this.puzzle = new G.Puzzles.PuzzleOverlay(terminal, this); }
@@ -306,11 +326,18 @@
       this.checkpoint = cp;
       this.spawnPoint = cp.spawnPoint;
       this.snapshot();
+      this.player.heal(G.CONFIG.health.checkpointHeal);
       G.Audio.play('checkpoint');
       G.fx.burst(cp.cx, cp.y + 10, { count: 20, color: ['#7ef9ff', '#ffffff'], speed: 160, life: 0.8, size: 3, gravity: -60, glow: true });
       this.drone.cheer();
     }
-    snapshot() { for (const e of this.level.entities) if (e.type === 'crate') e.snapshot = { x: e.x, y: e.y }; }
+    snapshot() {
+      for (const e of this.level.entities) {
+        if (e.type === 'crate') e.snapshot = { x: e.x, y: e.y };
+        // pickups taken before this checkpoint are spent for good; hearts keep their +max HP
+        if (e.type === 'pickup' && e.taken && !e.consumed) { e.consumed = true; if (e.kind === 'heart') this.heartBonus = (this.heartBonus || 0) + G.CONFIG.pickups.heart; }
+      }
+    }
     completeLevel() {
       if (this.completeT >= 0) return;
       this.completeT = 0;
@@ -324,11 +351,17 @@
     respawn() {
       const p = this.player;
       const carryPart = p.carryPart;
+      p.maxHp = G.CONFIG.health.player + (this.heartBonus || 0);
       p.reset(this.spawnPoint.x, this.spawnPoint.y);
+      for (const e of this.level.entities) {
+        if (e.type === 'pickup' && e.taken && !e.consumed) e.taken = false;
+        if ((e.type === 'stalactite' || e.type === 'mine') && e.reset) e.reset();
+      }
       if (carryPart && !carryPart.delivered) { carryPart.taken = false; carryPart.x = carryPart.home.x; carryPart.y = carryPart.home.y; }
       for (const e of this.level.entities) if (e.type === 'crate') e.restore();
       for (const e of this.level.entities) if (e.type === 'sentinel') e.reset();
       this.drone.x = p.cx - 30; this.drone.y = p.y - 30;
+      if (this.party) this.party.onRespawn();
       G.Audio.play('respawn');
       G.fx.burst(p.cx, p.cy, { count: 16, color: ['#7ef9ff', '#ffffff'], speed: 120, life: 0.6, gravity: -100, glow: true });
     }
@@ -339,8 +372,9 @@
     }
     cameraTarget() {
       const C = G.CONFIG.camera, p = this.player;
-      let x = p.cx - W / 2 + p.facing * C.lookAhead;
-      let y = p.cy - H / 2 - 30;
+      const a = this.controlled && this.controlled !== p && !this.cine ? this.controlled : p;
+      let x = a.cx - W / 2 + (a.facing || 1) * C.lookAhead;
+      let y = a.cy - H / 2 - 30;
       if (this.cine) { x = this.cine.x - W / 2; y = this.cine.y - H / 2; }
       else if (this.talker && this.talker !== p) {
         const s = actorCenter(this.talker);
@@ -353,7 +387,7 @@
 
     findFocus() {
       const p = this.player;
-      if (p.dead || this.dialogue.blocking || p.rope) return null;
+      if (p.dead || this.dialogue.blocking || p.rope || (this.controlled && this.controlled !== p)) return null;
       let best = null, bd = 1e9;
       const range = G.CONFIG.player.interactRange;
       for (const e of this.level.entities) {
@@ -388,10 +422,15 @@
       }
       if (this.paused) { this.pauseMenu.update(dt); if (inp.pressed('pause') && this.pauseMenuReady) this.resume(); this.pauseMenuReady = true; return; }
       if (inp.pressed('pause') && this.completeT < 0) { this.pause(); return; }
+      // slow motion buff: the world runs at 0.5×, Mira (and her party) at 0.75×
+      const sm = this.player.buffs && this.player.buffs.slowmo;
+      this.player.tickBuffs(dt);
+      this.realDt = dt;
+      if (sm) { this.worldScale = G.CONFIG.pickups.slowmo.world; this.actorScale = G.CONFIG.pickups.slowmo.player; } else { this.worldScale = 1; this.actorScale = 1; }
       if (G.input.touchActive && inp.pointer.clicked && this.pauseBtn && Math.hypot(inp.pointer.x - this.pauseBtn.x, inp.pointer.y - this.pauseBtn.y) < this.pauseBtn.r) { this.pause(); return; }
 
-      if (this.hitStop > 0) { this.hitStop--; return; } // dash hit-stop frames
-      this.tickWorld(dt, false);
+      if (this.hitStop > 0) { this.hitStop--; return; } // dash / hurt hit-stop frames
+      this.tickWorld(dt * this.worldScale, false);
     }
 
     pause() {
@@ -424,6 +463,11 @@
       L._dyn = L.dynamicSolids();
 
       const blocked = this.dialogue.blocking || this.completeT >= 0;
+      const pdt = this.worldScale ? dt * this.actorScale / this.worldScale : dt; // actors' dt under slow motion
+      if (!blocked && this.party) {
+        if (inp.pressed('swap')) this.party.swap();
+        if (inp.pressed('help')) this.party.help();
+      }
       const ctl = blocked ? {} : {
         left: inp.down('left'), right: inp.down('right'), up: inp.down('up'), down: inp.down('down'),
         jumpPressed: inp.pressed('jump'), jumpHeld: inp.down('jump'),
@@ -432,13 +476,16 @@
       };
       // "up" is also jump on W/↑: while swinging it reels, so don't let it release the rope
       if (this.player.rope && ctl.jumpPressed && inp.pressed('up') && !inp.pressed('confirm')) ctl.jumpPressed = false;
-      this.player.update(dt, L, ctl);
+      const miraCtl = this.controlled && this.controlled !== this.player ? {} : ctl; // she stands still while you drive a companion
+      this.player.update(pdt, L, miraCtl);
+      if (this.player.hurtStarted) { this.player.hurtStarted = false; this.hitStop = Math.max(this.hitStop, G.CONFIG.health.hitStopFrames); }
       if (this.player.dashStarted) { this.player.dashStarted = false; this.hitStop = G.CONFIG.dash.freezeFrames; if (this.abilityHint && this.abilityHint.name === 'dash') this.abilityHint.t = Math.max(this.abilityHint.t, G.CONFIG.abilityHint.time - 0.4); }
 
       for (const e of L.entities) if (!e.mover) e.update(dt, this);
       L.resolveSignals();
       L.updateCrumbles(dt, this._bodies || (this._bodies = [this.player, ...L.crates]));
-      this.drone.update(dt, this);
+      this.drone.update(pdt, this);
+      if (this.party) this.party.update(pdt, ctl);
       this.dialogue.update(dt);
       this.updateSpeaker(dt);
       if (this.abilityHint) { this.abilityHint.t += dt; if (this.abilityHint.t > G.CONFIG.abilityHint.time) this.abilityHint = null; }
@@ -479,6 +526,7 @@
     updateSpeaker(dt) {
       const C = G.CONFIG.camera, p = this.player, d = this.dialogue;
       const actors = [p, this.drone, ...this.level.entities.filter((e) => e.type === 'npc')];
+      if (this.party && this.party.rex) actors.push(this.party.rex);
       if (this.speaker) actors.push(this.speaker);
       for (const a of actors) a.talking = false;
       let sp = null;
@@ -489,7 +537,8 @@
         else if ((who === 'lum' || who === 'orion') && this.drone.enabled) sp = this.drone;
         else {
           let best = Infinity;
-          for (const e of this.level.entities) if (e.type === 'npc' && e.who === who) { const dd = Math.abs(e.cx - p.cx); if (dd < best) { best = dd; sp = e; } }
+          if (who === 'rex' && this.party && this.party.rex) sp = this.party.rex;
+          if (!sp) for (const e of this.level.entities) if (e.type === 'npc' && !e.gone && e.who === who) { const dd = Math.abs(e.cx - p.cx); if (dd < best) { best = dd; sp = e; } }
           if (!sp && this.speaker) sp = this.speaker;
         }
         if (sp) { sp.talking = true; sp.talkMood = line.mood; }
@@ -537,18 +586,29 @@
       else drawDebugTiles(ctx, view, L);
 
       const Ent = G.Art.Entities;
-      const order = ['exit', 'checkpoint', 'sign', 'terminal', 'socket', 'lever', 'door', 'bridge', 'plate', 'jumppad', 'laser', 'wind', 'fallplat', 'mplatform', 'crate', 'part', 'shard', 'anchor', 'dashcrystal', 'npc', 'saw', 'sentinel', 'boss', 'bossproj'];
+      const order = ['exit', 'checkpoint', 'sign', 'terminal', 'socket', 'lever', 'door', 'bridge', 'plate', 'jumppad', 'laser', 'wind', 'fallplat', 'mplatform', 'crate', 'part', 'shard', 'anchor', 'dashcrystal', 'npc', 'pickup', 'mine', 'geyser', 'collapse', 'stalactite', 'saw', 'sentinel', 'boss', 'bossproj'];
+      const NEW = { pickup: 1, mine: 1, geyser: 1, collapse: 1, stalactite: 1 };
       for (const type of order) {
         for (const e of L.entities) {
           if (e.type !== type) continue;
           const vis = e.type === 'laser' ? true : onScreen(e, e.type === 'saw' ? 64 : 96);
-          if (!vis) continue;
+          if (!vis || e.gone || e.destroyed) continue;
+          if (NEW[type] && !(Ent && Ent.has && Ent.has(type))) { drawFallbackEntity(ctx, e, time); continue; }
           if ((type === 'boss' || type === 'bossproj') && G.Art.Bosses) G.Art.Bosses.draw(ctx, e, time, L);
           else if (Ent && Ent.draw) Ent.draw(ctx, e, time, L);
         }
       }
       if (this.drone.enabled && G.Art.Drone && G.Art.Drone.draw) G.Art.Drone.draw(ctx, this.drone, time);
+      if (this.party && this.party.rex) drawCompanion(ctx, this.party.rex, time);
+      // i-frames: Mira blinks
+      const blink = this.player.invulnT > 0 && !this.player.dead && Math.floor(time * 16) % 2 === 0;
+      if (blink) { ctx.save(); ctx.globalAlpha = 0.3; }
       if (G.Art.Player && G.Art.Player.draw) G.Art.Player.draw(ctx, this.player, time);
+      if (blink) ctx.restore();
+      if (this.player.buffs && this.player.buffs.shield && !(G.Art.Player && G.Art.Player.drawsShield)) {
+        const p = this.player; ctx.save(); ctx.globalAlpha = 0.35 + 0.15 * Math.sin(time * 6); ctx.strokeStyle = '#9fe8ff'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.ellipse(p.cx, p.cy, p.w * 0.95, p.h * 0.65, 0, 0, 7); ctx.stroke(); ctx.restore();
+      }
       G.fx.draw(ctx);
       // dynamic lights + shadows (world space, after actors, before front props)
       if (G.Art.Lighting && G.Art.Lighting.draw) G.Art.Lighting.draw(ctx, view, L, time, this);
@@ -634,7 +694,37 @@
         ctx.restore();
       }
       if (this.abilityHint) drawAbilityHint(ctx, this.abilityHint, t);
+      this.drawHealth(ctx, t);
       this.drawTouch(ctx);
+    }
+
+    /** Text-free HP: segmented bar + heart (Mira), buff icons, controlled companion's bar + portrait under it. */
+    drawHealth(ctx, t) {
+      const p = this.player;
+      ctx.save();
+      drawHeart(ctx, 26, 24, 11, p.invulnT > 0 && Math.floor(t * 16) % 2 === 0 ? '#ffffff' : '#ff5a6a');
+      drawSegBar(ctx, 44, 16, p.hp, p.maxHp, '#ff5a6a', p.hurtT < 0.4 ? 1 - p.hurtT / 0.4 : 0);
+      // buffs: small round icons with a ring timer
+      const B = p.buffs || {}, K = G.CONFIG.pickups; let bx = 44;
+      const icons = [['shield', '#9fe8ff', B.shield && B.shield.t / K.shield.time], ['glider', '#ffe17a', B.glider && B.glider.t / K.glider.time], ['jetpack', '#ffb36b', B.jetpack && B.jetpack.fuel / K.jetpack.fuel], ['boots', '#7dffa8', B.boots && B.boots.t / K.boots.time], ['slowmo', '#c8a8ff', B.slowmo && B.slowmo.t / K.slowmo.time]];
+      for (const [k, col, f] of icons) {
+        if (!B[k]) continue;
+        const x = bx + 9, y = 46;
+        ctx.fillStyle = 'rgba(4,10,18,0.7)'; ctx.beginPath(); ctx.arc(x, y, 9, 0, 7); ctx.fill();
+        ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, y, 9, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * G.clamp(f || 0, 0, 1)); ctx.stroke();
+        ctx.fillStyle = col; drawBuffGlyph(ctx, k, x, y);
+        bx += 22;
+      }
+      const c = this.controlled;
+      if (c && c !== p) {
+        const y = 66;
+        ctx.save(); ctx.beginPath(); ctx.arc(26, y + 8, 12, 0, 7); ctx.fillStyle = 'rgba(4,10,18,0.8)'; ctx.fill(); ctx.clip();
+        if (G.Art.Portraits && G.Art.Portraits.draw) G.Art.Portraits.draw(ctx, c.who, 'neutral', 14, y - 4, 24, t, false);
+        else { ctx.fillStyle = c.who === 'rex' ? '#e8a15a' : '#7ef9ff'; ctx.fillRect(14, y - 4, 24, 24); }
+        ctx.restore();
+        drawSegBar(ctx, 44, y, c.hp, c.maxHp, c.who === 'rex' ? '#e8a15a' : '#7ef9ff', 0);
+      }
+      ctx.restore();
     }
 
     drawTouch(ctx) {
@@ -649,6 +739,10 @@
         { action: 'down', x: 140, y: H - 170, r: 34, label: '▼' },
       ];
       if (this.player.canDash) btns.push({ action: 'dash', x: W - 200, y: H - 175, r: 40, label: '⚡' });
+      if (this.party && this.party.members().length) {
+        btns.push({ action: 'swap', x: W - 90, y: H - 215, r: 32, label: '⇄' });
+        btns.push({ action: 'help', x: W - 300, y: H - 70, r: 34, label: '✋' });
+      }
       G.input.touchButtons = btns;
       this.pauseBtn = { x: W - 34, y: 30, r: 34 };
       ctx.save();
@@ -669,6 +763,94 @@
   G.GameScene = GameScene;
 
   // ------------------------------------------------------------------ draw helpers
+  /** Segmented HP bar (one segment per HP). flash 0..1 whitens it right after a hit. */
+  function drawSegBar(ctx, x, y, hp, max, col, flash) {
+    const sw = Math.max(6, Math.min(16, 132 / Math.max(1, max))), sh = 14, gap = 3;
+    ctx.fillStyle = 'rgba(4,10,18,0.6)'; G.roundRect(ctx, x - 4, y - 3, max * (sw + gap) + 5, sh + 6, 5); ctx.fill();
+    for (let i = 0; i < max; i++) {
+      ctx.fillStyle = i < hp ? (flash > 0 ? '#ffffff' : col) : 'rgba(255,255,255,0.12)';
+      if (i < hp && flash > 0) ctx.globalAlpha = 0.5 + 0.5 * (1 - flash);
+      ctx.fillRect(x + i * (sw + gap), y, sw, sh); ctx.globalAlpha = 1;
+    }
+  }
+  function drawHeart(ctx, x, y, r, col) {
+    ctx.fillStyle = col; ctx.beginPath();
+    ctx.moveTo(x, y + r * 0.9);
+    ctx.bezierCurveTo(x - r * 1.4, y - r * 0.1, x - r * 0.7, y - r * 1.2, x, y - r * 0.4);
+    ctx.bezierCurveTo(x + r * 0.7, y - r * 1.2, x + r * 1.4, y - r * 0.1, x, y + r * 0.9);
+    ctx.fill();
+  }
+  function drawBuffGlyph(ctx, k, x, y) {
+    ctx.beginPath();
+    if (k === 'shield') { ctx.arc(x, y, 4.5, 0, 7); ctx.lineWidth = 1.5; ctx.stroke(); return; }
+    if (k === 'glider') { ctx.moveTo(x - 6, y + 2); ctx.lineTo(x, y - 4); ctx.lineTo(x + 6, y + 2); ctx.lineTo(x, y); }
+    else if (k === 'jetpack') { ctx.rect(x - 4, y - 5, 8, 7); ctx.moveTo(x - 3, y + 2); ctx.lineTo(x, y + 6); ctx.lineTo(x + 3, y + 2); }
+    else if (k === 'boots') { ctx.moveTo(x - 3, y - 5); ctx.lineTo(x + 1, y - 5); ctx.lineTo(x + 1, y + 1); ctx.lineTo(x + 6, y + 2); ctx.lineTo(x + 6, y + 5); ctx.lineTo(x - 3, y + 5); }
+    else { ctx.arc(x, y, 5, 0, 7); ctx.fill(); ctx.fillStyle = '#04101a'; ctx.fillRect(x - 0.75, y - 4, 1.5, 4.5); return; }
+    ctx.closePath(); ctx.fill();
+  }
+  /** Companion draw: art module if present, else a simple silhouette (never crashes). */
+  function drawCompanion(ctx, c, t) {
+    const A = G.Art.Companions || G.Art.Party || G.Art.Rex;
+    const blink = c.invulnT > 0 && Math.floor(t * 16) % 2 === 0;
+    ctx.save(); if (blink) ctx.globalAlpha = 0.35;
+    try {
+      if (A && A.draw) A.draw(ctx, c, t);
+      else {
+        const kneel = c.state === 'down' ? 14 : 0;
+        ctx.fillStyle = '#6a5a48'; ctx.fillRect(c.x, c.y + 14 + kneel, c.w, c.h - 14 - kneel);
+        ctx.fillStyle = '#e8a15a'; ctx.fillRect(c.x + 4, c.y + kneel, c.w - 8, 16);
+        ctx.fillStyle = '#ffe2b0'; ctx.fillRect(c.cx + c.facing * 5 - 2, c.y + 5 + kneel, 4, 4);
+        if (c.state === 'throw') { ctx.fillStyle = '#e8a15a'; ctx.fillRect(c.cx + c.facing * 10, c.y + 6, c.facing * 14, 6); }
+      }
+    } finally { ctx.restore(); }
+  }
+  /** Fallback shapes for the health/hazard entities when G.Art.Entities has no case (has(type) false). */
+  function drawFallbackEntity(ctx, e, t) {
+    const T2 = G.TILE;
+    ctx.save();
+    switch (e.type) {
+      case 'pickup': {
+        if (e.taken) break;
+        const col = { medkit: '#ff5a6a', heart: '#ff8aa0', shield: '#9fe8ff', glider: '#ffe17a', jetpack: '#ffb36b', boots: '#7dffa8', slowmo: '#c8a8ff' }[e.kind] || '#fff';
+        const y = e.cy + Math.sin(t * 3 + e.x) * 3;
+        ctx.globalAlpha = 0.35; ctx.fillStyle = col; ctx.beginPath(); ctx.arc(e.cx, y, 14, 0, 7); ctx.fill();
+        ctx.globalAlpha = 1;
+        if (e.kind === 'heart') drawHeart(ctx, e.cx, y, 8, col);
+        else if (e.kind === 'medkit') { ctx.fillStyle = '#fff'; ctx.fillRect(e.cx - 8, y - 6, 16, 12); ctx.fillStyle = col; ctx.fillRect(e.cx - 1.5, y - 4.5, 3, 9); ctx.fillRect(e.cx - 4.5, y - 1.5, 9, 3); }
+        else { ctx.fillStyle = col; drawBuffGlyph(ctx, e.kind, e.cx, y); }
+        break;
+      }
+      case 'stalactite': {
+        if (e.state === 'broken') break;
+        const sx = e.state === 'shake' ? Math.sin(t * 80) * 2 : 0;
+        ctx.fillStyle = e.state === 'shake' ? '#d8e4f0' : '#8a9aa8';
+        ctx.beginPath(); ctx.moveTo(e.x + sx, e.y); ctx.lineTo(e.x + e.w + sx, e.y); ctx.lineTo(e.cx + sx, e.y + e.h); ctx.fill();
+        break;
+      }
+      case 'mine': {
+        const on = e.state === 'beep' ? Math.floor(t * 16) % 2 === 0 : Math.sin(t * 3) > 0.6;
+        ctx.fillStyle = '#4a4a44'; ctx.fillRect(e.x, e.y + 2, e.w, 6);
+        ctx.fillStyle = on ? '#ff3a3a' : '#5a2020'; ctx.fillRect(e.cx - 2, e.y, 4, 3);
+        if (e.state === 'boom') { ctx.globalAlpha = 0.5; ctx.fillStyle = '#ffb36b'; ctx.beginPath(); ctx.arc(e.cx, e.cy, G.CONFIG.hazards.mine.radius * T2, 0, 7); ctx.fill(); }
+        break;
+      }
+      case 'geyser': {
+        ctx.fillStyle = '#5a4a3a'; ctx.fillRect(e.x + 4, e.y + T2 - 8, T2 - 8, 8);
+        if (e.phase === 'warn') { ctx.fillStyle = 'rgba(220,240,255,0.6)'; for (let i = 0; i < 3; i++) ctx.fillRect(e.x + 8 + i * 6, e.y + T2 - 14 - Math.random() * 10 * e.k, 3, 3); }
+        if (e.phase === 'on') { const c = e.column; ctx.globalAlpha = 0.55; ctx.fillStyle = '#cfefff'; ctx.fillRect(c.x, c.y, c.w, c.h); }
+        break;
+      }
+      case 'collapse': {
+        const sx = e.state === 'shake' ? Math.sin(t * 70) * 2 : 0;
+        ctx.fillStyle = '#6a5a4a'; ctx.fillRect(e.x + sx, e.y, e.w, e.h);
+        ctx.strokeStyle = '#3a2e24'; ctx.lineWidth = 2; ctx.strokeRect(e.x + sx + 1, e.y + 1, e.w - 2, e.h - 2);
+        break;
+      }
+    }
+    ctx.restore();
+  }
+
   /** Centre of any actor (player, drone with centre x/y, entity with w/h). */
   function actorCenter(a) {
     if (a.cx != null && a.w) return { x: a.cx, y: a.cy };

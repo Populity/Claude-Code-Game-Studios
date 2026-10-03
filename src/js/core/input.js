@@ -1,7 +1,7 @@
 /**
  * Input: keyboard, gamepad and on-screen touch buttons, unified into actions.
  *
- * Actions: left right up down jump action dash pause restart confirm back
+ * Actions: left right up down jump action dash pause restart confirm back swap help
  * Query with G.input.down(a) (held), G.input.pressed(a) (this frame), G.input.released(a).
  * Pointer (mouse / tap) in VIEW coordinates: G.input.pointer {x, y, down, clicked}.
  */
@@ -18,6 +18,7 @@
     KeyR: ['restart'],
     ShiftLeft: ['dash'], ShiftRight: ['dash'], KeyC: ['dash'], KeyL: ['dash'],
     Backspace: ['back'],
+    Tab: ['swap'], KeyQ: ['swap'], KeyG: ['help'],
   };
 
   const held = {};       // action -> count of sources holding it
@@ -206,7 +207,9 @@
       if (b(1)) padHeld.back = true;
       if (b(5)) padHeld.dash = true;
       if (b(9)) padHeld.pause = true;
-      if (b(3)) padHeld.restart = true;
+      if (b(3)) padHeld.swap = true;     // Y: switch controlled party member
+      if (b(4)) padHeld.help = true;     // LB: companion help
+      if (b(8)) padHeld.restart = true;  // Back/Select: restart from checkpoint
       if (Object.keys(padHeld).length) input.lastDevice = 'gamepad';
     }
   }

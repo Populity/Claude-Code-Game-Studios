@@ -5,7 +5,7 @@ const { test, assert, report } = require('../lib/harness');
 const KEY = 'tessera_save_v1';
 function boot(storage) {
   const quiet = { log() {}, warn() {}, error: console.error };
-  const eng = makeEngine({ storage, console: quiet, extra: ['world/drone.js', 'ui/dialogue.js', 'ui/menu.js', 'ui/puzzles.js', 'story/script.js'] });
+  const eng = makeEngine({ storage, console: quiet, extra: ['world/drone.js', 'world/party.js', 'ui/dialogue.js', 'ui/menu.js', 'ui/puzzles.js', 'story/script.js'] });
   for (const f of fs.readdirSync(path.join(__dirname, '../../src/js/levels'))) if (f !== 'order.js') eng.load('levels/' + f);
   eng.load('levels/order.js');
   eng.load('game.js');

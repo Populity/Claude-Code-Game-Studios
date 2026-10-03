@@ -108,7 +108,7 @@
         const ice = this.surface && this.surface.ice;
         this.vx = G.approach(this.vx, 0, C.friction * (ice ? G.CONFIG.surface.iceDecel : 1) * dt);
       }
-      this.vx = G.clamp(this.vx, -C.maxSlide, C.maxSlide);
+      if (!this.thrownT) this.vx = G.clamp(this.vx, -C.maxSlide, C.maxSlide);
       const belt = this.onGround && this.surface && this.surface.conveyor ? this.surface.conveyor * G.CONFIG.surface.conveyorSpeed : 0;
       const mx = (this.pushedNow ? 0 : this.vx) + belt;
       this.pushedNow = false;
@@ -130,7 +130,8 @@
       this.surface = r.ground ? L.surfaceOf(r.groundTiles) : { ice: false, conveyor: 0 };
       // left the ground: a push slide stops at the edge (drops straight down, as in chapter 1);
       // leaving a moving platform inherits its velocity
-      if (wasGround && !this.onGround) this.vx = prevGE && prevGE.vx ? prevGE.vx * G.CONFIG.momentum.inheritX : 0;
+      this.thrownT = Math.max(0, (this.thrownT || 0) - dt); if (this.onGround && this.thrownT < 0.9) this.thrownT = 0;
+      if (wasGround && !this.onGround && !this.thrownT) this.vx = prevGE && prevGE.vx ? prevGE.vx * G.CONFIG.momentum.inheritX : 0;
       for (const [tx, ty] of r.groundTiles) L.touchCrumble(tx, ty);
       // don't sink into the player: rest on their head instead
       if (!p.dead && G.overlap(this, p) && this.y < p.y) { this.y = p.y - this.h; this.vy = 0; this.onGround = true; }
@@ -669,6 +670,7 @@
       this.state = 'patrol'; this.stateT = 0;
       this.alertT = 0; this.chaseT = 0; this.loseT = 0; this.cooldownT = 0; this.stunT = 0;
       this.eye = { x: this.cx + 20, y: this.cy };
+      this.destroyed = false;
       this.ptIdx = 1; this.ptDir = 1;
     }
     setState(s) { if (this.state !== s) { this.state = s; this.stateT = 0; } }
@@ -694,7 +696,20 @@
     update(dt, game) {
       super.update(dt);
       const S = G.CONFIG.sentinel, L = game.level, p = game.player;
+      if (this.destroyed) return;
       this.stateT += dt;
+      if (this.state === 'thrown') { // grabbed + thrown by Рекс: ballistic, harmless, destroyed on impact
+        this.vy = Math.min(this.vy + S.gravity * dt, 900);
+        const rx = G.Physics.move(this, this.vx * dt, 0, L), ry = G.Physics.move(this, 0, this.vy * dt, L);
+        const boss = L.entities.find((e) => e.type === 'boss' && e.alive && e.state === 'fight' && Math.hypot(e.bx - this.cx, e.by - this.cy) < (e.cfg.bodyR || 40) + 16);
+        if (boss) for (let i = 0; i < G.CONFIG.party.rex.sentinelBossDmg && boss.alive; i++) { boss.hurtT = 0; boss.hit(game); }
+        if (rx.hitX || ry.hitY || boss || this.stateT > 2 || this.y > L.pxH) {
+          this.destroyed = true;
+          G.fx.burst(this.cx, this.cy, { count: 22, color: ['#ff6a5a', '#ffd27a', '#ffffff'], speed: 240, life: 0.6, gravity: 400 });
+          G.Audio.play('explosion', { volume: 0.5 });
+        }
+        return;
+      }
       this.cooldownT = Math.max(0, this.cooldownT - dt);
       // laser stun
       if (this.state !== 'stunned' && L.lasers) for (const lz of L.lasers) if (lz.phase === 'on' && G.overlap(this, lz.beam)) {
@@ -767,7 +782,7 @@
       this.facing = d.facing || -1;
       this.talking = false; this.talkMood = 'neutral'; this.talks = 0;
     }
-    canInteract(game) { return !game.dialogue.blocking; }
+    canInteract(game) { return !game.dialogue.blocking && !this.gone; }
     currentDialogue() {
       const again = this.dialogue + '_again';
       return this.talks > 0 && G.Script && G.Script[again] ? again : this.dialogue;
@@ -777,7 +792,9 @@
       this.talks++;
       this.facing = game.player.cx >= this.cx ? 1 : -1;
       game.player.facing = -this.facing;
-      if (id) game.playDialogue(id);
+      // recruit:'rex' — joins the party when the talk ends (docs/companions-spec.md §4)
+      const join = this.recruit && game.recruit ? () => game.recruit(this) : null;
+      if (id) game.playDialogue(id, join || undefined); else if (join) join();
     }
     update(dt, game) {
       super.update(dt);
@@ -790,5 +807,152 @@
   Types.deco = class extends Entity {
     constructor(d, l) { super(d, l); this.layer = d.layer || 'back'; }
     update() {}
+  };
+})();
+
+// ==================================================================== health pickups + sudden hazards
+// docs/companions-spec.md §2–3. Actors = Mira + companions (game.actors() if present, else just Mira).
+(function () {
+  const T = G.TILE, Types = G.EntityTypes;
+  const Base = Object.getPrototypeOf(Types.trigger);
+  const actors = (game) => (game.actors ? game.actors() : [game.player]);
+  const hb = (a) => (a.hurtbox ? a.hurtbox() : a);
+  const hurtA = (a, cause, fromX, amt) => a.hurt && a.hurt(amt != null ? amt : G.CONFIG.damage[cause], cause, fromX);
+
+  /** {type:'pickup', kind, x, y}. Art: kind, taken, t. Taken pickups return on death unless a checkpoint was lit since (consumed). */
+  Types.pickup = class extends Base {
+    constructor(d, l) { super(d, l); this.taken = false; this.consumed = false; }
+    update(dt, game) {
+      this.t += dt;
+      if (this.taken) return;
+      const p = game.player, R = G.CONFIG.pickups.radius;
+      if (p.dead || !p.touchesCircle(this.cx, this.cy, R + 6)) return;
+      if (G.applyPickup(p, this.kind, game)) {
+        this.taken = true;
+        G.Audio.play('pickup');
+        G.fx.burst(this.cx, this.cy, { count: 14, color: ['#ffffff', '#7dffa8', '#ffe17a'], speed: 160, life: 0.5, size: 3, gravity: 0, glow: true });
+      }
+    }
+  };
+  /** Apply a pickup kind to the player. Returns false if it should stay (medkit at full HP). */
+  G.applyPickup = (p, kind, game) => {
+    const K = G.CONFIG.pickups, b = p.buffs;
+    switch (kind) {
+      case 'medkit': if (p.hp >= p.maxHp) return false; p.heal(K.medkit); return true;
+      case 'heart': p.maxHp += K.heart; p.hp += K.heart; return true;
+      case 'shield': b.shield = { hits: K.shield.hits, t: K.shield.time }; return true;
+      case 'glider': b.glider = { t: K.glider.time, uses: K.glider.uses }; return true;
+      case 'jetpack': b.jetpack = { fuel: K.jetpack.fuel }; return true;
+      case 'boots': b.boots = { t: K.boots.time }; return true;
+      case 'slowmo': b.slowmo = { t: K.slowmo.time }; return true;
+    }
+    return false;
+  };
+
+  /** {type:'stalactite', x, y (ceiling tile)}. Art: state 'idle'|'shake'|'fall'|'broken', shakeT, t. */
+  Types.stalactite = class extends Base {
+    constructor(d, l) {
+      super(d, l); const S = G.CONFIG.hazards.stalactite;
+      this.w = S.w; this.h = S.h; this.home = { x: this.x + (T - S.w) / 2, y: this.y };
+      this.reset();
+    }
+    reset() { this.x = this.home.x; this.y = this.home.y; this.vy = 0; this.state = 'idle'; this.stateT = 0; }
+    update(dt, game) {
+      const S = G.CONFIG.hazards.stalactite, L = game.level; this.t += dt; this.stateT += dt;
+      if (this.state === 'idle') {
+        if (actors(game).some((a) => !a.dead && Math.abs((a.cx) - this.cx) < S.triggerX * T && a.cy > this.y && a.cy - this.y < 14 * T)) { this.state = 'shake'; this.stateT = 0; G.Audio.play('crumble'); }
+      } else if (this.state === 'shake') {
+        if (Math.random() < 0.3) G.fx.dust(this.cx, this.y + 4, 1);
+        if (this.stateT >= S.shake) { this.state = 'fall'; this.stateT = 0; }
+      } else if (this.state === 'fall') {
+        this.vy = Math.min(this.vy + S.gravity * dt, S.maxFall); this.y += this.vy * dt;
+        for (const a of actors(game)) if (!a.dead && G.overlap(hb(a), this)) hurtA(a, 'stalactite', this.cx);
+        if (L.isSolidTile(Math.floor(this.cx / T), Math.floor((this.y + this.h) / T)) || this.y > L.pxH) {
+          this.state = 'broken'; this.stateT = 0;
+          G.fx.burst(this.cx, this.y + this.h, { count: 14, color: ['#a8b8c8', '#ffffff'], speed: 180, life: 0.5, gravity: 800 });
+        }
+      } else if (this.state === 'broken' && this.stateT >= S.respawn) this.reset();
+    }
+  };
+
+  /** {type:'mine', x, y (tile above the floor)}. Art: state 'armed'|'beep'|'boom'|'spent', stateT. */
+  Types.mine = class extends Base {
+    constructor(d, l) { super(d, l); this.y += T - 8; this.h = 8; this.x += 6; this.w = T - 12; this.state = 'armed'; this.stateT = 0; }
+    reset() { this.state = 'armed'; this.stateT = 0; }
+    update(dt, game) {
+      const M = G.CONFIG.hazards.mine; this.t += dt; this.stateT += dt;
+      if (this.state === 'armed') {
+        if (actors(game).some((a) => !a.dead && G.overlap(a, { x: this.x, y: this.y - 4, w: this.w, h: 12 }))) { this.state = 'beep'; this.stateT = 0; G.Audio.play('alarm', { volume: 0.5 }); }
+      } else if (this.state === 'beep' && this.stateT >= M.beep) {
+        this.state = 'boom'; this.stateT = 0;
+        const r = M.radius * T;
+        for (const a of actors(game)) if (!a.dead && (a.touchesCircle ? a.touchesCircle(this.cx, this.cy, r) : Math.hypot(a.cx - this.cx, a.cy - this.cy) < r)) hurtA(a, 'mine', this.cx);
+        G.fx.burst(this.cx, this.cy, { count: 26, color: ['#ffb36b', '#ff6a3a', '#fff1c0'], speed: 280, life: 0.6, gravity: 300, glow: true });
+        G.fx.shake(7, 0.3); G.Audio.play('explosion', { volume: 0.7 });
+      } else if (this.state === 'boom' && this.stateT > 0.3) { this.state = 'spent'; this.stateT = 0; }
+      else if (this.state === 'spent' && M.rearm && this.stateT >= M.rearm) this.reset();
+    }
+  };
+
+  /** {type:'geyser', x, y, [period=3], [on=0.8], [h=6]}. Art: phase 'idle'|'warn'|'on', k (0..1 of the phase), colH (px). */
+  Types.geyser = class extends Base {
+    constructor(d, l) {
+      super(d, l); const C = G.CONFIG.hazards.geyser;
+      this.period = d.period || C.period; this.onTime = d.on || C.on; this.hT = d.h || C.h; this.offset = d.offset || 0;
+      this.colH = this.hT * T; this.phase = 'idle'; this.k = 0;
+    }
+    get column() { return { x: this.x + 4, y: this.y + T - this.colH, w: T - 8, h: this.colH }; }
+    update(dt, game) {
+      const C = G.CONFIG.hazards.geyser; this.t += dt;
+      const ph = ((game.level.time + this.offset) % this.period + this.period) % this.period;
+      const prev = this.phase;
+      if (ph < this.onTime) { this.phase = 'on'; this.k = ph / this.onTime; }
+      else if (ph > this.period - C.warn) { this.phase = 'warn'; this.k = (ph - (this.period - C.warn)) / C.warn; }
+      else { this.phase = 'idle'; this.k = 0; }
+      if (this.phase === 'on' && prev !== 'on' && game.isNear(this.cx, this.cy, 600)) G.Audio.play('jumppad', { volume: 0.5 });
+      if (this.phase !== 'on') return;
+      const v = Math.sqrt(2 * G.CONFIG.player.gravity * this.colH) * C.launch;
+      for (const a of actors(game)) {
+        if (a.dead || !G.overlap(hb(a), this.column)) continue;
+        hurtA(a, 'geyser', this.cx);
+        if (!a.dead) { a.vx = a.vx * 0.3; a.vy = -v; a.onGround = false; a.jumping = false; if (a.wallLockT != null) a.wallLockT = 0; }
+      }
+    }
+  };
+
+  /** {type:'collapse', x, y, w, h}: ceiling block, falls once when someone passes under, then is solid floor. Art: state 'idle'|'shake'|'fall'|'landed', stateT. */
+  Types.collapse = class extends Base {
+    constructor(d, l) { super(d, l); this.w = (d.w || 2) * T; this.h = (d.h || 1) * T; this.solid = true; this.vy = 0; this.state = 'idle'; this.stateT = 0; }
+    isSolid() { return this.state === 'idle' || this.state === 'shake' || this.state === 'landed'; }
+    update(dt, game) {
+      const C = G.CONFIG.hazards.collapse, L = game.level; this.t += dt; this.stateT += dt;
+      if (this.state === 'idle') {
+        const pad = C.triggerPad * T;
+        if (actors(game).some((a) => !a.dead && a.cx > this.x - pad && a.cx < this.x + this.w + pad && a.cy > this.y + this.h && a.cy - this.y < 12 * T)) { this.state = 'shake'; this.stateT = 0; G.Audio.play('rumble'); }
+      } else if (this.state === 'shake') {
+        if (Math.random() < 0.4) G.fx.dust(this.x + Math.random() * this.w, this.y + this.h, 1);
+        if (this.stateT >= C.shake) { this.state = 'fall'; this.stateT = 0; }
+      } else if (this.state === 'fall') {
+        this.vy = Math.min(this.vy + C.gravity * dt, C.maxFall);
+        let dy = this.vy * dt; const step = 4;
+        while (dy > 0) {
+          const s = Math.min(step, dy); dy -= s;
+          const ty = Math.floor((this.y + this.h + s) / T); let hit = false;
+          for (let tx = Math.floor(this.x / T); tx <= Math.floor((this.x + this.w - 1) / T); tx++) if (L.isSolidTile(tx, ty)) hit = true;
+          if (hit || this.y > L.pxH) { this.y = ty * T - this.h; this.land(game); return; }
+          this.y += s;
+        }
+        for (const a of actors(game)) if (!a.dead && G.overlap(hb(a), this)) {
+          hurtA(a, 'collapse', this.cx);
+          a.x = a.cx < this.cx ? this.x - a.w - 1 : this.x + this.w + 1; // shoved clear, never crushed
+        }
+      }
+    }
+    land(game) {
+      this.state = 'landed'; this.stateT = 0; this.vy = 0;
+      for (const a of actors(game)) if (!a.dead && G.overlap(a, this)) a.x = a.cx < this.cx ? this.x - a.w - 1 : this.x + this.w + 1;
+      G.fx.shake(8, 0.4); G.Audio.play('crateland');
+      G.fx.burst(this.cx, this.y + this.h, { count: 24, color: ['#8a7a66', '#c8b8a0'], speed: 220, life: 0.7, gravity: 700 });
+    }
   };
 })();

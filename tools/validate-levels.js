@@ -119,7 +119,7 @@ for (const id of Object.keys(G.levels)) {
   const addId = (v) => v && usedIds.add(v);
   if (def.startDialogue) addId(def.startDialogue);
   for (const e of def.entities || []) {
-    const req = { lever: ['targets'], plate: ['targets'], terminal: ['puzzle', 'targets'], part: ['item'], socket: ['needs', 'targets'], door: ['id'], bridge: ['id'], laser: ['dir'], saw: ['path'], sign: [], hint: ['text'], mplatform: [], anchor: [], wind: ['w', 'h', 'dir'], dashcrystal: [], fallplat: [], sentinel: [], npc: ['who', 'dialogue'], boss: ['kind'] }[e.type];
+    const req = { lever: ['targets'], plate: ['targets'], terminal: ['puzzle', 'targets'], part: ['item'], socket: ['needs', 'targets'], door: ['id'], bridge: ['id'], laser: ['dir'], saw: ['path'], sign: [], hint: ['text'], mplatform: [], anchor: [], wind: ['w', 'h', 'dir'], dashcrystal: [], fallplat: [], sentinel: [], npc: ['who', 'dialogue'], boss: ['kind'], pickup: ['kind'], stalactite: [], mine: [], geyser: [], collapse: ['w', 'h'] }[e.type];
     if (!req) { if (!G.EntityTypes[e.type]) E(`unknown entity type ${e.type}`); continue; }
     for (const k of req) if (e[k] == null && !(k === 'targets' && e.target)) E(`${e.type} at ${e.x},${e.y} missing '${k}'`);
     if (e.x < 0 || e.x >= w || e.y < 0 || e.y >= rows.length) E(`${e.type} at ${e.x},${e.y} out of bounds`);
@@ -135,6 +135,10 @@ for (const id of Object.keys(G.levels)) {
       if (p.type === 'code' && !/^\d{2,6}$/.test(String(p.code))) E(`code '${p.code}' must be 2–6 digits`);
       if (p.type === 'pipes' && ((p.w || 5) > 8 || (p.h || 4) > 6)) Wn('pipes puzzle larger than 8×6 may not fit');
     }
+    if (e.type === 'pickup' && !['medkit', 'heart', 'shield', 'glider', 'jetpack', 'boots', 'slowmo'].includes(e.kind)) E(`pickup at ${e.x},${e.y} unknown kind '${e.kind}'`);
+    if (e.type === 'stalactite' && at(e.x, e.y - 1) !== '#') Wn(`stalactite at ${e.x},${e.y} has no solid ceiling above`);
+    if ((e.type === 'mine' || e.type === 'geyser') && at(e.x, e.y + 1) !== '#') Wn(`${e.type} at ${e.x},${e.y} is not on a floor tile`);
+    if (e.type === 'npc' && e.recruit && e.recruit !== 'rex') E(`npc recruit '${e.recruit}' unknown`);
     if (e.type === 'wind' && !['up', 'down', 'left', 'right'].includes(e.dir)) E(`wind at ${e.x},${e.y} bad dir '${e.dir}'`);
     if (e.type === 'npc' && e.dialogue && script[e.dialogue + '_again']) addId(e.dialogue + '_again');
     if (e.type === 'sentinel' && at(e.x, e.y) === '#') E(`sentinel at ${e.x},${e.y} inside a solid tile`);

@@ -18,6 +18,12 @@
  *   Key light from the upper-left in WORLD space (independent of facing), warm rim on light-facing
  *   edges, cool ambient rim from the lower-right. Glows use additive radial gradients (no shadowBlur).
  *
+ * Companions & buffs (docs/companions-spec.md)
+ *   G.Art.Party.draw(ctx, c, t)  party member: c.who 'rex' (Рекс: follow/idle/run/jump/controlled/help/
+ *                                throw/down, talking) or 'lum' (delegates to G.Art.Drone + control ring /
+ *                                help stun pulse). Mira reads p.buffs (shield bubble, glider wing, jetpack
+ *                                flame, boots glow, slowmo after-images) and p.iframes (hit flash + blink).
+ *
  * Chapter 2 (docs/chapter2-spec.md §2, §4)
  *   p.state 'dash'  : streamlined lunge blended from dashDir (8-way), magenta after-image trail, burst
  *                     on start. Hair cools to steel-blue while p.dashCharges <= 0 and flashes on refill.
@@ -1274,10 +1280,22 @@
         }
         if (M.trail.length) drawTrail(ctx, M, p, t);
         if (p.state === 'swing' && p.rope) drawRope(ctx, M, p, t);
+        const B = readBuffs(p), bf = buffMem(M, p, t, B);
+        if (B.slow) drawSlowGhosts(ctx, M, p, t, bf);
         ctx.save();
         applyXf(ctx, M.xf);
+        drawBuffsBack(ctx, M, p, t, B, bf);
+        // i-frames: blink (spec §1: 0.9 s after a hit)
+        const ifr = num(p.iframes, 0);
+        const ga = ctx.globalAlpha;
+        if (ifr > 0 && Math.floor(t * 15) % 2) ctx.globalAlpha = ga * 0.3;
         drawBody(ctx, M, p, t);
+        ctx.globalAlpha = ga;
+        drawBuffsFrontLocal(ctx, M, p, t, B, bf);
         ctx.restore();
+        const flash = clamp((ifr - 0.72) / 0.18, 0, 1);
+        if (flash > 0) drawHurtFlash(ctx, M, p, t, flash);
+        drawBuffsWorld(ctx, M, p, t, B, bf);
         // refill flash: a quick magenta ring + sparkle around her head
         const rf = t - M.refillT;
         if (rf >= 0 && rf < 0.35) {
@@ -1576,6 +1594,729 @@
     ctx.fillStyle = 'rgba(255,255,255,0.45)';
     ctx.beginPath(); ctx.arc(ex + 1.6, ey + 1.8, 0.4, 0, TAU); ctx.fill();
   }
+
+
+  // ================================================================== Mira: pickup buffs + hurt
+  // docs/companions-spec.md §1–2. Reads p.buffs = {shield:{hits,t}, glider:{t,uses}, jetpack:{fuel},
+  // boots:{t}, slowmo:{t}} and p.iframes defensively; optional engine hints: p.gliding, p.jetting.
+  const BUFF = { shield: '95,178,255', glider: '159,240,255', jet: '255,140,58', boots: '255,225,74', slow: '179,139,255', hurt: '#ff5a4a' };
+  const num = (v, d) => (typeof v === 'number' && isFinite(v) ? v : d);
+  /** Normalised view of p.buffs (missing / malformed entries → inactive). */
+  function readBuffs(p) {
+    const b = (p && p.buffs) || {};
+    const o = (k) => (b[k] && typeof b[k] === 'object' ? b[k] : null);
+    const sh = o('shield'), gl = o('glider'), jp = o('jetpack'), bo = o('boots'), sm = o('slowmo');
+    return {
+      shield: sh && num(sh.hits, 1) > 0 && num(sh.t, 1) > 0 ? { hits: num(sh.hits, 1), t: num(sh.t, 9) } : null,
+      glider: gl && num(gl.t, 1) > 0 && num(gl.uses, 1) > 0 ? { t: num(gl.t, 9) } : null,
+      jet: jp && num(jp.fuel, 0) > 0 ? { fuel: num(jp.fuel, 0) } : null,
+      boots: bo && num(bo.t, 0) > 0 ? { t: num(bo.t, 0) } : null,
+      slow: sm && num(sm.t, 0) > 0 ? { t: num(sm.t, 0) } : null,
+    };
+  }
+  /** Expiry warning: blinks faster as the remaining time runs out (< 3 s). */
+  const expiring = (rem, t) => (rem < 3 ? (Math.sin(t * (10 + (3 - rem) * 8)) > -0.2 ? 1 : 0.35) : 1);
+  function buffMem(M, p, t, B) {
+    if (!M.bf) M.bf = { fuel: B.jet ? B.jet.fuel : 0, jetK: 0, glideK: 0, hits: B.shield ? B.shield.hits : 0, hitT: -9, vy: p.vy || 0, ground: !!p.onGround, ringT: -9, hist: [], histT: 0, t, shieldK: 0 };
+    const b = M.bf;
+    let dt = clamp(t - b.t, 0, 0.1); if (t < b.t - 0.01) dt = 0; b.t = t;
+    const fuel = B.jet ? B.jet.fuel : 0;
+    const thrust = p.jetting != null ? !!p.jetting : (B.jet && fuel < b.fuel - 1e-4 && !p.onGround);
+    b.fuel = fuel;
+    b.jetK += ((thrust ? 1 : 0) - b.jetK) * (1 - Math.exp(-18 * dt));
+    const gliding = p.gliding != null ? !!p.gliding : p.state === 'glide' || (!!B.glider && !p.onGround && (p.vy || 0) > 10 && (p.vy || 0) < 150 && p.state !== 'swing' && p.state !== 'wall');
+    b.glideK += ((gliding ? 1 : 0) - b.glideK) * (1 - Math.exp(-(gliding ? 12 : 7) * dt));
+    b.shieldK += ((B.shield ? 1 : 0) - b.shieldK) * (1 - Math.exp(-10 * dt));
+    const hits = B.shield ? B.shield.hits : 0;
+    if (hits < b.hits) b.hitT = t;
+    b.hits = hits;
+    // mid-air jump with boots → kick ring
+    const vy = p.vy || 0;
+    if (B.boots && !p.onGround && !b.ground && vy < -220 && b.vy > -60) {
+      b.ringT = t;
+      toWorld(M.xf, 0, 0, _w);
+      if (G.fx) G.fx.burst(_w.x, _w.y, { count: 10, color: ['#ffe14a', '#fff6c8', '#ffffff'], speed: 120, life: 0.35, size: 1.6, gravity: 200, glow: true, shape: 'spark' });
+    }
+    b.vy = vy; b.ground = !!p.onGround;
+    if (B.slow && t - b.histT > 0.05) { b.histT = t; b.hist.push({ x: M.xf.fx, y: M.xf.fy }); if (b.hist.length > 4) b.hist.shift(); }
+    if (!B.slow) b.hist.length = 0;
+    return b;
+  }
+
+  /** Things behind her body (local skeleton space, applyXf already set). */
+  function drawBuffsBack(ctx, M, p, t, B, b) {
+    const S = M.S;
+    const ang = Math.atan2(S.shF.x - S.hipF.x, -(S.shF.y - S.hipF.y));   // torso lean
+    const bx = lerp(S.shF.x, S.hipF.x, 0.42) - 3.6, by = lerp(S.shF.y, S.hipF.y, 0.42);
+    // --- glider: folded roll on the back, or deployed wing frame above her
+    if (B.glider || b.glideK > 0.02) {
+      const k = b.glideK, ex = B.glider ? expiring(B.glider.t, t) : 0.5;
+      if (k < 0.98) {
+        ctx.save(); ctx.translate(bx - 1.2, by - 6); ctx.rotate(ang + 1.35);
+        ctx.globalAlpha *= 1 - k;
+        ctx.fillStyle = C.line; G.roundRect(ctx, -6.5, -2.4, 13, 4.8, 2.4); ctx.fill();
+        const rg = ctx.createLinearGradient(0, -2, 0, 2); rg.addColorStop(0, '#e9f6ff'); rg.addColorStop(1, '#6c8fb0');
+        ctx.fillStyle = rg; G.roundRect(ctx, -5.8, -1.7, 11.6, 3.4, 1.7); ctx.fill();
+        ctx.fillStyle = '#e2712d'; ctx.fillRect(-2.2, -1.7, 1.4, 3.4); ctx.fillRect(1.6, -1.7, 1.4, 3.4);
+        ctx.restore();
+      }
+      if (k > 0.02) {
+        const hy = S.head.y - 13 - 4 * k, span = 30 * easeOutBack(clamp(k, 0, 1)), sag = 7 * k;
+        const tilt = clamp((p.vx || 0) * (M.face || 1) / 900, -0.25, 0.25) - 0.08;
+        const ct = Math.cos(tilt), sn = Math.sin(tilt);
+        // rigging lines from the canopy to her shoulders
+        ctx.strokeStyle = 'rgba(30,34,48,0.75)'; ctx.lineWidth = 0.45;
+        ctx.beginPath();
+        for (const sx of [-span, -span * 0.45, span * 0.45, span]) {
+          const tgt = sx < 0 ? S.shF : S.shN, sy = 2.6;
+          ctx.moveTo(-1 + sx * ct - sy * sn, hy + sx * sn + sy * ct);
+          ctx.lineTo(tgt.x, tgt.y);
+        }
+        ctx.stroke();
+        ctx.save();
+        ctx.translate(-1, hy); ctx.rotate(tilt);
+        // canopy (crescent with cells)
+        const path = (q) => {
+          q.beginPath(); q.moveTo(-span, sag * 0.2);
+          q.quadraticCurveTo(0, -9 * k - sag * 0.2, span, sag * 0.2);
+          q.quadraticCurveTo(span * 0.9, 3 + sag * 0.2, span * 0.82, 3.2);
+          q.quadraticCurveTo(0, -4 * k + 3, -span * 0.82, 3.2);
+          q.quadraticCurveTo(-span * 0.9, 3 + sag * 0.2, -span, sag * 0.2); q.closePath();
+        };
+        const cg = ctx.createLinearGradient(-span, -8, span * 0.6, 4);
+        cg.addColorStop(0, '#ffffff'); cg.addColorStop(0.45, '#bfe9ff'); cg.addColorStop(1, '#5c87ad');
+        ctx.globalAlpha *= ex;
+        shape(ctx, path, cg, KEY_X * Math.sign(M.xf.a), KEY_Y, (q) => {
+          q.strokeStyle = 'rgba(40,60,90,0.45)'; q.lineWidth = 0.6;
+          for (let i = -3; i <= 3; i++) { const x = i / 3.5 * span; q.beginPath(); q.moveTo(x, -12); q.lineTo(x * 0.9, 6); q.stroke(); }
+          q.fillStyle = '#e2712d'; q.beginPath(); q.moveTo(-span, sag * 0.2); q.quadraticCurveTo(0, -9 * k - sag * 0.2, span, sag * 0.2);
+          q.quadraticCurveTo(0, -9 * k - sag * 0.2 + 2.2, -span, sag * 0.2 + 1.6); q.fill();
+        }, 1.1);
+        glow(ctx, 0, -2, span * 0.9, BUFF.glider, 0.16 * k);
+        ctx.restore();
+        // wind streaks while gliding
+        if (G.fx && k > 0.6 && hash1(Math.floor(t * 24)) < 0.35) {
+          toWorld(M.xf, (Math.random() - 0.5) * 50, hy, _w);
+          G.fx.spawn({ x: _w.x, y: _w.y, vx: -(p.vx || 0) * 0.4, vy: -20, life: 0.3, size: 1, color: '#dff6ff', gravity: 0, drag: 2, shape: 'spark' });
+        }
+      }
+    }
+    // --- jetpack: twin canisters + fuel gauge + flame when thrusting
+    if (B.jet || b.jetK > 0.02) {
+      ctx.save(); ctx.translate(bx, by); ctx.rotate(ang);
+      const can = (x) => {
+        ctx.fillStyle = C.line; G.roundRect(ctx, x - 2.4, -7.2, 4.8, 13, 2.2); ctx.fill();
+        const g = ctx.createLinearGradient(x - 2, 0, x + 2, 0); g.addColorStop(0, '#5b6378'); g.addColorStop(0.45, '#c7cfdc'); g.addColorStop(1, '#444b5c');
+        ctx.fillStyle = g; G.roundRect(ctx, x - 1.7, -6.5, 3.4, 11.6, 1.6); ctx.fill();
+        ctx.fillStyle = '#e2712d'; ctx.fillRect(x - 1.7, -3.2, 3.4, 1.3);
+        ctx.fillStyle = '#2a2f3b'; ctx.fillRect(x - 1.3, 5, 2.6, 2.2);
+      };
+      can(-2.8); can(0.6);
+      const fuel = B.jet ? clamp(B.jet.fuel / 3, 0, 1) : 0;
+      ctx.fillStyle = '#10131a'; ctx.fillRect(2.6, -5.5, 1.4, 9);
+      ctx.fillStyle = fuel > 0.3 ? '#7dffb0' : '#ff5a4a'; ctx.fillRect(2.8, -5.3 + 8.6 * (1 - fuel), 1, 8.6 * fuel);
+      const fk = b.jetK;
+      if (fk > 0.02) {
+        for (const x of [-2.8, 0.6]) {
+          const L = (9 + 5 * hash1(Math.floor(t * 40) + x)) * fk;
+          const fg = ctx.createLinearGradient(0, 7, 0, 7 + L);
+          fg.addColorStop(0, 'rgba(255,255,240,0.95)'); fg.addColorStop(0.25, 'rgba(255,200,90,0.9)'); fg.addColorStop(0.7, 'rgba(255,90,40,0.55)'); fg.addColorStop(1, 'rgba(255,60,30,0)');
+          ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = fg;
+          ctx.beginPath(); ctx.moveTo(x - 1.5, 7); ctx.quadraticCurveTo(x - 2.2, 7 + L * 0.4, x, 7 + L); ctx.quadraticCurveTo(x + 2.2, 7 + L * 0.4, x + 1.5, 7); ctx.closePath(); ctx.fill();
+          ctx.restore();
+          glow(ctx, x, 9, 9 * fk, BUFF.jet, 0.55 * fk);
+        }
+        if (G.fx && hash1(Math.floor(t * 30)) < 0.6) {
+          toWorld(M.xf, bx, by + 10, _w);
+          G.fx.spawn({ x: _w.x + (Math.random() - 0.5) * 4, y: _w.y, vx: (Math.random() - 0.5) * 30, vy: 140 + Math.random() * 80, life: 0.28, size: 1.6 + Math.random(), color: Math.random() < 0.5 ? '#ffb347' : '#ff7a3a', gravity: -100, drag: 3, glow: true, shape: 'circle', fade: true });
+        }
+      }
+      ctx.restore();
+    }
+  }
+
+  /** Things over her body. Local skeleton space (applyXf set). */
+  function drawBuffsFrontLocal(ctx, M, p, t, B, b) {
+    const S = M.S;
+    if (B.boots) {
+      const ex = expiring(B.boots.t, t), pulse = 0.55 + 0.25 * Math.sin(t * 6);
+      for (const [a, near] of [[S.ankF, false], [S.ankN, true]]) {
+        glow(ctx, a.x + 1, a.y + 1, 7, BUFF.boots, pulse * ex * (near ? 0.8 : 0.5));
+        ctx.save(); ctx.translate(a.x - 2.2, a.y - 0.6);
+        ctx.fillStyle = near ? '#ffe14a' : '#b89a2a'; ctx.strokeStyle = C.line; ctx.lineWidth = 0.5;
+        ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(-3.4, -2.6); ctx.lineTo(-1.6, -0.2); ctx.lineTo(-3.8, 0.4); ctx.lineTo(0, 1.6); ctx.closePath(); ctx.fill(); ctx.stroke();
+        ctx.restore();
+      }
+    }
+  }
+
+  /** World-space overlays: shield bubble, boots ring, slowmo aura. */
+  function drawBuffsWorld(ctx, M, p, t, B, b) {
+    const cx = M.xf.fx, cy = M.xf.fy - 21;
+    // boots double-jump ring
+    const rk = (t - b.ringT) / 0.35;
+    if (rk >= 0 && rk < 1) {
+      ctx.save(); ctx.globalCompositeOperation = 'lighter';
+      ctx.strokeStyle = `rgba(${BUFF.boots},${0.9 * (1 - rk)})`; ctx.lineWidth = 2 * (1 - rk) + 0.5;
+      ctx.beginPath(); ctx.ellipse(cx, M.xf.fy + 2, 6 + 16 * easeOutCubic(rk), 2 + 4 * easeOutCubic(rk), 0, 0, TAU); ctx.stroke();
+      ctx.restore();
+    }
+    // slow-motion aura: clock ticks at her feet + violet halo
+    if (B.slow) {
+      const ex = expiring(B.slow.t, t);
+      glow(ctx, cx, cy, 30, BUFF.slow, 0.18 * ex);
+      ctx.save(); ctx.globalCompositeOperation = 'lighter';
+      ctx.strokeStyle = `rgba(${BUFF.slow},${0.55 * ex})`; ctx.lineWidth = 0.9;
+      for (let i = 0; i < 12; i++) {
+        const a = i / 12 * TAU + t * 0.4;
+        const r0 = 15, r1 = i % 3 === 0 ? 19 : 17;
+        ctx.beginPath(); ctx.moveTo(cx + Math.cos(a) * r0, M.xf.fy + Math.sin(a) * r0 * 0.24); ctx.lineTo(cx + Math.cos(a) * r1, M.xf.fy + Math.sin(a) * r1 * 0.24); ctx.stroke();
+      }
+      ctx.restore();
+    }
+    // shield bubble
+    if (b.shieldK > 0.02) {
+      const k = b.shieldK, ex = B.shield ? expiring(B.shield.t, t) : 1;
+      const hitK = clamp(1 - (t - b.hitT) / 0.4, 0, 1);
+      const R = 25 + Math.sin(t * 3) * 0.6 + hitK * 4;
+      const a = k * ex;
+      ctx.save();
+      const bg = ctx.createRadialGradient(cx - 6, cy - 8, 2, cx, cy, R);
+      bg.addColorStop(0, `rgba(${BUFF.shield},0)`); bg.addColorStop(0.75, `rgba(${BUFF.shield},${0.08 * a})`); bg.addColorStop(1, `rgba(${BUFF.shield},${0.3 * a + 0.4 * hitK})`);
+      ctx.fillStyle = bg; ctx.beginPath(); ctx.arc(cx, cy, R, 0, TAU); ctx.fill();
+      ctx.globalCompositeOperation = 'lighter';
+      // hex lattice drifting over the surface
+      ctx.save(); ctx.beginPath(); ctx.arc(cx, cy, R, 0, TAU); ctx.clip();
+      ctx.strokeStyle = `rgba(${BUFF.shield},${(0.16 + 0.5 * hitK) * a})`; ctx.lineWidth = 0.6;
+      const off = (t * 4) % 9;
+      for (let row = -4; row <= 4; row++) for (let q = -4; q <= 4; q++) {
+        const hx = cx + q * 9 + (row & 1) * 4.5 - off * 0.3, hy = cy + row * 7.8;
+        const dd = Math.hypot(hx - cx, hy - cy) / R; if (dd > 1.05) continue;
+        ctx.beginPath();
+        for (let i = 0; i < 6; i++) { const aa = i / 6 * TAU + Math.PI / 6; ctx.lineTo(hx + Math.cos(aa) * 4.4 * (0.6 + 0.4 * dd), hy + Math.sin(aa) * 4.4 * (0.6 + 0.4 * dd)); }
+        ctx.closePath(); ctx.stroke();
+      }
+      ctx.restore();
+      ctx.strokeStyle = `rgba(${BUFF.shield},${0.6 * a + 0.4 * hitK})`; ctx.lineWidth = 1.1;
+      ctx.beginPath(); ctx.arc(cx, cy, R, 0, TAU); ctx.stroke();
+      ctx.strokeStyle = `rgba(235,248,255,${0.7 * a})`; ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.arc(cx, cy, R - 3, Math.PI * 1.08, Math.PI * 1.42); ctx.stroke();
+      // remaining hits as pips on the crown of the bubble
+      const hits = B.shield ? Math.min(5, Math.round(B.shield.hits)) : 0;
+      for (let i = 0; i < hits; i++) {
+        const px = cx + (i - (hits - 1) / 2) * 5, py = cy - R - 1;
+        ctx.fillStyle = `rgba(${BUFF.shield},${0.95 * a})`;
+        ctx.beginPath(); ctx.moveTo(px, py - 2.2); ctx.lineTo(px + 1.8, py); ctx.lineTo(px, py + 2.2); ctx.lineTo(px - 1.8, py); ctx.closePath(); ctx.fill();
+      }
+      ctx.restore();
+    }
+  }
+
+  /** Slow-motion after-images (violet) at recently sampled positions. */
+  function drawSlowGhosts(ctx, M, p, t, b) {
+    if (!b.hist.length) return;
+    const { pw, ph } = renderOffscreen(ctx, M, p, t, '#b38bff', 0.85);
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < b.hist.length; i++) {
+      const h = b.hist[i];
+      if (Math.hypot(h.x - M.xf.fx, h.y - M.xf.fy) < 1.5) continue;
+      ctx.globalAlpha = 0.12 + 0.1 * i / b.hist.length;
+      ctx.drawImage(oc, 0, 0, pw, ph, h.x - OCX, h.y - OCY, OCW, OCH);
+    }
+    ctx.restore();
+  }
+
+  /** Hit flash: tinted silhouette over the body at the start of the i-frames. */
+  function drawHurtFlash(ctx, M, p, t, k) {
+    const { pw, ph } = renderOffscreen(ctx, M, p, t, BUFF.hurt, 1);
+    ctx.save(); ctx.globalAlpha = 0.85 * k;
+    ctx.drawImage(oc, 0, 0, pw, ph, M.xf.fx - OCX, M.xf.fy - OCY, OCW, OCH);
+    ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.5 * k;
+    ctx.drawImage(oc, 0, 0, pw, ph, M.xf.fx - OCX, M.xf.fy - OCY, OCW, OCH);
+    ctx.restore();
+  }
+
+  // ================================================================== РЕКС (companion / npc)
+  // Big gruff survivor from an older «Ковчег-7» wreck: faded, patched pre-standard flight suit,
+  // heavy build, beard, scars, aviator goggles, oxygen bottle on his back and a mechanical brace on
+  // his left (near) forearm. Same skeleton approach as Mira (IK limbs, low-passed pose) but chunkier.
+  const RX = {
+    suit: ['#3e2a1e', '#74513a', '#a27a58'], suitFar: ['#2a1d15', '#4b3527', '#644836'],
+    panel: ['#1d2427', '#36403f', '#58635f'], panelFar: ['#141a1c', '#232b2b', '#36403f'],
+    patch: '#5d6534', patch2: '#7d5c2c', tape: '#8f8d84',
+    skin: ['#7a4733', '#b07656', '#d49b77'], beard: ['#241c17', '#4a3c31', '#857261'],
+    steel: ['#2a2e33', '#6a737d', '#bcc4cc'], boot: ['#121316', '#2b2c30', '#4d4e54'],
+    amber: '#e8a15a', amberRGB: '232,161,90',
+  };
+  const RSEG = {
+    thighN: { w: 7.6, pal: RX.suit }, shinN: { w: 6.4, pal: RX.panel },
+    thighF: { w: 7.2, pal: RX.suitFar }, shinF: { w: 6.0, pal: RX.panelFar },
+    uarmN: { w: 6.8, pal: RX.suit }, farmN: { w: 6.0, pal: RX.suit },
+    uarmF: { w: 6.4, pal: RX.suitFar }, farmF: { w: 5.6, pal: RX.suitFar },
+  };
+  const RL = { thigh: 12.6, shin: 12.4, torso: 19, uarm: 11.2, farm: 11 };
+  const RKEYS = ['hx', 'hy', 'lean', 'head', 'fnx', 'fny', 'ffx', 'ffy', 'hnx', 'hny', 'hfx', 'hfy'];
+  const REX_IDLE = { hx: 0, hy: -24.2, lean: 0.07, head: 0, fnx: 4, fny: 0, ffx: -4.5, ffy: 0, hnx: 2.6, hny: 20.5, hfx: -1.6, hfy: 20.5 };
+  const REX_POSE = {
+    npc: { hx: -0.8, hy: -24.4, lean: -0.04, head: -0.05, fnx: 5.5, fny: 0, ffx: -5, ffy: 0, hnx: 7.5, hny: 9, hfx: 6.5, hfy: 7.5 },
+    helpWind: { hx: -1, hy: -18.5, lean: 0.45, head: 0.12, fnx: 8, fny: 0, ffx: -7, ffy: 0, hnx: 9, hny: 15.5, hfx: 8, hfy: 16 },
+    helpHeave: { hx: 1, hy: -26, lean: -0.14, head: -0.3, fnx: 6, fny: 0, ffx: -5, ffy: -1.5, hnx: 6, hny: -17.5, hfx: 4.5, hfy: -18 },
+    throwWind: { hx: -2, hy: -23, lean: -0.34, head: -0.12, fnx: 8.5, fny: 0, ffx: -7, ffy: 0, hnx: -7, hny: -15, hfx: -9, hfy: -13 },
+    throwRel: { hx: 2.5, hy: -21, lean: 0.52, head: 0.22, fnx: 9, fny: 0, ffx: -7.5, ffy: -1.5, hnx: 17, hny: 5, hfx: 16, hfy: 7.5 },
+    down: { hx: -1, hy: -13.5, lean: 0.4, head: 0.42, fnx: 8, fny: 0, ffx: -11.5, ffy: -1, hnx: 2.5, hny: 18.5, hfx: 6, hfy: 21 },
+  };
+  const REX_MOOD = { // in-world acting for npc talk lines: brow, head tilt, gesture energy
+    neutral: { brow: 0, tilt: 0, gest: 0.6 }, happy: { brow: -0.6, tilt: -0.06, gest: 0.8 }, sad: { brow: -0.4, tilt: 0.22, gest: 0.2 },
+    angry: { brow: 1, tilt: 0.05, gest: 1.2 }, scared: { brow: -1, tilt: -0.08, gest: 0.9 }, surprised: { brow: -1, tilt: -0.12, gest: 0.7 },
+    thinking: { brow: 0.3, tilt: 0.14, gest: 0.1 }, determined: { brow: 0.8, tilt: 0.04, gest: 0.9 },
+  };
+  const rmem = new WeakMap();
+  const mix = (T, P2, k) => { if (k <= 0) return; for (const key of RKEYS) T[key] = lerp(T[key], P2[key], k); };
+
+  /** Feet point of a companion (rect actors: bottom-centre; otherwise x,y is the feet). */
+  function feetOf(c) {
+    if (c.w != null && c.h != null) return [num(c.x, 0) + num(c.w, 0) / 2, num(c.y, 0) + num(c.h, 0)];
+    return [num(c.x, 0), num(c.y, 0)];
+  }
+  function rexMode(c) {
+    const s = c.state || 'idle';
+    if (s === 'down' || s === 'help' || s === 'throw') return s;
+    const air = c.onGround === false || (c.onGround == null && Math.abs(num(c.vy, 0)) > 60);
+    if (air) return 'jump';
+    if (Math.abs(num(c.vx, 0)) > 14) return 'run';
+    return c.npc ? 'npc' : 'idle';
+  }
+  function newRexMem(c, t) {
+    const P = Object.assign({}, REX_IDLE);
+    return { t, P, T: Object.assign({}, REX_IDLE), phase: 0, mode: rexMode(c), modeT: t, face: c.facing < 0 ? -1 : 1, turn: 0,
+      blinkAt: t + 2, blinkN: 0, relFx: false, landT: -9, air: false, talk: 0, gest: 0, sparkT: t };
+  }
+  function rexUpdate(M, c, t) {
+    let dt = t - M.t; if (dt < -0.001 || dt > 1) dt = 0; dt = Math.min(dt, 0.1); M.t = t;
+    const mode = rexMode(c);
+    if (mode !== M.mode) {
+      if (M.mode === 'jump' && mode !== 'jump') { M.landT = t; }
+      M.mode = mode; M.modeT = t; M.relFx = false;
+    }
+    const st = t - M.modeT;
+    const face = num(c.facing, M.face) < 0 ? -1 : 1;
+    if (face !== M.face) { M.face = face; M.turn = 1; }
+    M.turn = Math.max(0, M.turn - dt * 7);
+    M.phase += Math.abs(num(c.vx, 0)) * dt / 40 * TAU;
+    M.talk += ((c.talking ? 1 : 0) - M.talk) * (1 - Math.exp(-8 * dt));
+    if (t > M.blinkAt + 0.15) { M.blinkN++; M.blinkAt = t + 2.2 + hash1(M.blinkN * 3.3) * 3; }
+    // target pose
+    const T = M.T; Object.assign(T, REX_IDLE);
+    const br = Math.sin(t * 1.7);
+    T.hy += br * 0.35;
+    let rate = 12;
+    if (mode === 'npc') { Object.assign(T, REX_POSE.npc); T.hy += br * 0.35; }
+    else if (mode === 'run') {
+      const s = clamp(Math.abs(num(c.vx, 0)) / 150, 0.25, 1), ph = M.phase;
+      T.lean = 0.12 + 0.16 * s;
+      T.hy = -24.2 + s * (0.4 - 1.8 * Math.abs(Math.sin(ph)));
+      T.fnx = 1 - Math.cos(ph) * 9 * s; T.fny = -Math.max(0, Math.sin(ph)) * 6.5 * s;
+      T.ffx = -1 + Math.cos(ph) * 9 * s; T.ffy = -Math.max(0, -Math.sin(ph)) * 6.5 * s;
+      T.hnx = 3 + Math.cos(ph) * 8 * s; T.hny = 18.5 - Math.abs(Math.cos(ph)) * 2.5 * s;
+      T.hfx = 1 - Math.cos(ph) * 8 * s; T.hfy = 18.5 - Math.abs(Math.cos(ph)) * 2.5 * s;
+      T.head = -0.04 * s; rate = 26;
+    } else if (mode === 'jump') {
+      const up = num(c.vy, 0) < 0;
+      if (up) Object.assign(T, { hy: -26, lean: 0.04, fnx: 6.5, fny: -8, ffx: -3, ffy: -5, hnx: 10, hny: -3, hfx: -7, hfy: 3, head: -0.12 });
+      else Object.assign(T, { hy: -25, lean: 0.12, fnx: 5, fny: -2.5, ffx: -5.5, ffy: -1, hnx: 11, hny: 5, hfx: -9, hfy: 7, head: 0.05 });
+      rate = 16;
+    } else if (mode === 'help') {
+      mix(T, REX_POSE.helpWind, easeOutCubic(clamp(st / 0.24, 0, 1)));
+      mix(T, REX_POSE.helpHeave, sstep(0.3, 0.42, st));
+      mix(T, REX_IDLE, sstep(0.75, 1.15, st));
+      rate = 28;
+    } else if (mode === 'throw') {
+      mix(T, REX_POSE.throwWind, easeOutCubic(clamp(st / 0.26, 0, 1)));
+      mix(T, REX_POSE.throwRel, sstep(0.28, 0.38, st));
+      mix(T, REX_IDLE, sstep(0.7, 1.05, st));
+      rate = 28;
+    } else if (mode === 'down') {
+      Object.assign(T, REX_POSE.down);
+      const hb = Math.sin(t * 3.2);
+      T.hy += hb * 0.5; T.lean += hb * 0.03; T.head += Math.sin(t * 0.7) * 0.06;
+      rate = st < 0.4 ? 9 : 6;
+    }
+    // landing squash
+    const lk = clamp(1 - (t - M.landT) / 0.25, 0, 1);
+    if (mode !== 'jump' && lk > 0) { T.hy += 3.5 * Math.sin(lk * Math.PI); T.lean += 0.08 * lk; }
+    // talking / acting (overrides the near arm)
+    const mood = REX_MOOD[c.talkMood] || REX_MOOD.neutral;
+    if (M.talk > 0.01 && (mode === 'idle' || mode === 'npc')) {
+      const g = M.talk * mood.gest * (0.45 + 0.55 * Math.max(0, Math.sin(t * 1.9)));
+      T.hnx = lerp(T.hnx, 11 + Math.sin(t * 2.3) * 2, clamp(g, 0, 1));
+      T.hny = lerp(T.hny, 4 + Math.sin(t * 4.1) * 2.5 - g * 3, clamp(g, 0, 1));
+      T.head += mood.tilt * M.talk + Math.sin(t * 6.3) * 0.05 * M.talk;
+      T.lean += 0.04 * Math.sin(t * 1.3) * M.talk;
+    }
+    const k = 1 - Math.exp(-rate * dt);
+    for (const key of RKEYS) M.P[key] += (T[key] - M.P[key]) * k;
+    return { mode, st };
+  }
+
+  function rexBoot(ctx, a, lx, ly, far) {
+    ctx.save(); ctx.translate(a.x, a.y);
+    const path = (q) => { q.beginPath(); q.moveTo(-3.2, -3.6); q.lineTo(2, -3.6); q.quadraticCurveTo(2.8, -1.6, 6, -1.2); q.quadraticCurveTo(7.8, -0.6, 7.6, 1.4); q.lineTo(7.5, 2.6); q.lineTo(-3.8, 2.6); q.quadraticCurveTo(-4.2, -0.4, -3.2, -3.6); q.closePath(); };
+    shape(ctx, path, far ? RX.boot[0] : RX.boot[1], lx, ly, (q) => {
+      q.fillStyle = '#0b0c0e'; q.fillRect(-4.5, 1.2, 13, 1.6);
+      q.fillStyle = far ? '#3a3226' : '#5a4a36'; q.fillRect(-3.6, -3.6, 5.8, 1.4);  // worn leather cuff
+      q.strokeStyle = 'rgba(200,200,190,0.35)'; q.lineWidth = 0.4; q.beginPath(); q.moveTo(0.5, -2); q.lineTo(3.5, -1.2); q.stroke();
+    }, 1.2);
+    ctx.restore();
+  }
+  function rexGlove(ctx, h, far, metal) {
+    ctx.beginPath(); ctx.arc(h.x, h.y, 3.1, 0, TAU);
+    ctx.fillStyle = C.line; ctx.fill();
+    ctx.beginPath(); ctx.arc(h.x, h.y, 2.4, 0, TAU);
+    ctx.fillStyle = far ? '#2c2622' : '#4a3d33'; ctx.fill();
+    if (metal) { ctx.fillStyle = RX.steel[1]; ctx.fillRect(h.x - 0.4, h.y - 2.6, 2.6, 1.6); ctx.fillStyle = RX.steel[2]; ctx.fillRect(h.x - 0.2, h.y - 2.5, 2.2, 0.5); }
+    ctx.fillStyle = 'rgba(255,230,200,0.25)'; ctx.beginPath(); ctx.arc(h.x - 0.8, h.y - 0.9, 1, 0, TAU); ctx.fill();
+  }
+
+  function rexTorso(ctx, H, lean, lx, ly, br) {
+    ctx.save(); ctx.translate(H.x, H.y); ctx.rotate(lean);
+    const c = Math.cos(-lean), s = Math.sin(-lean);
+    const tlx = lx * c - ly * s, tly = lx * s + ly * c;
+    // oxygen bottle strapped to the back
+    ctx.save(); ctx.translate(-10.2, -11); ctx.rotate(-0.12);
+    ctx.fillStyle = C.line; G.roundRect(ctx, -3.6, -9, 7.2, 17, 3.2); ctx.fill();
+    const bg = ctx.createLinearGradient(-3, 0, 3, 0); bg.addColorStop(0, '#2e3a3a'); bg.addColorStop(0.4, '#6d7f7b'); bg.addColorStop(1, '#263030');
+    ctx.fillStyle = bg; G.roundRect(ctx, -2.8, -8.2, 5.6, 15.4, 2.6); ctx.fill();
+    ctx.fillStyle = '#9a5a2a'; ctx.fillRect(-2.8, -3, 5.6, 1.4);
+    ctx.fillStyle = '#7a3e1e'; ctx.fillRect(-2.8, 3, 5.6, 1);
+    ctx.fillStyle = RX.steel[1]; ctx.fillRect(-1, -10.5, 2, 2.6);
+    ctx.restore();
+    const path = (q) => {
+      q.beginPath(); q.moveTo(-6.8, 3.2);
+      q.bezierCurveTo(-8.8, -4, -10, -13, -7.6, -19.6);
+      q.quadraticCurveTo(-3.6, -23.6, 2, -22);
+      q.bezierCurveTo(7.4, -20.6, 10, -14.5, 9.4, -9.5 + br * 0.3);
+      q.quadraticCurveTo(10, -3, 7.2, 3.2); q.closePath();
+    };
+    const g = ctx.createLinearGradient(-8, -22, 10, 4);
+    g.addColorStop(0, RX.suit[2]); g.addColorStop(0.45, RX.suit[1]); g.addColorStop(1, RX.suit[0]);
+    shape(ctx, path, g, tlx, tly, (q) => {
+      // old-pattern yoke (grey shoulder panel)
+      q.fillStyle = RX.panel[1];
+      q.beginPath(); q.moveTo(-11, -21); q.lineTo(11, -17); q.lineTo(11, -12.6); q.quadraticCurveTo(0, -15.5, -11, -15.8); q.closePath(); q.fill();
+      q.fillStyle = 'rgba(255,255,255,0.12)'; q.fillRect(-10, -19.8, 20, 0.7);
+      // faded reflective band
+      q.strokeStyle = 'rgba(205,200,180,0.5)'; q.lineWidth = 1.4;
+      q.beginPath(); q.moveTo(-10, -10.6); q.quadraticCurveTo(0, -8.8, 11, -8.2); q.stroke();
+      // zipper
+      q.strokeStyle = 'rgba(20,14,10,0.6)'; q.lineWidth = 0.7;
+      q.beginPath(); q.moveTo(6.4, -19.5); q.quadraticCurveTo(7.4, -9, 5.6, 2.4); q.stroke();
+      // patches + tape
+      q.save(); q.translate(-1.6, -5); q.rotate(0.12);
+      q.fillStyle = RX.patch; q.fillRect(-3, -2.5, 6.2, 5.2);
+      q.strokeStyle = 'rgba(230,220,180,0.55)'; q.lineWidth = 0.35; q.setLineDash([0.8, 0.7]); q.strokeRect(-2.6, -2.1, 5.4, 4.4); q.setLineDash([]);
+      q.restore();
+      q.save(); q.translate(-6, -15.6); q.rotate(-0.5); q.fillStyle = RX.tape; q.fillRect(-2.6, -0.8, 5.2, 1.6); q.fillStyle = 'rgba(0,0,0,0.2)'; q.fillRect(-2.6, 0.4, 5.2, 0.4); q.restore();
+      q.save(); q.translate(4.5, -1.8); q.rotate(-0.2); q.fillStyle = RX.patch2; q.fillRect(-1.8, -1.6, 3.6, 3.2); q.restore();
+      // faded К-7 badge
+      q.fillStyle = '#2b2622'; q.fillRect(1.4, -18.2, 4, 2.8);
+      q.fillStyle = '#b5652a'; q.fillRect(1.8, -17.6, 3.2, 0.7);
+      q.fillStyle = 'rgba(220,210,190,0.6)'; q.fillRect(1.8, -16.6, 1.4, 0.6);
+      // tank strap across the chest
+      q.strokeStyle = '#2e2219'; q.lineWidth = 1.8; q.beginPath(); q.moveTo(-9, -19); q.lineTo(9.5, -4); q.stroke();
+      q.strokeStyle = '#5c4632'; q.lineWidth = 0.8; q.beginPath(); q.moveTo(-9, -19.4); q.lineTo(9.5, -4.4); q.stroke();
+      q.fillStyle = RX.steel[1]; q.fillRect(3.2, -10.6, 2, 2);
+      // grime + belt
+      const gg = q.createLinearGradient(0, -8, 0, 4); gg.addColorStop(0, 'rgba(20,12,6,0)'); gg.addColorStop(1, 'rgba(20,12,6,0.4)');
+      q.fillStyle = gg; q.fillRect(-11, -8, 22, 12);
+      q.fillStyle = '#231b14'; q.fillRect(-11, -1.4, 22, 3.4);
+      q.fillStyle = '#4a3a2a'; q.fillRect(-11, -1.4, 22, 0.8);
+      q.fillStyle = RX.steel[1]; q.fillRect(5, -1.6, 2.8, 3.6); q.fillStyle = RX.steel[2]; q.fillRect(5.2, -1.4, 2.4, 0.6);
+      q.fillStyle = '#3c3024'; q.fillRect(-6.5, -0.8, 4.6, 4.6); q.fillStyle = '#5a4734'; q.fillRect(-6.5, -0.8, 4.6, 1.2);
+    }, 1.6);
+    // turned-up collar
+    ctx.fillStyle = C.line; ctx.beginPath(); ctx.moveTo(-3.5, -22.4); ctx.lineTo(4.6, -21.6); ctx.lineTo(4.2, -24.6); ctx.lineTo(-3, -25.4); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = RX.panel[2]; ctx.beginPath(); ctx.moveTo(-2.8, -22.6); ctx.lineTo(3.8, -22); ctx.lineTo(3.5, -24); ctx.lineTo(-2.4, -24.7); ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+
+  function rexHead(ctx, M, c, t, lx, ly, jaw, blink, browK) {
+    // assumes ctx at head centre, rotated
+    const skull = (q) => {
+      q.beginPath(); q.moveTo(-5.4, 4.6);
+      q.bezierCurveTo(-7.6, 1, -7.4, -6.2, -2.6, -8);
+      q.bezierCurveTo(2, -9.2, 6.2, -7, 6.5, -3.1);
+      q.lineTo(6.7, -1.7); q.lineTo(8.4, 1.4); q.quadraticCurveTo(7.8, 2.7, 6.7, 2.7);
+      q.lineTo(6.5, 4.6); q.lineTo(1, 7.2); q.closePath();
+    };
+    const sg = ctx.createRadialGradient(2, -3, 1, 0, 0, 10);
+    sg.addColorStop(0, RX.skin[2]); sg.addColorStop(0.55, RX.skin[1]); sg.addColorStop(1, RX.skin[0]);
+    shape(ctx, skull, sg, lx, ly, (q) => {
+      // buzz cut (salt & pepper) + grey temple
+      q.fillStyle = 'rgba(40,32,28,0.78)';
+      q.beginPath(); q.moveTo(-8, 0.5); q.quadraticCurveTo(-6, -3, -3, -3.6); q.lineTo(5.2, -6.6); q.lineTo(5.2, -10); q.lineTo(-8, -10); q.closePath(); q.fill();
+      q.fillStyle = 'rgba(160,150,140,0.35)';
+      for (let i = 0; i < 26; i++) q.fillRect(-7 + hash1(i * 3.1) * 11.5, -8.8 + hash1(i * 7.7) * 5.5, 0.45, 0.45);
+      // scalp scar with stitch ticks
+      q.strokeStyle = 'rgba(225,160,140,0.9)'; q.lineWidth = 0.55;
+      q.beginPath(); q.moveTo(-3.6, -8.4); q.quadraticCurveTo(-1.6, -6.4, 0.6, -5.2); q.stroke();
+      q.lineWidth = 0.35; q.beginPath();
+      for (let i = 0; i < 4; i++) { const x = -3.1 + i * 1.1, y = -7.9 + i * 0.85; q.moveTo(x - 0.5, y + 0.6); q.lineTo(x + 0.5, y - 0.6); }
+      q.stroke();
+      // cheek shadow under the brow
+      q.fillStyle = 'rgba(70,30,20,0.25)'; q.fillRect(1.5, -2, 6, 2.5);
+    }, 1.4);
+    // ear
+    ctx.fillStyle = RX.skin[0]; ctx.beginPath(); ctx.ellipse(-1.8, 0.2, 1.6, 2.4, 0.1, 0, TAU); ctx.fill();
+    ctx.strokeStyle = C.line; ctx.lineWidth = 0.7; ctx.stroke();
+    // goggles band + lens pushed up on the forehead
+    ctx.strokeStyle = C.line; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-7, -3.2); ctx.quadraticCurveTo(-1, -6.4, 5.2, -6.6); ctx.stroke();
+    ctx.strokeStyle = '#4a3a2c'; ctx.lineWidth = 1.1; ctx.stroke();
+    ctx.fillStyle = C.line; ctx.beginPath(); ctx.ellipse(4.6, -7, 2.5, 2, -0.2, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#9a7a4a'; ctx.beginPath(); ctx.ellipse(4.6, -7, 1.9, 1.5, -0.2, 0, TAU); ctx.fill();
+    const lg = ctx.createLinearGradient(3, -8.4, 6, -5.6); lg.addColorStop(0, '#ffe2a8'); lg.addColorStop(0.5, '#c8742c'); lg.addColorStop(1, '#3a1e0e');
+    ctx.fillStyle = lg; ctx.beginPath(); ctx.ellipse(4.7, -7, 1.3, 1.05, -0.2, 0, TAU); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.8)'; ctx.fillRect(3.9, -7.7, 0.6, 0.5);
+    // eye under a heavy brow
+    const open = 1 - blink;
+    ctx.fillStyle = '#e8ddd0'; ctx.beginPath(); ctx.ellipse(4.5, -1.3, 1.25, 0.85 * open + 0.05, 0, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#1a1410'; ctx.beginPath(); ctx.ellipse(5, -1.3, 0.6, 0.7 * open + 0.05, 0, 0, TAU); ctx.fill();
+    ctx.strokeStyle = RX.beard[0]; ctx.lineWidth = 1.5; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(2.6, -3.1 - browK * 0.2); ctx.lineTo(6.5, -2.6 + browK * 0.9); ctx.stroke();
+    // facial scar through the eye
+    ctx.strokeStyle = 'rgba(230,165,145,0.95)'; ctx.lineWidth = 0.55;
+    ctx.beginPath(); ctx.moveTo(3.4, -5.2); ctx.lineTo(4.2, -2.8); ctx.moveTo(4.8, 0); ctx.lineTo(5.8, 2.4); ctx.stroke();
+    // beard (jaw drops while talking) + moustache
+    const beard = (q) => {
+      q.beginPath(); q.moveTo(6.8, 2.2);
+      q.quadraticCurveTo(7.8, 5 + jaw, 5.8, 8.4 + jaw);
+      q.quadraticCurveTo(2.6, 11.2 + jaw, -0.6, 8.8 + jaw * 0.5);
+      q.quadraticCurveTo(-3.4, 6.6, -3.8, 1.6);
+      q.quadraticCurveTo(-1.6, 3.2, 0.8, 2.6);
+      q.quadraticCurveTo(3, 2.4, 4.4, 1.8); q.closePath();
+    };
+    const bgd = ctx.createLinearGradient(-2, 1, 6, 10);
+    bgd.addColorStop(0, RX.beard[2]); bgd.addColorStop(0.5, RX.beard[1]); bgd.addColorStop(1, RX.beard[0]);
+    shape(ctx, beard, bgd, lx, ly, (q) => {
+      q.strokeStyle = 'rgba(200,190,175,0.35)'; q.lineWidth = 0.4;
+      for (let i = 0; i < 7; i++) { const x = -2 + i * 1.2; q.beginPath(); q.moveTo(x, 3 + (i % 2)); q.lineTo(x + 0.6, 7.5 + jaw * 0.7 - Math.abs(i - 4) * 0.4); q.stroke(); }
+    }, 1.2, 'rgba(255,230,200,0.5)');
+    if (jaw > 0.15) {
+      ctx.fillStyle = '#1d0e0a'; ctx.beginPath(); ctx.ellipse(5.4, 4.4 + jaw * 0.45, 1.3, 0.35 + jaw * 0.7, 0.15, 0, TAU); ctx.fill();
+    }
+    ctx.fillStyle = RX.beard[1]; ctx.strokeStyle = C.line; ctx.lineWidth = 0.6;
+    ctx.beginPath(); ctx.moveTo(3.8, 2.2); ctx.quadraticCurveTo(6, 1.6, 7.6, 2.6); ctx.quadraticCurveTo(7.4, 4, 6.2, 3.8); ctx.quadraticCurveTo(4.8, 3.4, 3.8, 3.6); ctx.closePath(); ctx.fill(); ctx.stroke();
+  }
+
+  const _rs = { H: V(), sh: V(), shN: V(), shF: V(), hipN: V(), hipF: V(), kN: V(), aN: V(), kF: V(), aF: V(), eN: V(), hN: V(), eF: V(), hF: V(), neck: V(), head: V() };
+  /** Draw Рекс's body at the local origin (feet), facing +x. */
+  function rexBody(ctx, M, c, t, mode, st) {
+    const P = M.P, R = _rs;
+    const lx = KEY_X * M.face, ly = KEY_Y;
+    const br = Math.sin(t * 1.7);
+    R.H.x = P.hx; R.H.y = P.hy;
+    const sl = Math.sin(P.lean), cl = Math.cos(P.lean);
+    R.sh.x = R.H.x + sl * RL.torso; R.sh.y = R.H.y - cl * RL.torso;
+    R.shN.x = R.sh.x + 1.2 * cl; R.shN.y = R.sh.y + 1.6 + 1.2 * sl;
+    R.shF.x = R.sh.x - 2.6 * cl; R.shF.y = R.sh.y + 0.4 - 2.6 * sl;
+    R.hipN.x = R.H.x + 1.6; R.hipN.y = R.H.y; R.hipF.x = R.H.x - 1.6; R.hipF.y = R.H.y - 0.6;
+    ik(R.hipF, P.ffx, P.ffy - 2.6, RL.thigh, RL.shin, -1, R.kF, R.aF);
+    ik(R.hipN, P.fnx, P.fny - 2.6, RL.thigh, RL.shin, -1, R.kN, R.aN);
+    ik(R.shF, R.shF.x + P.hfx, R.shF.y + P.hfy, RL.uarm, RL.farm, 1, R.eF, R.hF);
+    ik(R.shN, R.shN.x + P.hnx, R.shN.y + P.hny, RL.uarm, RL.farm, 1, R.eN, R.hN);
+    // far arm + far leg
+    limb(ctx, [R.shF, R.eF, R.hF], [RSEG.uarmF, RSEG.farmF], lx, ly);
+    band(ctx, R.eF, R.hF, 0.78, 0.92, RSEG.farmF.w * 0.95, '#2c2622');
+    rexGlove(ctx, R.hF, true, false);
+    limb(ctx, [R.hipF, R.kF, R.aF], [RSEG.thighF, RSEG.shinF], lx, ly);
+    rexBoot(ctx, R.aF, lx, ly, true);
+    // near leg
+    limb(ctx, [R.hipN, R.kN, R.aN], [RSEG.thighN, RSEG.shinN], lx, ly);
+    ctx.save(); ctx.translate(R.kN.x + 0.6, R.kN.y); ctx.rotate(Math.atan2(R.aN.y - R.kN.y, R.aN.x - R.kN.x) - Math.PI / 2);
+    ctx.fillStyle = C.line; G.roundRect(ctx, -3.2, -2.2, 6.4, 5, 1.6); ctx.fill();
+    ctx.fillStyle = RX.patch; G.roundRect(ctx, -2.6, -1.6, 5.2, 3.8, 1.2); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.18)'; ctx.fillRect(-2.2, -1.4, 4.4, 0.6);
+    ctx.restore();
+    band(ctx, R.kN, R.aN, 0.55, 0.62, RSEG.shinN.w * 0.95, 'rgba(200,195,175,0.55)');
+    rexBoot(ctx, R.aN, lx, ly, false);
+    // torso, neck, head
+    rexTorso(ctx, R.H, P.lean, lx, ly, br);
+    R.neck.x = R.sh.x + sl * 2 + 2.2; R.neck.y = R.sh.y - cl * 2;
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = C.line; ctx.lineWidth = 7.4; ctx.beginPath(); ctx.moveTo(R.sh.x + 1, R.sh.y + 1); ctx.lineTo(R.neck.x, R.neck.y - 2); ctx.stroke();
+    ctx.strokeStyle = RX.skin[0]; ctx.lineWidth = 5.8; ctx.stroke();
+    const ha = P.lean * 0.45 + P.head;
+    ctx.save(); ctx.translate(R.neck.x + Math.sin(ha) * 6.4, R.neck.y - Math.cos(ha) * 6.4); ctx.rotate(ha);
+    const syl = c.talking ? Math.abs(Math.sin(t * 11) * Math.sin(t * 3.9 + 0.7)) : 0;
+    const mood = REX_MOOD[c.talkMood] || REX_MOOD.neutral;
+    const bl = t > M.blinkAt && t < M.blinkAt + 0.15 ? Math.sin((t - M.blinkAt) / 0.15 * Math.PI) : 0;
+    const browK = mode === 'down' ? -0.6 : mode === 'help' || mode === 'throw' ? 1 : mood.brow * M.talk + (c.npc && !c.talking ? 0.4 : 0);
+    rexHead(ctx, M, c, t, lx, ly, syl * 1.6 + (mode === 'throw' && st > 0.26 && st < 0.6 ? 1.2 : 0), mode === 'down' ? 0.55 + 0.45 * bl : bl, browK);
+    ctx.restore();
+    // near arm: sleeve + mechanical brace over the forearm
+    limb(ctx, [R.shN, R.eN, R.hN], [RSEG.uarmN, RSEG.farmN], lx, ly);
+    const dx = R.hN.x - R.eN.x, dy = R.hN.y - R.eN.y, dl = Math.hypot(dx, dy) || 1, nx = -dy / dl, ny = dx / dl;
+    band(ctx, R.eN, R.hN, 0.12, 0.88, RSEG.farmN.w * 0.9, RX.steel[0]);
+    band(ctx, R.eN, R.hN, 0.16, 0.84, RSEG.farmN.w * 0.62, RX.steel[1]);
+    for (const f of [0.22, 0.5, 0.78]) band(ctx, R.eN, R.hN, f, f + 0.06, RSEG.farmN.w * 1.0, RX.steel[0]);
+    // piston rod + highlight
+    ctx.strokeStyle = RX.steel[2]; ctx.lineWidth = 0.7;
+    ctx.beginPath(); ctx.moveTo(R.eN.x + nx * 2.4 + dx * 0.1, R.eN.y + ny * 2.4 + dy * 0.1); ctx.lineTo(R.eN.x + nx * 2.4 + dx * 0.7, R.eN.y + ny * 2.4 + dy * 0.7); ctx.stroke();
+    // elbow hinge with amber status LED
+    ctx.fillStyle = C.line; ctx.beginPath(); ctx.arc(R.eN.x, R.eN.y, 2.8, 0, TAU); ctx.fill();
+    ctx.fillStyle = RX.steel[1]; ctx.beginPath(); ctx.arc(R.eN.x, R.eN.y, 2.1, 0, TAU); ctx.fill();
+    ctx.fillStyle = RX.steel[0]; ctx.beginPath(); ctx.arc(R.eN.x, R.eN.y, 0.8, 0, TAU); ctx.fill();
+    const led = mode === 'down' ? (hash1(Math.floor(t * 7)) < 0.4 ? 1 : 0.15) : 0.7 + 0.3 * Math.sin(t * 2.5);
+    const lpx = lerp(R.eN.x, R.hN.x, 0.36) - nx * 1, lpy = lerp(R.eN.y, R.hN.y, 0.36) - ny * 1;
+    ctx.fillStyle = mode === 'down' ? '#ff5a3a' : RX.amber; ctx.globalAlpha = led; ctx.fillRect(lpx - 0.6, lpy - 0.6, 1.3, 1.3); ctx.globalAlpha = 1;
+    glow(ctx, lpx, lpy, 4, mode === 'down' ? '255,90,58' : RX.amberRGB, 0.5 * led);
+    rexGlove(ctx, R.hN, false, true);
+    return R;
+  }
+
+  function drawRex(ctx, c, t) {
+    let M = rmem.get(c);
+    if (!M || t < M.t - 0.001) { M = newRexMem(c, t); rmem.set(c, M); }
+    const { mode, st } = rexUpdate(M, c, t);
+    const [fx, fy] = feetOf(c);
+    const controlled = c.state === 'controlled' || (G.game && G.game.controlled === c && c !== (G.game && G.game.player));
+    // contact shadow + controlled ring (behind)
+    if (mode !== 'jump') {
+      const sg = ctx.createRadialGradient(fx, fy, 0, fx, fy, 15);
+      sg.addColorStop(0, 'rgba(0,0,0,0.38)'); sg.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.save(); ctx.translate(fx + 1.5, fy); ctx.scale(1, 0.24); ctx.fillStyle = sg; ctx.fillRect(-15, -15, 30, 30); ctx.restore();
+    }
+    if (controlled) {
+      const pu = 0.5 + 0.5 * Math.sin(t * 3.4);
+      ctx.save(); ctx.globalCompositeOperation = 'lighter';
+      ctx.strokeStyle = `rgba(${RX.amberRGB},${0.35 + 0.25 * pu})`; ctx.lineWidth = 1.1;
+      ctx.beginPath(); ctx.ellipse(fx, fy + 0.5, 17, 4.2, 0, 0, TAU); ctx.stroke();
+      ctx.strokeStyle = `rgba(${RX.amberRGB},${0.6 + 0.3 * pu})`; ctx.lineWidth = 1.6;
+      for (let i = 0; i < 3; i++) { const a = t * 1.2 + i / 3 * TAU; ctx.beginPath(); ctx.ellipse(fx, fy + 0.5, 17, 4.2, 0, a, a + 0.7); ctx.stroke(); }
+      ctx.restore();
+    }
+    const blinkA = num(c.iframes, 0) > 0 && Math.floor(t * 16) % 2 ? 0.4 : 1;
+    ctx.save();
+    ctx.globalAlpha *= blinkA;
+    ctx.translate(fx, fy);
+    const sq = M.turn;
+    ctx.scale(M.face * (1 - 0.12 * sq), 1);
+    const R = rexBody(ctx, M, c, t, mode, st);
+    // throw / heave release: motion arc in front of his hands
+    const rel = mode === 'help' ? 0.3 : mode === 'throw' ? 0.28 : -1;
+    if (rel > 0) {
+      const k = (st - rel) / 0.2;
+      if (k > 0 && k < 1) {
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.strokeStyle = `rgba(255,236,205,${0.55 * (1 - k)})`; ctx.lineWidth = 2.4 * (1 - k) + 0.5; ctx.lineCap = 'round';
+        ctx.beginPath();
+        if (mode === 'help') ctx.arc(R.sh.x + 2, R.sh.y + 4, 20, 0.9 - k * 0.4, -1.2 - k * 0.4, true);
+        else ctx.arc(R.sh.x - 2, R.sh.y + 2, 20, -2.2 + k * 0.6, 0.4 + k * 0.6);
+        ctx.stroke();
+        ctx.globalCompositeOperation = 'source-over';
+      }
+      if (st > rel && !M.relFx && G.fx) {
+        M.relFx = true;
+        G.fx.dust && G.fx.dust(fx, fy, 6);
+        G.fx.burst(fx + M.face * 14, fy - 30, { count: 8, color: ['#fff2d8', '#e8a15a'], speed: 140, life: 0.28, size: 1.4, gravity: 0, drag: 5, glow: true, shape: 'spark', angle: M.face > 0 ? -0.6 : Math.PI + 0.6, spread: 1.2 });
+      }
+    }
+    ctx.restore();
+    // down: brace sparks + hurt glow
+    if (mode === 'down') {
+      glow(ctx, fx, fy - 18, 26, '255,70,50', 0.12 + 0.06 * Math.sin(t * 3.2));
+      if (G.fx && t - M.sparkT > 0.4 && hash1(Math.floor(t * 5)) < 0.5) {
+        M.sparkT = t;
+        G.fx.burst(fx + M.face * (R.eN.x), fy + R.eN.y, { count: 3, color: ['#ffd27a', '#ffffff'], speed: 70, life: 0.25, size: 1.2, gravity: 500, glow: true, shape: 'spark' });
+      }
+    }
+    // controlled marker: a small amber chevron over his head
+    if (controlled) {
+      const hy = fy + R.sh.y - 22 + Math.sin(t * 3) * 1.5;
+      ctx.save(); ctx.globalCompositeOperation = 'lighter';
+      glow(ctx, fx, hy, 8, RX.amberRGB, 0.35);
+      ctx.fillStyle = `rgba(${RX.amberRGB},0.9)`;
+      ctx.beginPath(); ctx.moveTo(fx - 3.4, hy - 2); ctx.lineTo(fx, hy + 1.8); ctx.lineTo(fx + 3.4, hy - 2); ctx.lineTo(fx, hy - 0.4); ctx.closePath(); ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  // ---------------------------------------------------------------- ЛЮМ as a party member
+  const LUM_RGB = '95,244,230';
+  const lproxy = new WeakMap();
+  const pclock = new WeakMap();
+  /** Seconds since c.state last changed (own clock; never trusts engine timers). */
+  function stateClock(c, t) {
+    let m = pclock.get(c);
+    if (!m || m.s !== c.state || t < m.t - 0.01) { m = { s: c.state, t: m ? t : t - 9 }; pclock.set(c, m); }
+    return t - m.t;
+  }
+  function drawLumMember(ctx, c, t) {
+    if (!G.Art.Drone || !G.Art.Drone.draw) return;
+    const st = stateClock(c, t);
+    const native = c.state === 'follow' || c.state === 'broken' || c.state === 'waking' || c.state == null;
+    let d = c;
+    if (!native) {
+      d = lproxy.get(c);
+      if (!d) { d = {}; lproxy.set(c, d); }
+      Object.assign(d, c);
+      d.state = c.state === 'down' ? 'broken' : 'follow';
+      d.stateTime = st; d.mood = c.mood || (c.state === 'help' ? 'alert' : 'neutral');
+    }
+    let cx = num(c.x, 0), cy = num(c.y, 0);
+    if (c.cx != null) { cx = c.cx; cy = num(c.cy, cy); }
+    const controlled = c.state === 'controlled' || (G.game && G.game.controlled === c);
+    if (controlled) {
+      ctx.save(); ctx.globalCompositeOperation = 'lighter';
+      glow(ctx, cx, cy, 22, LUM_RGB, 0.18);
+      ctx.strokeStyle = `rgba(${LUM_RGB},0.55)`; ctx.lineWidth = 1;
+      for (let i = 0; i < 4; i++) { const a = -t * 1.6 + i / 4 * TAU; ctx.beginPath(); ctx.arc(cx, cy, 15, a, a + 0.9); ctx.stroke(); }
+      ctx.restore();
+    }
+    G.Art.Drone.draw(ctx, d, t);
+    if (c.state === 'help') {
+      const R = 3 * (G.TILE || 32);
+      const k = clamp(st / 0.5, 0, 1);
+      if (k < 1) {
+        const e = easeOutCubic(k);
+        ctx.save(); ctx.globalCompositeOperation = 'lighter';
+        const fg = ctx.createRadialGradient(cx, cy, R * e * 0.6, cx, cy, R * e);
+        fg.addColorStop(0, `rgba(${LUM_RGB},0)`); fg.addColorStop(1, `rgba(${LUM_RGB},${0.22 * (1 - k)})`);
+        ctx.fillStyle = fg; ctx.beginPath(); ctx.arc(cx, cy, R * e + 0.1, 0, TAU); ctx.fill();
+        ctx.strokeStyle = `rgba(${LUM_RGB},${0.9 * (1 - k)})`; ctx.lineWidth = 2.2 * (1 - k) + 0.6;
+        ctx.beginPath(); ctx.arc(cx, cy, R * e, 0, TAU); ctx.stroke();
+        ctx.strokeStyle = `rgba(220,255,250,${0.6 * (1 - k)})`; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.arc(cx, cy, R * e * 0.72, 0, TAU); ctx.stroke();
+        // radial zap ticks
+        ctx.strokeStyle = `rgba(${LUM_RGB},${0.7 * (1 - k)})`;
+        for (let i = 0; i < 16; i++) { const a = i / 16 * TAU + hash1(i) * 0.3; const r0 = R * e * 0.82, r1 = R * e * (0.92 + 0.08 * hash1(i + Math.floor(t * 20))); ctx.beginPath(); ctx.moveTo(cx + Math.cos(a) * r0, cy + Math.sin(a) * r0); ctx.lineTo(cx + Math.cos(a) * r1, cy + Math.sin(a) * r1); ctx.stroke(); }
+        ctx.restore();
+        glow(ctx, cx, cy, 20, '220,255,250', 0.7 * (1 - k));
+      }
+    }
+  }
+
+  const pfailed = {};
+  /**
+   * Draw a party member in WORLD space (docs/companions-spec.md §4).
+   * Reads c.who ('rex' | 'lum'), c.state (follow/idle/controlled/help/throw/down), c.facing, c.vx, c.vy,
+   * c.onGround, c.talking, c.talkMood, c.iframes. Rect actors (x,y,w,h) are drawn feet-at-bottom-centre;
+   * ЛЮМ uses its centre (x,y). Never throws.
+   * @param {CanvasRenderingContext2D} ctx camera-translated world context
+   * @param {object} c companion (read only)
+   * @param {number} t level time in seconds
+   */
+  function drawParty(ctx, c, t) {
+    if (!c) return;
+    ctx.save();
+    try {
+      if (c.who === 'lum') drawLumMember(ctx, c, t);
+      else drawRex(ctx, c, t);
+    } catch (err) {
+      const k = String(c.who);
+      if (!pfailed[k]) { pfailed[k] = true; console.warn('Art.Party draw failed for', k, err); if (G.errors) G.errors.push('art:party:' + k + ': ' + (err && err.message)); }
+    } finally { ctx.restore(); }
+  }
+  G.Art.Party = { draw: drawParty };
 
   G.Art.Player = { draw: drawPlayer, drawItem };
   G.Art.Drone = { draw: drawDrone };
