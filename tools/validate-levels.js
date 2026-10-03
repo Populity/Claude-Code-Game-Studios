@@ -25,6 +25,7 @@ ctx.G.fx = { burst() {}, dust() {}, shake() {} };
 load('world/level.js');
 load('world/physics.js');
 load('world/entities.js');
+try { load('config-bosses.js'); } catch (e) { /* optional */ }
 try { load('world/bosses.js'); } catch (e) { /* boss module optional */ }
 try { load('story/script.js'); } catch (e) { console.log('! script.js failed to load:', e.message); }
 

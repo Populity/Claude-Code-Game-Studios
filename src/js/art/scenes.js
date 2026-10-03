@@ -921,7 +921,6 @@
       }
       // grapple frames
       p.strokeStyle = 'rgba(160,170,190,0.6)'; p.lineWidth = 1.2;
-      for (let x = 490; x < 1000; x += 88) { p.strokeRect(x, CY - 148, 2, 296); }
     });
     // habitat ring (edge-on torus) + hub
     piece(g, 1030, 0, 130, 420, (p) => {
@@ -1563,7 +1562,7 @@
       for (let k = 0; k < 18; k++) {
         const f = k / 17;
         g.strokeStyle = rgba(mixc([255, 244, 220], [255, 120, 40], f), 0.3 * (1 - f * 0.8));
-        g.lineWidth = 3.2;
+        g.lineWidth = 5;
         g.beginPath(); g.ellipse(AX, AY, AR * (1.25 + f * 0.9), AR * (1.12 + f * 0.75), 0, Math.PI * 1.02, Math.PI * 1.98); g.stroke();
         g.strokeStyle = rgba(mixc([255, 240, 210], [255, 120, 40], f), 0.16 * (1 - f * 0.8));
         g.beginPath(); g.ellipse(AX, AY, AR * (1.18 + f * 0.6), AR * (1.08 + f * 0.5), 0, Math.PI * 0.08, Math.PI * 0.92); g.stroke();
@@ -1637,6 +1636,239 @@
     debrisBurst(ctx, fract(t / 6) * 6 + 100, 100, 380, 400, 18, 12, 120, 0, '#1a1c22', 4, -0.4, 0.9);
     streaks(ctx, t, 40, 33, 160, -70, [255, 200, 160], 0.25, 30);
     finish(ctx, t, { bloom: 1.0, vigC: [40, 0, 0], vig: 0.9 + 0.1 * grip, grain: 0.08, flash: 0.25 * Math.exp(-Math.max(0, t - 1.2) * 3) * (t > 1.2 ? 1 : 0) });
+  };
+
+  // ════════════════════════════════════════════════════════════════════ orbit limb
+  /**
+   * Huge planet limb seen from low orbit (cached): textured disc, day→terminator shading,
+   * layered atmosphere (thin bright rim + broad rose scattering halo).
+   */
+  function limbLayer(key, cx, cy, R, sunX) {
+    return layer('limb:' + key, DW, DH, (g) => {
+      g.save(); g.beginPath(); g.arc(cx, cy, R, 0, TAU); g.clip();
+      const tex = planetTex();
+      g.drawImage(tex, 0, 0, TEX_W, TEX_H, cx - R * 1.3, cy - R * 1.05, R * 2.6, R * 1.6);
+      const sh = g.createLinearGradient(sunX, cy - R, DW - sunX, cy - R * 0.6);
+      sh.addColorStop(0, 'rgba(10,4,12,0.05)'); sh.addColorStop(0.55, 'rgba(10,4,12,0.55)'); sh.addColorStop(1, 'rgba(4,2,8,0.95)');
+      g.fillStyle = sh; g.fillRect(0, 0, DW, DH);
+      const dg = g.createRadialGradient(cx, cy, R * 0.9, cx, cy, R);
+      dg.addColorStop(0, 'rgba(0,0,0,0.35)'); dg.addColorStop(0.9, 'rgba(255,170,130,0.05)'); dg.addColorStop(1, 'rgba(255,200,170,0.35)');
+      g.fillStyle = dg; g.fillRect(0, 0, DW, DH);
+      g.restore();
+      g.globalCompositeOperation = 'lighter';
+      for (let i = 0; i < 14; i++) {
+        const f = i / 13;
+        g.strokeStyle = rgba(mixc([255, 230, 200], [255, 110, 130], f), 0.22 * Math.pow(1 - f, 1.5));
+        g.lineWidth = 2 + f * 6; g.beginPath(); g.arc(cx, cy, R + f * 26, Math.PI * 1.02, Math.PI * 1.98); g.stroke();
+      }
+      glowE(g, sunX, cy - R, 420, 60, 0, [255, 170, 120], 0.35);
+      g.globalCompositeOperation = 'source-over';
+    });
+  }
+  function orbitSky(key, seed) {
+    return deepSpace(key, seed, [
+      { x: 300, y: 120, sx: 500, sy: 160, r: 240, c: [60, 70, 150], a: 0.07, n: 12 },
+      { x: 760, y: 160, sx: 300, sy: 140, r: 220, c: [150, 70, 110], a: 0.07, n: 10 },
+    ], [{ x0: 0, y0: 160, x1: 960, y1: 60, r: 60, a: 0.3, j: 40, n: 14 }], { y0: 120, k: -0.15, spread: 70, frac: 0.5 });
+  }
+  /** Fireball: layered additive puffs + smoke, age a (s) since detonation. */
+  function fireball(ctx, x, y, a, size, seed) {
+    if (a < 0) return;
+    const grow = 1 - Math.exp(-a * 3), fade = Math.exp(-a * 0.9);
+    for (let i = 0; i < 9; i++) {
+      const an = hash(seed, i) * TAU, d = size * grow * (0.3 + hash(seed + 1, i) * 0.8);
+      puff(ctx, x + Math.cos(an) * d, y + Math.sin(an) * d * 0.8, size * (0.4 + grow * 0.6), [30, 20, 22], 0.5 * (1 - fade * 0.5) * Math.exp(-a * 0.25));
+    }
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < 8; i++) {
+      const an = hash(seed + 3, i) * TAU, d = size * grow * 0.6 * hash(seed + 4, i);
+      glow(ctx, x + Math.cos(an) * d, y + Math.sin(an) * d, size * (0.6 + grow * 0.5), i % 2 ? C.orange : C.fire, 0.6 * fade);
+    }
+    glow(ctx, x, y, size * 0.7, C.gold, 0.9 * Math.exp(-a * 2.5)); glow(ctx, x, y, size * 0.3, C.white, Math.exp(-a * 4));
+    ctx.restore();
+  }
+
+  // ════════════════════════════════════════════════════════════════════ pod_launch
+  /** pod_launch — close on the escape pod blasting clear of the burning hull; Mira at the window. */
+  SCENES.pod_launch = function (ctx, t) {
+    const L0 = 0.4, u = settle(t - L0, 3.2);
+    const [sx, sy, sr] = shake(t, [[L0, 7, 3], [2.6, 3, 3]], 0.8);
+    par(ctx, orbitSky('podsky', 515), sx * 0.2, sy * 0.2, 1.02);
+    par(ctx, limbLayer('pod', 480, 1180, 860, 760), sx * 0.3 - u * 20, sy * 0.3, 1);
+    cam(ctx, 1, 480, 270, sx, sy, sr);
+    // the mothership hull: huge, above-left, alarms + a crack opening
+    drawShip2(ctx, 210 - u * 30, 120 - u * 10, 1.25, 0.28, t, { part: 'cryo', alarm: 1, heat: 0.6, warm: true });
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    sparks(ctx, t, 40, 41, 300, 190, 160, 60, 0.9, C.orange, 0.9, 0.6, 1.6);
+    ctx.restore();
+    smoke(ctx, t, 18, 77, 330, 200, -60, 70, 160, [190, 200, 220], 0.12, 3); // venting atmosphere (white)
+    // launch bay flash
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    const bf = Math.exp(-Math.max(0, t - L0) * 2.5) * (t > L0 ? 1 : 0.2);
+    glow(ctx, 330, 230, 160, C.warm, 0.6 * bf); flare(ctx, 330, 230, 200, C.warm, 0.5 * bf);
+    ctx.restore();
+    // the pod: grows as it rushes toward camera-right
+    const px = lerp(330, 640, u), py = lerp(230, 300, u), ps = lerp(0.9, 2.7, u), pr = lerp(0.5, 0.18, u) + Math.sin(t * 0.9) * 0.03;
+    // RCS puffs
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < 4; i++) {
+      const on = Math.sin(t * 5 + i * 1.7) > 0.6;
+      if (on) glowE(ctx, px + Math.cos(pr + 1.6 * (i % 2 ? 1 : -1)) * 44 * ps, py + Math.sin(pr + 1.6 * (i % 2 ? 1 : -1)) * 44 * ps, 18 * ps, 6 * ps, pr + 1.57, C.ice, 0.5);
+    }
+    ctx.restore();
+    drawPod2(ctx, px, py, ps, pr, t, { thrust: 1, hand: sstep(1.8, 3, t) });
+    debrisBurst(ctx, t, L0, 330, 230, 26, 3, 260, 30, '#20232b', 4, 0.4, 1.8);
+    ctx.restore();
+    streaks(ctx, t, 30, 8, 260, 90, [255, 220, 190], 0.3, 24);
+    bokeh2(ctx, t, 6, 3, 60, 20, C.orange, 0.06);
+    finish(ctx, t, { bloom: 0.9, vigC: [30, 0, 0], grain: 0.08, flash: 0.5 * Math.exp(-Math.max(0, t - L0) * 5) * (t > L0 ? 1 : 0), flashC: C.warm });
+  };
+
+  // ════════════════════════════════════════════════════════════════════ ship_breakup
+  /** ship_breakup — «Ковчег-7» tears in two over Tessera; the cryo section falls separately. */
+  SCENES.ship_breakup = function (ctx, t) {
+    const T0 = 1.6, a = Math.max(0, t - T0), sep = settle(a, 6);
+    const [sx, sy, sr] = shake(t, [[T0, 9, 2.2], [T0 + 1.1, 4, 3]], 0.5);
+    par(ctx, orbitSky('brsky', 717), sx * 0.2, sy * 0.2, 1.02);
+    par(ctx, limbLayer('br', 520, 1060, 720, 300), sx * 0.4, sy * 0.4 + sep * 6, 1);
+    cam(ctx, 1 + 0.05 * settle(t, 10), 480, 240, sx, sy, sr);
+    const CX = 480, CY = 210, S = 0.5;
+    if (t < T0) {
+      drawShip2(ctx, CX, CY, S, -0.06, t, { alarm: 1, heat: sstep(0.2, T0, t), warm: true });
+    } else {
+      drawShip2(ctx, CX - 170 - 150 * sep, CY - 30 * sep, S, -0.06 - 0.35 * sep, t, { part: 'aft', alarm: 1, heat: 1, warm: true, engine: 0.3 * Math.exp(-a) });
+      drawShip2(ctx, CX + 300 + 160 * sep, CY - 70 * sep, S, -0.06 + 0.22 * sep, t, { part: 'fore', alarm: 1, heat: 1, warm: true });
+      const cy2 = CY + 150 * sep + a * 4;
+      drawShip2(ctx, CX + 4, Math.min(cy2, 420), S, -0.06 + 0.3 * sep, t, { part: 'cryo', heat: 1, warm: true, lights: true });
+      // cryo section begins re-entry: glow on its belly
+      ctx.save(); ctx.globalCompositeOperation = 'lighter';
+      glowE(ctx, CX + 4, Math.min(cy2, 420) + 50, 160 * sep, 30 * sep, 0.3 * sep, C.orange, 0.35 * sstep(1, 6, a));
+      ctx.restore();
+      fireball(ctx, CX - 125, CY, a, 60, 5); fireball(ctx, CX + 145, CY + 6, a - 0.25, 50, 9);
+      debrisBurst(ctx, t, T0, CX - 125, CY, 40, 21, 240, 0, '#1b1d24', 5);
+      debrisBurst(ctx, t, T0 + 0.25, CX + 145, CY, 34, 23, 220, 0, '#24262e', 4);
+      sparks(ctx, t, 50, 51, CX - 125, CY, 200, 0, 1.2, C.orange, 0.8 * Math.exp(-a * 0.2));
+      sparks(ctx, t, 40, 52, CX + 145, CY, 180, 0, 1.2, C.fire, 0.7 * Math.exp(-a * 0.2));
+      smoke(ctx, t, 16, 61, CX - 125, CY, 40, 80, -80, [40, 30, 34], 0.25, 5);
+    }
+    // the pod, already falling away with its plume
+    ctx.save();
+    const pu = settle(t, 8), ppx = 640 + 180 * pu, ppy = 330 + 140 * pu;
+    ctx.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < 14; i++) glow(ctx, ppx - i * 7, ppy - i * 4, 6 - i * 0.3, C.plasma, 0.4 * (1 - i / 14));
+    ctx.globalCompositeOperation = 'source-over';
+    drawPod2(ctx, ppx, ppy, 0.22, 0.5, t, { thrust: 1, mira: false });
+    ctx.restore();
+    ctx.restore();
+    streaks(ctx, t, 30, 5, -120, 60, [255, 200, 160], 0.25, 16);
+    finish(ctx, t, { bloom: 1, vigC: [30, 4, 0], grain: 0.08, flash: t > T0 ? 0.8 * Math.exp(-a * 4) : 0, flashC: C.warm });
+  };
+
+  // ════════════════════════════════════════════════════════════════════ descent (Tessera sky)
+  /** Amber day sky of Tessera with the ring and two moons (cached). */
+  function amberSky(key, ringY, dusk) {
+    return layer('amber:' + key, DW, DH, (g) => {
+      vfill(g, 0, DH, dusk ? [[0, '#140a1e'], [0.35, '#4a1c34'], [0.62, '#b2483a'], [0.8, '#f08a4a'], [1, '#ffcf8a']]
+        : [[0, '#2a1630'], [0.3, '#7a2f3c'], [0.6, '#d8714a'], [0.85, '#f6b070'], [1, '#ffe2b0']]);
+      paintStars(g, DW, DH * 0.4, 909, 300, { pow: 3, size: 1, alpha: dusk ? 0.7 : 0.35 });
+      g.globalCompositeOperation = 'lighter';
+      paintSkyRing(g, 480, ringY, 980, 300, -0.12, Math.PI * 1.05, Math.PI * 1.95, 44, [255, 220, 200], dusk ? 0.32 : 0.24);
+      g.globalCompositeOperation = 'source-over';
+      paintMoon(g, 760, 120, 34, norm3([-0.6, 0.4, 0.4]), [240, 220, 210], 3.3, C.rose, 0.12);
+      paintMoon(g, 640, 70, 12, norm3([-0.6, 0.4, 0.4]), [220, 200, 230], 8.1, C.ice, 0.1);
+      g.globalCompositeOperation = 'lighter';
+      glowE(g, 200, DH * 0.86, 620, 200, 0, [255, 190, 120], dusk ? 0.35 : 0.45);
+      g.globalCompositeOperation = 'source-over';
+      bakeGrain(g, DW, DH, 0.08);
+    });
+  }
+  function landLayer(key, y0, dusk) {
+    return layer('land:' + key, DW, DH, (g) => {
+      paintMesas(g, y0, 51, dusk ? [70, 30, 40] : [150, 80, 70], 26);
+      paintHaze(g, y0 - 30, y0 + 20, dusk ? [240, 140, 90] : [255, 200, 150], 0.5);
+      paintDunes(g, DW, DH, { y: y0 + 30, amp: 18, seed: 3, top: dusk ? [120, 56, 50] : [196, 120, 80], bottom: dusk ? [70, 30, 34] : [150, 80, 60], rim: [255, 200, 150], rimA: 0.4, sunRight: false });
+      paintDunes(g, DW, DH, { y: y0 + 80, amp: 30, seed: 7, top: dusk ? [90, 40, 40] : [170, 96, 64], bottom: dusk ? [40, 18, 24] : [110, 56, 44], rim: [255, 180, 120], rimA: 0.5, sunRight: false });
+    });
+  }
+  SCENES.descent = function (ctx, t) {
+    const [sx, sy, sr] = shake(t, null, 2.2 + Math.sin(t * 1.3) * 0.6);
+    const z = 1 + 0.08 * settle(t, 12);
+    par(ctx, amberSky('desc', 520, false), sx * 0.1, sy * 0.1 - 20 * settle(t, 20), 1.05);
+    // far ground with the Spire
+    ctx.save(); par(ctx, landLayer('desc', 470, false), sx * 0.2, sy * 0.2 - 30 * settle(t, 30), 1);
+    drawSpire2(ctx, 760 + sx * 0.2, 476 - 30 * settle(t, 30), 70, t, { fill: '#5a2c34', light: 0.6 });
+    ctx.restore();
+    // cloud decks rushing upward (3 depths)
+    for (let d = 0; d < 3; d++) {
+      const img = cloudImg('desc' + d, 520, 150, 31 + d, [255, 226, 200], [190, 110, 100], 26, true);
+      const sp = 60 + d * 140, sc = 0.7 + d * 0.5;
+      for (let i = 0; i < 3; i++) {
+        const y = DH + 200 - fract(t * sp / (DH + 500) + i / 3 + d * 0.2) * (DH + 500);
+        ctx.globalAlpha = 0.55 + d * 0.15; ctx.drawImage(img, hash(d, i) * 700 - 200 + sx * d * 0.4, y, 520 * sc, 150 * sc);
+      }
+      ctx.globalAlpha = 1;
+    }
+    cam(ctx, z, 480, 230, sx, sy, sr);
+    // plasma wake trailing up behind the pod
+    const PX = 480, PY = 220, rot = Math.PI / 2 - 0.35 + Math.sin(t * 2.1) * 0.03;
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < 30; i++) {
+      const f = i / 29, w = Math.sin(t * 9 + i) * 4 * f;
+      glow(ctx, PX - 70 * f * 3 + w - 40 * f, PY - 260 * f * 1.1, 36 * (1 - f * 0.6), i < 6 ? C.gold : C.orange, 0.32 * (1 - f));
+    }
+    ctx.restore();
+    smoke(ctx, t, 20, 13, PX - 60, PY - 60, 300, 80, -160, [60, 34, 34], 0.22, 2.5);
+    drawPod2(ctx, PX, PY, 1.5, rot, t, { plasma: 1, warm: true, hand: 1 });
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    glow(ctx, PX + 30, PY + 70, 120, C.orange, 0.4); glow(ctx, PX + 25, PY + 66, 50, C.gold, 0.6);
+    sparks(ctx, t, 40, 7, PX + 25, PY + 60, 260, -300, 0.5, C.gold, 0.9, -Math.PI / 2 - 0.4, 1.4);
+    ctx.restore();
+    ctx.restore();
+    streaks(ctx, t, 60, 19, 40, -700, [255, 230, 200], 0.4, 50);
+    finish(ctx, t, { bloom: 0.9, grain: 0.08 });
+  };
+
+  // ════════════════════════════════════════════════════════════════════ crash
+  SCENES.crash = function (ctx, t) {
+    const TI = 1.2, a = t - TI, IX = 560, IY = 392;
+    const [sx, sy, sr] = shake(t, [[TI, 14, 2.4]], 0);
+    cam(ctx, 1 + 0.04 * settle(t, 14), IX, IY, sx, sy, sr);
+    par(ctx, amberSky('crash', 560, true), sx * 0.1, sy * 0.1, 1.04);
+    blit(ctx, landLayer('crash', 400, true), sx * 0.3, sy * 0.3);
+    drawSpire2(ctx, 800, 404, 110, t, { fill: '#2a1420', light: 0.5, lightC: C.cyan });
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    glowE(ctx, 200, 400, 300, 40, 0, C.amber, 0.25);
+    ctx.restore();
+    // near dunes (foreground, dark)
+    blit(ctx, layer('crash-near', DW, DH, (g) => {
+      paintDunes(g, DW, DH, { y: 470, amp: 50, seed: 19, top: [56, 26, 30], bottom: [16, 8, 12], rim: [255, 170, 110], rimA: 0.55, sunRight: false });
+    }), sx * 0.6, sy * 0.6);
+    if (a < 0) {
+      // incoming: fiery streak from upper-left
+      const k = clamp01(t / TI), x = lerp(120, IX, k * k), y = lerp(60, IY, k * k);
+      ctx.save(); ctx.globalCompositeOperation = 'lighter';
+      for (let i = 0; i < 24; i++) { const f = i / 23; glow(ctx, x - (x - 120) * f * 0.5, y - (y - 60) * f * 0.5, 22 * (1 - f), i < 3 ? C.white : C.orange, 0.5 * (1 - f)); }
+      ctx.restore();
+    } else {
+      // dust wall, pod wreck, fire, smoke column
+      for (let i = 0; i < 16; i++) {
+        const an = Math.PI + (hash(4, i)) * Math.PI, d = 220 * settle(a, 1.3) * (0.5 + hash(5, i));
+        puff(ctx, IX + Math.cos(an) * d * 1.4, IY + Math.sin(an) * d * 0.35, 40 + 90 * settle(a, 2), [150, 86, 64], 0.5 * Math.exp(-a * 0.25));
+      }
+      smoke(ctx, t, 22, 81, IX, IY - 10, 360, 120, 140, [30, 18, 20], 0.4, 7);
+      drawPod2(ctx, IX - 6, IY - 6, 0.85, 2.6, t, { warm: true, mira: false });
+      ctx.save(); ctx.globalCompositeOperation = 'lighter';
+      const fl = 0.75 + 0.25 * Math.sin(t * 13) * Math.sin(t * 7.1);
+      glow(ctx, IX, IY - 10, 120, C.orange, 0.45 * fl); glow(ctx, IX, IY - 14, 36, C.gold, 0.8 * fl);
+      for (let i = 0; i < 8; i++) puff(ctx, IX - 20 + i * 6, IY - 20 - fract(t * 1.5 + i * 0.3) * 50, 14, C.fire, 0.35 * (1 - fract(t * 1.5 + i * 0.3)));
+      glowE(ctx, IX, IY + 8, 220, 24, 0, C.orange, 0.3 * fl);
+      ctx.restore();
+      embers(ctx, t, 40, 33, IX, IY - 10, 60, 220, C.orange, 0.9);
+      debrisBurst(ctx, t, TI, IX, IY, 40, 71, 300, 260, '#140a0c', 4, -Math.PI / 2, 2.4);
+      sparks(ctx, t, 30, 72, IX, IY - 8, 140, 200, 0.8, C.gold, 0.6 * Math.exp(-a * 0.1));
+    }
+    ctx.restore();
+    finish(ctx, t, { bloom: 0.9, vigC: [20, 4, 0], grain: 0.09, flash: a > 0 ? 0.9 * Math.exp(-a * 3) : 0, flashC: C.warm });
   };
 
   // ════════════════════════════════════════════════════════════════════ registry

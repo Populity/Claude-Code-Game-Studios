@@ -13,7 +13,7 @@ runPlanned('l09', [
     return true;
   } },
   { name: 'ledge A', goal: at(27, 32.9, 44, 44), h: toward(30, 44, 0.5), opts: { maxNodes: 100000, timeKey: 4, extra: [{ k: '', f: 30 }] } },
-  { name: 'Z3 C(17,36)', goal: cpLit(17), h: toward(17, 37, 0.3), opts: o(0) },
+  { name: 'Z3 C(17,36)', goal: (w) => w.level.entities.some((e) => e.type === 'checkpoint' && e.tx === 17 && e.ty === 36 && e.lit), h: toward(17, 37, 0.3), opts: o(0) },
   { name: 'shaft B', script: (w) => {
     const lz = (ty) => w.level.entities.find((e) => e.type === 'laser' && e.ty === ty);
     const waitOff = (l) => { let n = 0; while (!(l.computePhase(w.level.time) === 'off' && l.computePhase(w.level.time - 1 / 60) !== 'off')) { w.tick({}); if (++n > 600) return false; } return true; };
