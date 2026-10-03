@@ -103,9 +103,16 @@ powered when ALL its sources are active (or ANY if the receiver has `need: 'any'
 | `wind` | `[id],x,y,w,h,dir('up'\|'down'\|'left'\|'right'),[strength=900],[period],[on],[offset]` | current zone accelerating the player (and crates ×0.6). Pulses like a laser with `period`/`on`. If targeted, blows only while powered. Up-wind lifts only if strength > gravity (2100) |
 | `dashcrystal` | `x,y` | refills the dash on touch, regrows after 2.5 s |
 | `fallplat` | `x,y,[w=2]` | one-way platform: shakes 0.5 s once stood on, falls, respawns after 3 s |
-| `sentinel` | `x,y,[range=7],[speed=170],[path:[[x,y],…]]` | enemy drone: patrols/hovers, chases on sight (≤4 s), returns, 1 s cooldown. Touch kills. A live laser beam stuns it 3 s |
-| `npc` | `x,y,who,dialogue,[facing]` | E «Говорить» plays `dialogue`; later talks play `dialogue+'_again'` if it exists |
+| `sentinel` | `x,y,[range=7],[speed=170],[path:[[x,y],…]]` | enemy drone: patrols/hovers, chases on sight (≤4 s), returns, 1 s cooldown. Touch deals 2 damage (then it backs off). Рекс can grab + throw it (destroyed, 2 dmg to a boss). A live laser beam stuns it 3 s |
+| `npc` | `x,y,who,dialogue,[facing],[recruit]` | E «Говорить» plays `dialogue`; later talks play `dialogue+'_again'` if it exists. `recruit:'rex'`: when the talk ends he joins the party (`G.save.party`) and the npc is replaced by the companion; from that level on in `LEVEL_ORDER` Рекс is present (level field `rex:false` opts out) |
+| `pickup` | `x,y,kind` | `kind`: `medkit` (+3 HP, stays if HP full), `heart` (+1 max HP for the level), `shield` (2 hits / 20 s), `glider` (hold Jump falling: slow fall, fast air; 3 landings / 25 s), `jetpack` (3 s thrust holding Jump in the air), `boots` (double jump, 30 s), `slowmo` (6 s world 0.5×, Mira 0.75×). Returns on death unless a checkpoint was lit after taking it. Art: `kind`, `taken`, `t` |
+| `stalactite` | `x,y` (tile under a solid ceiling) | someone within 2 tiles horizontally below → shakes 0.4 s → falls (3 dmg), shatters, back after 4 s. Art: `state` (`idle shake fall broken`), `stateT` |
+| `mine` | `x,y` (tile above a floor) | stepped on → beeps 0.5 s → explodes r 1.5 tiles (4 dmg); rearms after 5 s and on respawn. Art: `state` (`armed beep boom spent`), `stateT` |
+| `geyser` | `x,y,[period=3],[on=0.8],[h=6],[offset]` (tile above a floor) | 0.5 s steam warning, then erupts `on` s: 1 dmg + launches anyone in the column ~`h` tiles up (a lift). Art: `phase` (`idle warn on`), `k`, `colH`, `column` |
+| `collapse` | `x,y,w,h` (empty tiles under a ceiling) | solid ceiling block; when someone passes under it shakes 0.45 s, falls (3 dmg, pushes clear, never crushes) and stays as solid floor. Art: `state` (`idle shake fall landed`) |
 | `boss` | `x,y,kind,…` | owned by the boss module (`src/js/world/bosses.js`) |
+
+Damage (config `damage`): spikes 2 (+bounce), laser 2, saw 3, sentinel 2, boss orb 1 / shell 3 / beam 3 / shockwave 2 / body 2; acid, fall, crush = instant. Mira has 6 HP, checkpoints heal +2.
 
 Level-level field `abilities: ['dash']` makes the dash available in that level regardless of the save.
 

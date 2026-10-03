@@ -3,7 +3,7 @@
  *
  * Public API (contract: docs/level-format.md §4):
  *   G.Art.Portraits.draw(ctx, who, mood, x, y, size, t, talking)   VIEW space, square, pre-clipped
- *     who  ∈ mira | orion | lum | voice | echo (ЭХО) | boss (corrupted machine eye, glitching)
+ *     who  ∈ mira | orion | lum | voice | echo (ЭХО) | rex (Рекс) | boss (corrupted machine eye, glitching)
  *     mood ∈ neutral happy sad angry scared surprised thinking determined
  *
  * Everything is drawn in a normalised 100×100 space. Mood parameters (brows, lids, gaze, mouth,
@@ -815,6 +815,65 @@
     for (let i = 0; i < (burst ? 10 : 3); i++) ctx.fillRect(x + hash1(n + i * 1.7) * size, y + hash1(n * 1.3 + i) * size, size * 0.02, size * 0.01);
   }
 
+  // ================================================================== РЕКС
+  const REX_PM = {
+    neutral: { bi: 0, bo: 0, lid: 0.35, gx: 0.3, gy: 0, mc: -0.1, mo: 0, tilt: 0 },
+    happy: { bi: -1.5, bo: -1, lid: 0.3, gx: 0.2, gy: 0, mc: 1, mo: 0.3, tilt: -0.04 },
+    sad: { bi: -3, bo: 2, lid: 0.55, gx: 0, gy: 0.6, mc: -0.8, mo: 0, tilt: 0.07 },
+    angry: { bi: 4, bo: -1.5, lid: 0.45, gx: 0.5, gy: 0, mc: -0.7, mo: 0.4, tilt: -0.03 },
+    scared: { bi: -4, bo: -1.5, lid: 0, gx: -0.3, gy: 0, mc: -0.4, mo: 0.4, tilt: 0.03 },
+    surprised: { bi: -5, bo: -5, lid: 0, gx: 0.2, gy: 0, mc: 0, mo: 0.7, tilt: -0.05 },
+    thinking: { bi: 1, bo: -3, lid: 0.4, gx: 0.6, gy: -0.8, mc: -0.2, mo: 0, tilt: 0.06 },
+    determined: { bi: 3, bo: 0.5, lid: 0.42, gx: 0.7, gy: 0, mc: 0.1, mo: 0, tilt: -0.02 },
+  };
+  function drawRexP(ctx, mood, t, talking) {
+    const P = blended('rex', REX_PM[mood] || REX_PM.neutral, t);
+    const bg = ctx.createLinearGradient(0, 0, 100, 100); bg.addColorStop(0, '#3a2c22'); bg.addColorStop(1, '#141a22');
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, 100, 100);
+    glow(ctx, 18, 14, 60, '232,161,90', 0.22); glow(ctx, 96, 70, 50, '90,140,255', 0.14);
+    const br = Math.sin(t * 1.5) * 0.6;
+    // bust: faded flight suit, grey yoke, strap, patch
+    lit(ctx, (c) => { c.beginPath(); c.moveTo(-2, 101); c.bezierCurveTo(0, 82, 12, 74, 30, 72); c.quadraticCurveTo(55, 68, 80, 74); c.bezierCurveTo(95, 80, 101, 90, 102, 101); c.closePath(); }, '#74513a', 2.4, 'rgba(255,220,180,0.4)', 'rgba(110,160,255,0.35)');
+    ctx.fillStyle = '#36403f'; ctx.beginPath(); ctx.moveTo(2, 90); ctx.quadraticCurveTo(10, 76, 30, 73); ctx.quadraticCurveTo(55, 69, 80, 75); ctx.lineTo(96, 86); ctx.quadraticCurveTo(50, 78, 2, 96); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = '#2e2219'; ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(14, 80); ctx.lineTo(60, 101); ctx.stroke();
+    ctx.fillStyle = '#5d6534'; ctx.fillRect(70, 88, 12, 9); ctx.strokeStyle = 'rgba(230,220,180,0.5)'; ctx.lineWidth = 0.6; ctx.setLineDash([1.5, 1.2]); ctx.strokeRect(71, 89, 10, 7); ctx.setLineDash([]);
+    ctx.save(); ctx.translate(55, 74 + br * 0.3 + (talking ? Math.sin(t * 6) * 0.6 : 0)); ctx.rotate(P.tilt); ctx.translate(-55, -74);
+    // neck + head (square, buzz cut)
+    ctx.fillStyle = '#7a4733'; ctx.fillRect(40, 56, 26, 20);
+    const face = (c) => { c.beginPath(); c.moveTo(30, 34); c.bezierCurveTo(30, 12, 50, 6, 66, 9); c.bezierCurveTo(80, 12, 84, 24, 83, 36); c.lineTo(88, 48); c.lineTo(82, 51); c.lineTo(80, 62); c.quadraticCurveTo(66, 78, 46, 72); c.quadraticCurveTo(30, 62, 30, 34); c.closePath(); };
+    const fg = ctx.createRadialGradient(60, 34, 3, 56, 44, 40); fg.addColorStop(0, '#d49b77'); fg.addColorStop(0.55, '#b07656'); fg.addColorStop(1, '#7a4733');
+    lit(ctx, face, fg, 2.4, 'rgba(255,215,170,0.5)', 'rgba(110,160,255,0.45)');
+    ctx.save(); face(ctx); ctx.clip();
+    ctx.fillStyle = 'rgba(40,32,28,0.85)'; ctx.beginPath(); ctx.moveTo(28, 40); ctx.quadraticCurveTo(34, 20, 50, 18); ctx.lineTo(84, 22); ctx.lineTo(84, 0); ctx.lineTo(28, 0); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = 'rgba(170,160,150,0.4)'; for (let i = 0; i < 60; i++) ctx.fillRect(30 + hash1(i * 3.1) * 52, 6 + hash1(i * 7.7) * 16, 0.8, 0.8);
+    ctx.restore();
+    // goggles on forehead
+    ctx.strokeStyle = LINE; ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(30, 30); ctx.quadraticCurveTo(55, 18, 84, 22); ctx.stroke();
+    ctx.strokeStyle = '#4a3a2c'; ctx.lineWidth = 3; ctx.stroke();
+    for (const gx of [58, 74]) { ctx.fillStyle = LINE; ctx.beginPath(); ctx.ellipse(gx, 20, 7, 5.5, 0, 0, TAU); ctx.fill(); const lg = ctx.createLinearGradient(gx - 5, 16, gx + 5, 24); lg.addColorStop(0, '#ffe2a8'); lg.addColorStop(0.5, '#c8742c'); lg.addColorStop(1, '#3a1e0e'); ctx.fillStyle = lg; ctx.beginPath(); ctx.ellipse(gx, 20, 5, 3.8, 0, 0, TAU); ctx.fill(); }
+    // ear
+    ctx.fillStyle = '#9a5f45'; ctx.beginPath(); ctx.ellipse(36, 44, 4.5, 6.5, 0.1, 0, TAU); ctx.fill(); ctx.strokeStyle = LINE; ctx.lineWidth = 1.4; ctx.stroke();
+    // eyes (near eye scarred)
+    const bl = blinkAt(t, 0.8), open = (1 - bl) * (1 - P.lid * 0.6);
+    for (const [ex, rx, far] of [[60, 5, false], [77, 3.2, true]]) {
+      ctx.fillStyle = '#e8ddd0'; ctx.beginPath(); ctx.ellipse(ex, 40, rx, 3.6 * open + 0.2, 0, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#3a2618'; ctx.beginPath(); ctx.arc(ex + P.gx * 2, 40 + P.gy * 1.5, Math.min(rx, 3.6 * open + 0.2) * 0.6, 0, TAU); ctx.fill();
+      ctx.strokeStyle = '#241c17'; ctx.lineWidth = far ? 2.6 : 3.4; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(ex - rx - 1, 33 + (far ? P.bi : P.bo)); ctx.lineTo(ex + rx + 1, 33 + (far ? P.bo : P.bi)); ctx.stroke();
+    }
+    ctx.strokeStyle = 'rgba(232,160,140,0.95)'; ctx.lineWidth = 1.3; ctx.beginPath(); ctx.moveTo(57, 26); ctx.lineTo(60, 35); ctx.moveTo(61, 45); ctx.lineTo(64, 54); ctx.stroke();
+    ctx.lineWidth = 0.8; ctx.beginPath(); for (let i = 0; i < 4; i++) { ctx.moveTo(56.5 + i, 28 + i * 2); ctx.lineTo(60 + i, 27 + i * 2); } ctx.stroke();
+    // beard + mouth
+    let mo = P.mo; if (talking) mo = Math.max(mo * 0.6, 0.15 + 0.55 * Math.abs(Math.sin(t * 12)));
+    const beard = (c) => { c.beginPath(); c.moveTo(81, 50); c.quadraticCurveTo(86, 64 + mo * 4, 76, 76 + mo * 4); c.quadraticCurveTo(58, 86 + mo * 4, 42, 74); c.quadraticCurveTo(33, 62, 35, 50); c.quadraticCurveTo(45, 58, 58, 55); c.quadraticCurveTo(70, 52, 81, 50); c.closePath(); };
+    const bgd = ctx.createLinearGradient(40, 50, 80, 85); bgd.addColorStop(0, '#857261'); bgd.addColorStop(0.5, '#4a3c31'); bgd.addColorStop(1, '#241c17');
+    lit(ctx, beard, bgd, 2, 'rgba(255,230,200,0.4)', null);
+    ctx.strokeStyle = 'rgba(210,200,185,0.35)'; ctx.lineWidth = 0.8; for (let i = 0; i < 12; i++) { const x = 42 + i * 3.4; ctx.beginPath(); ctx.moveTo(x, 58); ctx.lineTo(x + 1, 72 + mo * 3 - Math.abs(i - 6)); ctx.stroke(); }
+    ctx.fillStyle = '#1d0e0a'; ctx.beginPath(); ctx.ellipse(71, 62 + mo * 2, 7, 0.8 + mo * 5, -P.mc * 0.1, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#4a3c31'; ctx.strokeStyle = LINE; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(60, 58 - P.mc); ctx.quadraticCurveTo(72, 52, 84, 57 - P.mc); ctx.quadraticCurveTo(80, 62, 72, 60); ctx.quadraticCurveTo(65, 61, 60, 58 - P.mc); ctx.fill(); ctx.stroke();
+    ctx.restore();
+  }
+
   /**
    * Draw a character portrait into the square (x, y, size). VIEW space; caller has clipped.
    * @param {CanvasRenderingContext2D} ctx
@@ -836,6 +895,7 @@
       else if (who === 'orion') drawOrion(ctx, mood, t, talking);
       else if (who === 'lum') drawLum(ctx, mood, t, talking);
       else if (who === 'echo') drawEcho(ctx, mood, t, talking);
+      else if (who === 'rex') drawRexP(ctx, mood, t, talking);
       else {
         ctx.fillStyle = (G.Characters && G.Characters[who] && G.Characters[who].color) || '#888';
         ctx.globalAlpha = 0.5; ctx.fillRect(8, 8, 84, 84);

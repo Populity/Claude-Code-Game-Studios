@@ -15,7 +15,7 @@ const flush = (G, n = 200) => { for (let i = 0; i < n; i++) G.App.update(1 / 60)
 
 test('fresh save has the documented shape and defaults', () => {
   const { G } = boot({});
-  assert.eq(JSON.stringify(Object.keys(G.save).sort()), JSON.stringify(['abilities', 'best', 'current', 'deaths', 'shards', 'unlocked']));
+  assert.eq(JSON.stringify(Object.keys(G.save).sort()), JSON.stringify(['abilities', 'best', 'current', 'deaths', 'party', 'shards', 'unlocked']));
   assert.eq(G.save.unlocked, 0); assert.eq(G.save.current, 0); assert.eq(G.save.deaths, 0);
   assert.eq(typeof G.save.shards, 'object'); assert.eq(typeof G.save.best, 'object');
 });
