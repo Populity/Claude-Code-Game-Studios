@@ -46,6 +46,7 @@
       const p = game.player;
       if (!this.lit && !p.dead && G.overlap(p, this)) {
         game.activateCheckpoint(this);
+        p.heal(G.CONFIG.health.checkpointHeal);
       }
     }
     get spawnPoint() {
@@ -439,7 +440,7 @@
       this.phase = this.computePhase(game.level.time);
       if (this.phase === 'on' && prev !== 'on' && game.isNear(this.cx, this.cy, 520)) G.Audio.play('laserOn', { volume: 0.5 });
       const p = game.player;
-      if (this.phase === 'on' && !p.dead && G.overlap({ x: p.x + 3, y: p.y + 4, w: p.w - 6, h: p.h - 6 }, this.beam)) p.kill('laser');
+      if (this.phase === 'on' && !p.dead && G.overlap({ x: p.x + 3, y: p.y + 4, w: p.w - 6, h: p.h - 6 }, this.beam)) p.hurt(G.CONFIG.damage.laser, 'laser', this.beam.x + this.beam.w / 2);
     }
   };
 
@@ -469,7 +470,7 @@
         const nx = G.clamp(this.x, p.x + 3, p.x + p.w - 3);
         const ny = G.clamp(this.y, p.y + 4, p.y + p.h - 2);
         const dx = this.x - nx, dy = this.y - ny;
-        if (dx * dx + dy * dy < (this.r - 3) * (this.r - 3)) p.kill('saw');
+        if (dx * dx + dy * dy < (this.r - 3) * (this.r - 3)) p.hurt(G.CONFIG.damage.saw, 'saw', this.x);
       }
     }
   };
@@ -752,7 +753,7 @@
       if (rx.hitX) this.vx = 0;
       const ry = G.Physics.move(this, 0, this.vy * dt, L);
       if (ry.hitY) this.vy = 0;
-      if (this.state !== 'stunned' && p.touchesCircle(this.cx, this.cy, S.hitR)) p.kill('sentinel');
+      if (this.state !== 'stunned' && p.touchesCircle(this.cx, this.cy, S.hitR) && p.hurt(G.CONFIG.damage.sentinel, 'sentinel', this.cx)) { this.setState('return'); this.cooldownT = S.cooldown; }
     }
   };
 

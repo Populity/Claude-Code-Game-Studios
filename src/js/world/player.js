@@ -382,9 +382,10 @@
       const hz = level.hazardAt(this.hurtbox());
       if (hz === 'spikes') {
         // spikes hurt and bounce her out (up off floor spikes, down off ceiling spikes) so she is never stuck
+        const hb = this.hurtbox(), ceil = level.tileCode(Math.floor(this.cx / T), Math.floor(hb.y / T)) === G.TILE_CODES.SPIKE_DOWN;
         this.hurt(G.CONFIG.damage.spikes, 'spikes', null);
         if (!this.dead) {
-          if (this.vy < 0 && this.state !== 'jump') this.vy = Math.max(this.vy, 150);
+          if (ceil) this.vy = Math.max(this.vy, 150);
           else { this.vy = -G.CONFIG.health.spikeBounce; this.onGround = false; this.jumping = false; }
           this.detachRope(); this.dashTimer = 0;
         }

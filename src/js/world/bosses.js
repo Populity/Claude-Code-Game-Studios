@@ -60,6 +60,8 @@
     for (let ty = Math.max(0, Math.floor(py / T)); ty < level.h; ty++) if (level.isSolidTile(tx, ty)) return ty * T;
     return level.pxH;
   }
+  /** Route a boss hit through p.hurt with the per-kind damage (docs/companions-spec.md §1). */
+  const dmg = (p, cause, fromX) => (p.hurt ? p.hurt(G.CONFIG.damage[cause] || 1, cause, fromX, BC().common.killCause) : p.kill(BC().common.killCause));
   const hurtBox = (p) => ({ x: p.x + 3, y: p.y + 4, w: p.w - 6, h: p.h - 6 });
   const angDiff = (a, b) => { let d = (b - a) % TAU; if (d > Math.PI) d -= TAU; if (d < -Math.PI) d += TAU; return d; };
   /**
@@ -177,7 +179,7 @@
           this.px += this.vx * dt; this.py += this.vy * dt; this.life -= dt;
           const hitPillar = o && o.pillars && o.pillars.some((q) => q.state === 'up' && circleRect(this.px, this.py, this.r, q));
           if (this.life <= 0 || hitPillar || L.isSolidTile(Math.floor(this.px / T), Math.floor(this.py / T))) { this.pop('#c8a8ff'); return; }
-          if (!p.dead && circleRect(this.px, this.py, this.r - 2, hurtBox(p))) { p.kill(C.common.killCause); this.pop('#c8a8ff'); return; }
+          if (!p.dead && circleRect(this.px, this.py, this.r - 2, hurtBox(p))) { dmg(p, 'orb', this.px); this.pop('#c8a8ff'); return; }
           break;
         }
         case 'crystal': {
@@ -205,12 +207,12 @@
           if (this.life <= 0 || this.py > L.pxH + 64 || L.isSolidTile(Math.floor(this.px / T), Math.floor((this.py + this.r * 0.5) / T))) {
             this.explode(this.deflected); return;
           }
-          if (!this.deflected && !p.dead && circleRect(this.px, this.py, this.r - 2, hurtBox(p))) { p.kill(C.common.killCause); this.explode(false); return; }
+          if (!this.deflected && !p.dead && circleRect(this.px, this.py, this.r - 2, hurtBox(p))) { dmg(p, 'shell', this.px); this.explode(false); return; }
           break;
         }
         case 'blast': {
           this.life -= dt;
-          if (!this.harmless && !p.dead && this.life > this.maxLife * 0.35 && circleRect(this.px, this.py, this.r, hurtBox(p))) p.kill(C.common.killCause);
+          if (!this.harmless && !p.dead && this.life > this.maxLife * 0.35 && circleRect(this.px, this.py, this.r, hurtBox(p))) dmg(p, 'shell', this.px);
           if (this.life <= 0) this.live = false;
           break;
         }
@@ -220,7 +222,7 @@
           const noFloor = !L.isSolidTile(Math.floor(this.px / T), Math.floor((this.py + 4) / T));
           if (this.life <= 0 || L.isSolidTile(ahead, fy) || noFloor) { this.live = false; G.fx.dust(this.px, this.py, 6); return; }
           const R = { x: this.px - 12, y: this.py - this.h, w: 24, h: this.h };
-          if (!p.dead && G.overlap(hurtBox(p), R)) p.kill(C.common.killCause);
+          if (!p.dead && G.overlap(hurtBox(p), R)) dmg(p, 'shockwave', undefined);
           if (Math.random() < 0.5) G.fx.dust(this.px, this.py, 1);
           break;
         }
@@ -235,7 +237,7 @@
           if (L.isSolidTile(Math.floor((nx + Math.sign(this.vx) * this.r) / T), Math.floor(this.py / T))) this.vx = 0; else this.px = nx;
           if (L.isSolidTile(Math.floor(this.px / T), Math.floor((ny + Math.sign(this.vy) * this.r) / T))) this.vy = 0; else this.py = ny;
           this.eye = { x: p.cx, y: p.cy };
-          if (!p.dead && circleRect(this.px, this.py, this.r - 1, hurtBox(p))) p.kill(C.common.killCause);
+          if (!p.dead && circleRect(this.px, this.py, this.r - 1, hurtBox(p))) dmg(p, 'sentinel', this.px);
           break;
         }
       }
@@ -514,7 +516,7 @@
         } else if (!isStriking(p) && circleRect(this.bx, this.by, this.cfg.bodyR * 0.8, hurtBox(p))) {
           p.vx = Math.sign(dx || 1) * 260; p.vy = Math.max(p.vy, 120);
         }
-      } else if (this.hurtT <= 0 && circleRect(this.bx, this.by, this.cfg.bodyR, hurtBox(p))) p.kill(BC().common.killCause);
+      } else if (this.hurtT <= 0 && circleRect(this.bx, this.by, this.cfg.bodyR, hurtBox(p))) dmg(p, 'bossBody', this.bx);
     }
     fight(dt, game) {
       const c = this.cfg, i = this.phase, p = game.player;
@@ -601,7 +603,7 @@
       if (!p.dead) {
         const hb = hurtBox(p), hw = c.laserWidth / 2;
         const R = { x: hb.x - hw, y: hb.y - hw, w: hb.w + hw * 2, h: hb.h + hw * 2 };
-        if (segRect(L.x, L.y, L.x + Math.cos(L.ang) * len, L.y + Math.sin(L.ang) * len, R) >= 0) p.kill(BC().common.killCause);
+        if (segRect(L.x, L.y, L.x + Math.cos(L.ang) * len, L.y + Math.sin(L.ang) * len, R) >= 0) dmg(p, 'beam', undefined);
       }
     }
     endAttack() { this.atk = null; this.telegraphT = 0; this.charge = 0; this.laser.stage = null; this.gapT = ph(this.cfg.attackGap, this.phase); }
@@ -668,7 +670,7 @@
           return;
         }
       }
-      if (this.cfg.bodyKill && this.hurtT <= 0 && G.overlap(hurtBox(p), this.bodyBox())) p.kill(BC().common.killCause);
+      if (this.cfg.bodyKill && this.hurtT <= 0 && G.overlap(hurtBox(p), this.bodyBox())) dmg(p, 'bossBody', this.bx);
     }
     fight(dt, game) {
       const c = this.cfg, i = this.phase, p = game.player;
@@ -812,7 +814,7 @@
         this.hit(game);
         return;
       }
-      if (!this.exposed && this.hurtT <= 0 && circleRect(this.bx, this.by, this.cfg.shellR, hurtBox(p))) p.kill(BC().common.killCause);
+      if (!this.exposed && this.hurtT <= 0 && circleRect(this.bx, this.by, this.cfg.shellR, hurtBox(p))) dmg(p, 'bossBody', this.bx);
     }
     hit(game) { const r = super.hit(game); if (this.state === 'phase') this.clearProjectiles(['seeker']); return r; }
     fight(dt, game) {
@@ -861,7 +863,7 @@
         const ex = this.bx + Math.cos(a.ang) * a.len, ey = this.by + Math.sin(a.ang) * a.len;
         if (!p.dead) {
           const hb = hurtBox(p);
-          if (segRect(this.bx, this.by, ex, ey, { x: hb.x - hw, y: hb.y - hw, w: hb.w + hw * 2, h: hb.h + hw * 2 }) >= 0) p.kill(BC().common.killCause);
+          if (segRect(this.bx, this.by, ex, ey, { x: hb.x - hw, y: hb.y - hw, w: hb.w + hw * 2, h: hb.h + hw * 2 }) >= 0) dmg(p, 'beam', this.bx);
         }
         for (const s of this.pool) {
           if (!s.live || s.kind !== 'seeker' || s.spawnT > 0) continue;

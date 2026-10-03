@@ -2,6 +2,7 @@
 const { makeEngine, makeWorld } = require('../lib/engine');
 const { test, assert, report } = require('../lib/harness');
 const { G } = makeEngine();
+G.CONFIG.health.player = 1; // legacy instant-kill assertions: 1 HP (docs/companions-spec.md §1)
 const T = 32;
 const D = G.CONFIG.dash;
 const lvl = (map, extra = {}) => Object.assign({ id: 'unit', biome: 'ruins', title: 'u', map, entities: [] }, extra);

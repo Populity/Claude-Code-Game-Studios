@@ -8,6 +8,7 @@
 const { makeEngine, makeWorld } = require('../lib/engine');
 const { test, assert, report } = require('../lib/harness');
 const { G, load } = makeEngine({ extra: ['config-bosses.js', 'world/bosses.js'] });
+G.CONFIG.health.player = 1; // legacy instant-kill assertions: 1 HP (docs/companions-spec.md §1)
 load('levels/bossarena.js');
 const T = G.TILE, FLOOR = 20 * T;
 const BC = G.CONFIG.bosses;
