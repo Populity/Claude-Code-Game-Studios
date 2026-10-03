@@ -35,6 +35,7 @@ G.Characters = {
   voice: { name: '???', color: '#d7a8ff' },
   echo: { name: 'ЭХО', color: '#ffd27a' },
   boss: { name: '???', color: '#ff5d6c' },
+  rex: { name: 'Рекс', color: '#e8a15a' },
 };
 
 G.Script = {
@@ -388,6 +389,24 @@ G.Script = {
   ] },
 
   // Grant trigger (grant: 'dash'). Key binding is shown by the engine hint, not here.
+  // npc Рекс — survivor from an older «Ковчег-7» wreck (companion, throws Mira over pits)
+  l11_rex_meet: { mode: 'talk', lines: [
+    ['rex', 'angry', 'Стоять. Ещё одна с «Ковчега-7», значит. Нашивка как у меня, только не выгоревшая.'],
+    ['mira', 'surprised', 'Ты с «Ковчега»?! Это невозможно. Наш корабль упал только что.'],
+    ['rex', 'neutral', 'А мой — годы назад. Перестал считать, когда на стене кончилось место для зарубок.'],
+    ['rex', 'angry', 'И к светящейся херне, к ЭХО, не липни. Он всем ласково стелет. Я видел, где потом спят.'],
+    ['mira', 'determined', 'Мне нужно дальше, вглубь. Пойдёшь со мной?'],
+    ['rex', 'neutral', 'С этого камня — хоть к чёрту в зубы. Яма впереди? Хватай за ремень, рыжая. Закину.'],
+  ] },
+  l11_rex_meet_again: { mode: 'talk', lines: [
+    ['rex', 'neutral', 'Чего встала? Яма сама себя не перепрыгнет. Иди сюда, закину.'],
+  ] },
+  rex_help1: { mode: 'bark', lines: [
+    ['rex', 'happy', 'Держись, рыжая — полетела!'],
+  ] },
+  rex_down: { mode: 'bark', lines: [
+    ['rex', 'angry', 'Ох, ёб твою… Лежу. Ничего, рыжая, я и не из такого вставал.'],
+  ] },
   l11_dash_get: { mode: 'talk', lines: [
     ['mira', 'surprised', 'Браслет? Сам защёлкнулся на запястье. Охуенно, спасибо, что спросил.'],
     ['lum', 'thinking', 'Модуль импульса. Рывок в любую сторону: вбок, вверх, наискось. Один раз.'],
