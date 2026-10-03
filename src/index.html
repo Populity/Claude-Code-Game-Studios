@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <title>Тессера</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@400;500;600;700;800&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+  <style>
+    :root { --bg: #000; }
+    html, body { margin: 0; height: 100%; background: var(--bg); overflow: hidden; touch-action: none; }
+    body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+    canvas { display: block; touch-action: none; -webkit-touch-callout: none; }
+    html { touch-action: none; overscroll-behavior: none; }
+  </style>
+</head>
+<body>
+  <canvas id="game" aria-label="Тессера — игра"></canvas>
+  <!-- core -->
+  <script src="js/config.js"></script>
+  <script src="js/config-bosses.js"></script>
+  <script src="js/core/util.js"></script>
+  <script src="js/core/input.js"></script>
+  <script src="js/core/audio.js"></script>
+  <script src="js/core/audio-synth.js"></script>
+  <script src="js/core/fx.js"></script>
+  <!-- world -->
+  <script src="js/world/level.js"></script>
+  <script src="js/world/physics.js"></script>
+  <script src="js/world/entities.js"></script>
+  <script src="js/world/player.js"></script>
+  <script src="js/world/drone.js"></script>
+  <script src="js/world/party.js"></script>
+  <script src="js/world/bosses.js"></script>
+  <!-- art -->
+  <script src="js/art/palette.js"></script>
+  <script src="js/art/decor.js"></script>
+  <script src="js/art/scenes.js"></script>
+  <script src="js/art/player.js"></script>
+  <script src="js/art/entities.js"></script>
+  <script src="js/art/portraits.js"></script>
+  <script src="js/art/lighting.js"></script>
+  <script src="js/art/bosses.js"></script>
+  <!-- story -->
+  <script src="js/story/script.js"></script>
+  <!-- levels -->
+  <script src="js/levels/p1.js"></script>
+  <script src="js/levels/p2.js"></script>
+  <script src="js/levels/l01.js"></script>
+  <script src="js/levels/l02.js"></script>
+  <script src="js/levels/l03.js"></script>
+  <script src="js/levels/l04.js"></script>
+  <script src="js/levels/l05.js"></script>
+  <script src="js/levels/l06.js"></script>
+  <script src="js/levels/l07.js"></script>
+  <script src="js/levels/l08.js"></script>
+  <script src="js/levels/l09.js"></script>
+  <script src="js/levels/l10.js"></script>
+  <script src="js/levels/l11.js"></script>
+  <script src="js/levels/l12.js"></script>
+  <script src="js/levels/l13.js"></script>
+  <script src="js/levels/sandbox.js"></script>
+  <script src="js/levels/sandbox2.js"></script>
+  <script src="js/levels/sandbox3.js"></script>
+  <script src="js/levels/bossarena.js"></script>
+  <script src="js/levels/order.js"></script>
+  <!-- ui + game -->
+  <script src="js/ui/dialogue.js"></script>
+  <script src="js/ui/menu.js"></script>
+  <script src="js/ui/puzzles.js"></script>
+  <script src="js/game.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>

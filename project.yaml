@@ -25,3 +25,15 @@ framework:
 # here. `/settings --local <key>=<value>` writes there; `/settings <key>=<value>`
 # edits this file. See `.claude/docs/config-resolution.md` for the full
 # precedence order.
+
+engine:
+  name: web
+  language: JavaScript
+  notes: HTML5 Canvas 2D, vanilla JS, no build step. Code root src/, entry src/index.html.
+
+project:
+  stage: Production
+
+modes:
+  rigor: minimal
+  automation: guided
