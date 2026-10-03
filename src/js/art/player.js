@@ -1290,7 +1290,6 @@
           glow(ctx, _w.x, _w.y, 16, DASH_RGB, 0.5 * (1 - k));
           ctx.restore();
         }
-        applyXf(ctx, M.xf);
         // occasional glove sparks while wall-sliding
         if (p.state === 'wall' && G.fx && t - M.sparkT > 0.09 && hash1(Math.floor(t * 20)) < 0.35) {
           M.sparkT = t;
@@ -1309,6 +1308,13 @@
   };
   const SHELL = ['#9fb0c2', '#e9f0f6', '#ffffff'];
 
+  // portrait mood -> drone eye mood while talking
+  const TALK_MOOD = { neutral: 'neutral', happy: 'happy', sad: 'sad', angry: 'alert', scared: 'alert', surprised: 'alert', thinking: 'neutral', determined: 'neutral' };
+  function droneMood(d) {
+    if (d.talking && d.talkMood && d.state !== 'broken' && d.state !== 'waking') return TALK_MOOD[d.talkMood] || d.mood;
+    return d.mood;
+  }
+
   function newDroneMem(d, t) {
     return { t, tilt: 0, ef: d.facing || 1, px: 0, py: 0, ant: 0, antV: 0, col: (MOOD[d.mood] || MOOD.neutral).slice(),
       rotor: 0, sparkT: t, vxPrev: d.vx || 0, happyT: 9, prevMood: d.mood, blinkAt: t + 2, blinkN: 0, spinFx: false };
@@ -1319,10 +1325,13 @@
     if (dt < -0.001 || dt > 1) dt = 0;
     dt = Math.min(dt, 0.3);
     M.t = t;
-    if (d.mood !== M.prevMood) { if (d.mood === 'happy') M.happyT = 0; M.prevMood = d.mood; }
+    const dm = droneMood(d);
+    if (dm !== M.prevMood) { if (dm === 'happy') M.happyT = 0; M.prevMood = dm; }
     const n = Math.max(1, Math.ceil(dt / STEP - 1e-6)), h = dt / n;
-    const target = MOOD[d.mood] || MOOD.neutral;
-    const dx = (d.lookX != null ? d.lookX : d.x + d.facing * 10) - d.x, dy = (d.lookY != null ? d.lookY : d.y) - d.y;
+    const target = MOOD[dm] || MOOD.neutral;
+    let dx = (d.lookX != null ? d.lookX : d.x + (d.facing || 1) * 10) - d.x, dy = (d.lookY != null ? d.lookY : d.y) - d.y;
+    if (d.talking && d.talkMood === 'thinking') { dx = (d.facing || 1) * 14 + Math.sin(t * 0.9) * 10; dy = -22; }
+    else if (d.talking && d.talkMood === 'scared') { dx += Math.sin(t * 23) * 8; }
     const dl = Math.hypot(dx, dy) || 1, pm = Math.min(1.5, dl / 30);
     for (let i = 0; i < n && h > 0; i++) {
       const tt = t - dt + h * (i + 1);
@@ -1355,7 +1364,9 @@
     const st = d.stateTime || 0;
     const col = M.col.map((v) => Math.round(v)).join(',');
     let tilt = M.tilt, oy = 0, eyeOn = 1, rotorA = 1, spin = 1, crack = 0, bodyRot = 0, sparks = false;
-    let mood = d.mood;
+    let mood = droneMood(d);
+    const talking = !!d.talking && d.state !== 'broken' && d.state !== 'waking';
+    M.talk = talking ? Math.abs(Math.sin(t * 13.0) * Math.sin(t * 4.7 + 1.0)) : 0;
     if (d.state === 'broken') {
       bodyRot = 1.15; eyeOn = flicker(t, 0.12) ? 0.35 : 0; rotorA = 0; crack = 1; sparks = true; mood = 'broken';
     } else if (d.state === 'waking') {
@@ -1375,9 +1386,16 @@
       else mood = 'broken';
     } else {
       M.spinFx = false;
-      if (d.mood === 'happy') oy -= Math.abs(Math.sin(M.happyT * 11)) * 2.6 * Math.exp(-M.happyT * 2.2);
-      if (d.mood === 'sad') oy += 1.5;
+      if (mood === 'happy') oy -= Math.abs(Math.sin(M.happyT * 11)) * 2.6 * Math.exp(-M.happyT * 2.2);
+      if (mood === 'sad') oy += 1.5;
       oy += Math.sin(t * 3.1) * 0.6;
+      if (talking) {
+        // speaking bob: little nods on the syllable beat + a slow lean into the line
+        oy += -Math.abs(Math.sin(t * 6.5)) * 1.3 + M.talk * 0.5;
+        tilt += Math.sin(t * 3.3) * 0.07 * (d.facing || 1) + (d.talkMood === 'thinking' ? 0.12 * (d.facing || 1) : 0);
+        if (d.talkMood === 'happy') oy -= Math.abs(Math.sin(t * 9)) * 1.2;
+        if (d.talkMood === 'scared') tilt += Math.sin(t * 37) * 0.05;
+      }
     }
 
     ctx.save();
@@ -1432,7 +1450,7 @@
         ctx.beginPath(); ctx.moveTo(baseX, baseY + 1); ctx.quadraticCurveTo(mx, my, tx, ty); ctx.stroke();
         ctx.strokeStyle = '#aab6c8'; ctx.lineWidth = 0.7;
         ctx.beginPath(); ctx.moveTo(baseX, baseY + 1); ctx.quadraticCurveTo(mx, my, tx, ty); ctx.stroke();
-        const on = d.state === 'broken' ? 0 : ((t * 0.9) % 1 < 0.18 ? 1 : 0.35) * eyeOn;
+        const on = d.state === 'broken' ? 0 : (talking ? 0.4 + 0.6 * M.talk : ((t * 0.9) % 1 < 0.18 ? 1 : 0.35)) * eyeOn;
         ctx.fillStyle = C.line; ctx.beginPath(); ctx.arc(tx, ty, 1.5, 0, TAU); ctx.fill();
         ctx.fillStyle = on > 0.5 ? `rgb(${col})` : '#4b5a66'; ctx.beginPath(); ctx.arc(tx, ty, 0.95, 0, TAU); ctx.fill();
         if (on > 0) glow(ctx, tx, ty, 5, col, 0.6 * on);
@@ -1512,10 +1530,17 @@
       ctx.fillStyle = 'rgba(255,255,255,0.8)'; ctx.fillRect(ex - 2.2, ey - 2.6, 0.7, 0.7);
     } else {
       const px = ex + M.px * 1.0, py = ey + M.py * 1.0;
-      const ir = mood === 'alert' ? 2.9 : mood === 'sad' ? 2.25 : mood === 'broken' ? 2.0 : 2.55;
+      const tk = M.talk || 0;
+      const ir = (mood === 'alert' ? 2.9 : mood === 'sad' ? 2.25 : mood === 'broken' ? 2.0 : 2.55) * (1 + 0.14 * tk);
       const pr = mood === 'alert' ? 0.85 : 1.1;
       ctx.globalAlpha = eyeOn;
-      glow(ctx, px, py, 7.5, col, 0.45);
+      glow(ctx, px, py, 7.5 + 3 * tk, col, 0.45 + 0.35 * tk);
+      if (tk > 0.02) {
+        // voice rings radiating from the lens
+        ctx.strokeStyle = `rgba(${col},${0.5 * tk})`; ctx.lineWidth = 0.5;
+        ctx.beginPath(); ctx.arc(ex, ey, 5.2 + tk * 1.6, -0.9, 0.9); ctx.stroke();
+        ctx.beginPath(); ctx.arc(ex, ey, 6.6 + tk * 2.2, -0.6, 0.6); ctx.stroke();
+      }
       const ig = ctx.createRadialGradient(px - 0.5, py - 0.5, 0.2, px, py, ir);
       ig.addColorStop(0, '#ffffff'); ig.addColorStop(0.35, `rgb(${col})`); ig.addColorStop(1, `rgba(${col},0.55)`);
       ctx.beginPath(); ctx.arc(px, py, ir, 0, TAU); ctx.fillStyle = ig; ctx.fill();
