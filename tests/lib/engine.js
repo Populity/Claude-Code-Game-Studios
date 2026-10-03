@@ -27,10 +27,10 @@ function makeWorld(G, def) {
   };
   game.tick = (ctl = {}, dt = 1 / 60) => {
     L.time += dt; L._dyn = L.dynamicSolids();
-    for (const e of L.entities) if (e.type === 'mplatform' || e.type === 'saw') e.update(dt, game);
+    for (const e of L.movers) e.update(dt, game);
     L._dyn = L.dynamicSolids();
-    p.update(dt, L, Object.assign({ left: false, right: false, down: false, jumpPressed: false, jumpHeld: false }, ctl));
-    for (const e of L.entities) if (e.type !== 'mplatform' && e.type !== 'saw') e.update(dt, game);
+    p.update(dt, L, Object.assign({ left: false, right: false, up: false, down: false, jumpPressed: false, jumpHeld: false, dashPressed: false, actionPressed: false, upPressed: false, downPressed: false }, ctl));
+    for (const e of L.entities) if (!e.mover) e.update(dt, game);
     L.resolveSignals();
     L.updateCrumbles(dt, [p, ...L.entities.filter((e) => e.type === 'crate')]);
   };

@@ -11,7 +11,7 @@
   const SAVE_KEY = 'tessera_save_v1';
 
   // ------------------------------------------------------------------ save + settings
-  G.save = Object.assign({ unlocked: 0, current: 0, shards: {}, deaths: 0, best: {} }, G.store.get(SAVE_KEY, {}));
+  G.save = Object.assign({ unlocked: 0, current: 0, shards: {}, deaths: 0, best: {}, abilities: {} }, G.store.get(SAVE_KEY, {}));
   G.settings = Object.assign({ music: 0.6, sfx: 0.8, reduceShake: false, touch: 'auto', quality: 'auto', autoLow: false }, G.store.get('tessera_settings_v1', {}));
   /** Effective low-graphics mode: chosen explicitly, or picked by the auto fallback (main.js frame timer). */
   G.lowGfx = () => G.settings.quality === 'low' || (G.settings.quality === 'auto' && !!G.settings.autoLow);
@@ -166,7 +166,7 @@
     ctx.fillStyle = 'rgba(4,8,16,0.82)'; G.roundRect(ctx, W / 2 - 370, 230, 740, 210, 14); ctx.fill();
     const rows = [
       ['← → / A D', 'Движение'], ['Пробел / W / ↑', 'Прыжок (держите — выше)'], ['Прыжок у стены', 'Отскок от стены'],
-      ['E / F', 'Действие: рычаг, терминал, взять/починить'], ['↓ + Пробел', 'Спрыгнуть с платформы'], ['R', 'Вернуться к чекпоинту'], ['Esc', 'Пауза'],
+      ['E / F', 'Действие: рычаг, терминал, взять/починить'], ['Shift / C / L', 'Рывок'], ['↓ + Пробел', 'Спрыгнуть с платформы'], ['R', 'Вернуться к чекпоинту'], ['Esc', 'Пауза'],
     ];
     ctx.font = `600 16px ${FONT}`; ctx.textBaseline = 'middle';
     rows.forEach(([k, v], i) => {
@@ -262,6 +262,11 @@
       this.completeT = -1;
       this.sign = null;
       this.focus = null;
+      // live dialogue camera + scripted camera (cineFocus)
+      this.zoom = 1; this.zoomFocus = null; this.cine = null; this.talker = null; this.speaker = null; // speaker: scripts set it for non-actor ids
+      this.hitStop = 0;
+      this.abilityHint = null;
+      this.player.canDash = this.level.hasAbility('dash');
       const got = G.save.shards[def.id] || [];
       for (const e of this.level.entities) if (e.type === 'shard' && got.includes(e.index)) { e.collected = true; e.collectT = 99; e.already = true; }
       this.snapshot();
@@ -273,6 +278,15 @@
     }
 
     // ---- API used by entities ----
+    /**
+     * Scripted camera move (boss intros): pan to world (x, y) and zoom for `dur` seconds,
+     * then return to the player. cineFocus() with no args cancels.
+     */
+    cineFocus(x, y, zoom = 1.3, dur = G.CONFIG.camera.cineDur) {
+      this.cine = x == null ? null : { x, y, zoom, dur, t: 0 };
+    }
+    /** Called by G.grantAbility: shows the icon-only key-cap hint. */
+    onAbilityGranted(name) { this.abilityHint = { name, t: 0 }; this.player.canDash = this.level.hasAbility('dash'); }
     isNear(x, y, d) { return Math.abs(x - this.player.cx) < d && Math.abs(y - this.player.cy) < d; }
     playDialogue(id) { this.dialogue.play(id); }
     setObjective(text) { if (text !== this.objective) { this.objective = text; this.objectiveT = 0; G.Audio.play('objective'); } }
@@ -313,6 +327,7 @@
       p.reset(this.spawnPoint.x, this.spawnPoint.y);
       if (carryPart && !carryPart.delivered) { carryPart.taken = false; carryPart.x = carryPart.home.x; carryPart.y = carryPart.home.y; }
       for (const e of this.level.entities) if (e.type === 'crate') e.restore();
+      for (const e of this.level.entities) if (e.type === 'sentinel') e.reset();
       this.drone.x = p.cx - 30; this.drone.y = p.y - 30;
       G.Audio.play('respawn');
       G.fx.burst(p.cx, p.cy, { count: 16, color: ['#7ef9ff', '#ffffff'], speed: 120, life: 0.6, gravity: -100, glow: true });
@@ -326,6 +341,11 @@
       const C = G.CONFIG.camera, p = this.player;
       let x = p.cx - W / 2 + p.facing * C.lookAhead;
       let y = p.cy - H / 2 - 30;
+      if (this.cine) { x = this.cine.x - W / 2; y = this.cine.y - H / 2; }
+      else if (this.talker && this.talker !== p) {
+        const s = actorCenter(this.talker);
+        x = G.lerp(p.cx, s.x, C.talkPan) - W / 2; y = G.lerp(p.cy, s.y, C.talkPan) - H / 2 - 20;
+      }
       x = this.level.pxW <= W ? (this.level.pxW - W) / 2 : G.clamp(x, 0, this.level.pxW - W);
       y = this.level.pxH <= H ? (this.level.pxH - H) / 2 : G.clamp(y, 0, this.level.pxH - H);
       return { x, y };
@@ -333,7 +353,7 @@
 
     findFocus() {
       const p = this.player;
-      if (p.dead || this.dialogue.blocking) return null;
+      if (p.dead || this.dialogue.blocking || p.rope) return null;
       let best = null, bd = 1e9;
       const range = G.CONFIG.player.interactRange;
       for (const e of this.level.entities) {
@@ -370,6 +390,7 @@
       if (inp.pressed('pause') && this.completeT < 0) { this.pause(); return; }
       if (G.input.touchActive && inp.pointer.clicked && this.pauseBtn && Math.hypot(inp.pointer.x - this.pauseBtn.x, inp.pointer.y - this.pauseBtn.y) < this.pauseBtn.r) { this.pause(); return; }
 
+      if (this.hitStop > 0) { this.hitStop--; return; } // dash hit-stop frames
       this.tickWorld(dt, false);
     }
 
@@ -399,26 +420,33 @@
       L._dyn = L.dynamicSolids();
 
       // moving things first so riders are carried
-      for (const e of L.entities) if (e.type === 'mplatform' || e.type === 'saw') e.update(dt, this);
+      for (const e of L.movers) e.update(dt, this);
       L._dyn = L.dynamicSolids();
 
       const blocked = this.dialogue.blocking || this.completeT >= 0;
-      const ctl = blocked ? { left: false, right: false, down: false, jumpPressed: false, jumpHeld: false } : {
-        left: inp.down('left'), right: inp.down('right'), down: inp.down('down'),
+      const ctl = blocked ? {} : {
+        left: inp.down('left'), right: inp.down('right'), up: inp.down('up'), down: inp.down('down'),
         jumpPressed: inp.pressed('jump'), jumpHeld: inp.down('jump'),
+        dashPressed: inp.pressed('dash'), actionPressed: inp.pressed('action'),
+        upPressed: inp.pressed('up'), downPressed: inp.pressed('down'),
       };
+      // "up" is also jump on W/↑: while swinging it reels, so don't let it release the rope
+      if (this.player.rope && ctl.jumpPressed && inp.pressed('up') && !inp.pressed('confirm')) ctl.jumpPressed = false;
       this.player.update(dt, L, ctl);
+      if (this.player.dashStarted) { this.player.dashStarted = false; this.hitStop = G.CONFIG.dash.freezeFrames; if (this.abilityHint && this.abilityHint.name === 'dash') this.abilityHint.t = Math.max(this.abilityHint.t, G.CONFIG.abilityHint.time - 0.4); }
 
-      for (const e of L.entities) if (e.type !== 'mplatform' && e.type !== 'saw') e.update(dt, this);
+      for (const e of L.entities) if (!e.mover) e.update(dt, this);
       L.resolveSignals();
       L.updateCrumbles(dt, this._bodies || (this._bodies = [this.player, ...L.crates]));
       this.drone.update(dt, this);
       this.dialogue.update(dt);
+      this.updateSpeaker(dt);
+      if (this.abilityHint) { this.abilityHint.t += dt; if (this.abilityHint.t > G.CONFIG.abilityHint.time) this.abilityHint = null; }
       G.fx.update(dt);
 
       // interaction
       this.focus = this.findFocus();
-      if (!blocked && this.focus && this.focus.can && inp.pressed('action')) this.focus.e.interact(this);
+      if (!blocked && !this.player.actionUsed && this.focus && this.focus.can && inp.pressed('action')) this.focus.e.interact(this);
 
       // restart from checkpoint
       if (!blocked && inp.pressed('restart') && !this.player.dead) this.player.kill('restart');
@@ -443,6 +471,43 @@
       this.cam.y = G.lerp(this.cam.y, tgt.y, G.damp(C.verticalSmooth, dt));
     }
 
+    /**
+     * Live dialogue: find who is speaking the current talk line, flag them (talking/talkMood)
+     * for the art, and drive the zoom/focus. mira → player, lum/orion → drone, echo → npc,
+     * any other id → G.game.speaker (any object with x,y[,w,h], set by scripts, e.g. a boss).
+     */
+    updateSpeaker(dt) {
+      const C = G.CONFIG.camera, p = this.player, d = this.dialogue;
+      const actors = [p, this.drone, ...this.level.entities.filter((e) => e.type === 'npc')];
+      if (this.speaker) actors.push(this.speaker);
+      for (const a of actors) a.talking = false;
+      let sp = null;
+      const line = d.active && d.active.mode === 'talk' ? d.line : null;
+      if (line) {
+        const who = line.who;
+        if (who === 'mira') sp = p;
+        else if ((who === 'lum' || who === 'orion') && this.drone.enabled) sp = this.drone;
+        else {
+          let best = Infinity;
+          for (const e of this.level.entities) if (e.type === 'npc' && e.who === who) { const dd = Math.abs(e.cx - p.cx); if (dd < best) { best = dd; sp = e; } }
+          if (!sp && this.speaker) sp = this.speaker;
+        }
+        if (sp) { sp.talking = true; sp.talkMood = line.mood; }
+      }
+      this.talker = sp;
+      let zt = 1, fx = null;
+      if (this.cine) {
+        this.cine.t += dt;
+        if (this.cine.t >= this.cine.dur) this.cine = null;
+        else { zt = this.cine.zoom; fx = { x: this.cine.x, y: this.cine.y }; }
+      }
+      if (!fx && sp) { zt = C.talkZoom; fx = actorCenter(sp); }
+      const k = G.damp(C.zoomRate, dt);
+      this.zoom = G.lerp(this.zoom, zt, k);
+      if (fx) this.zoomFocus = this.zoomFocus ? { x: G.lerp(this.zoomFocus.x, fx.x, k), y: G.lerp(this.zoomFocus.y, fx.y, k) } : fx;
+      if (Math.abs(this.zoom - 1) < 0.002 && !fx) { this.zoom = 1; this.zoomFocus = null; }
+    }
+
     passiveUpdate(dt) { G.fx.update(dt); }
 
     // ------------------------------------------------------------------ rendering
@@ -453,6 +518,13 @@
       const view = { x: cam.x + sh.x, y: cam.y + sh.y, w: W, h: H };
       const time = L.time;
 
+      // live dialogue / cine zoom: everything world-ish is scaled about the speaker's screen point
+      ctx.save();
+      if (this.zoom > 1.001) {
+        const f = this.zoomFocus || { x: view.x + W / 2, y: view.y + H / 2 };
+        const px = G.clamp(f.x - view.x, 0, W), py = G.clamp(f.y - view.y, 0, H);
+        ctx.translate(px, py); ctx.scale(this.zoom, this.zoom); ctx.translate(-px, -py);
+      }
       if (Decor.drawBackground) Decor.drawBackground(ctx, view, L, time);
       else { ctx.fillStyle = '#10141f'; ctx.fillRect(0, 0, W, H); }
 
@@ -490,6 +562,7 @@
       ctx.restore();
 
       if (Decor.drawAtmosphere && !low) Decor.drawAtmosphere(ctx, view, L, time);
+      ctx.restore(); // zoom
 
       this.drawHUD(ctx, t);
       const pScreenY = this.player.y + this.player.h - this.cam.y;
@@ -560,6 +633,7 @@
         ctx.fillText('В руках: ' + (G.ITEM_NAMES[this.player.carry] || this.player.carry), W - 18, 56);
         ctx.restore();
       }
+      if (this.abilityHint) drawAbilityHint(ctx, this.abilityHint, t);
       this.drawTouch(ctx);
     }
 
@@ -574,6 +648,7 @@
         { action: 'jump', x: W - 90, y: H - 100, r: 58, label: '▲' },
         { action: 'down', x: 140, y: H - 170, r: 34, label: '▼' },
       ];
+      if (this.player.canDash) btns.push({ action: 'dash', x: W - 200, y: H - 175, r: 40, label: '⚡' });
       G.input.touchButtons = btns;
       this.pauseBtn = { x: W - 34, y: 30, r: 34 };
       ctx.save();
@@ -594,6 +669,32 @@
   G.GameScene = GameScene;
 
   // ------------------------------------------------------------------ draw helpers
+  /** Centre of any actor (player, drone with centre x/y, entity with w/h). */
+  function actorCenter(a) {
+    if (a.cx != null && a.w) return { x: a.cx, y: a.cy };
+    return { x: a.x + (a.w || 0) / 2, y: a.y + (a.h || 0) / 2 };
+  }
+
+  /** Icon-only ability hint (text-free HUD): ⚡ + key-cap, pulsing at the top centre. */
+  function drawAbilityHint(ctx, h, t) {
+    const life = G.CONFIG.abilityHint.time;
+    const a = Math.max(0, Math.min(1, h.t * 3, (life - h.t) * 2));
+    const dev = G.input.touchActive ? 'touch' : G.input.lastDevice === 'gamepad' ? 'pad' : 'kb';
+    const key = dev === 'pad' ? 'RB' : dev === 'kb' ? '⇧' : null;
+    const x = W / 2, y = 96 + Math.sin(t * 4) * 2;
+    ctx.save(); ctx.globalAlpha = a;
+    ctx.fillStyle = 'rgba(4,10,18,0.7)'; G.roundRect(ctx, x - (key ? 52 : 28), y - 26, key ? 104 : 56, 52, 12); ctx.fill();
+    ctx.strokeStyle = '#7ef9ff'; ctx.lineWidth = 1.5 + Math.abs(Math.sin(t * 5)); ctx.stroke();
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.font = `800 26px ${FONT}`; ctx.fillStyle = '#ffe17a'; ctx.shadowColor = '#ffe17a'; ctx.shadowBlur = 12;
+    ctx.fillText('⚡', key ? x - 24 : x, y + 1); ctx.shadowBlur = 0;
+    if (key) {
+      ctx.fillStyle = '#7ef9ff'; G.roundRect(ctx, x + 2, y - 14, 42, 28, 6); ctx.fill();
+      ctx.fillStyle = '#04101a'; ctx.font = `800 16px ${FONT}`; ctx.fillText(key, x + 23, y + 1);
+    }
+    ctx.restore();
+  }
+
   function drawHint(ctx, e) {
     ctx.save();
     ctx.globalAlpha = e.alpha * 0.95;

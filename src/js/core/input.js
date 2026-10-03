@@ -1,7 +1,7 @@
 /**
  * Input: keyboard, gamepad and on-screen touch buttons, unified into actions.
  *
- * Actions: left right up down jump action pause restart confirm back
+ * Actions: left right up down jump action dash pause restart confirm back
  * Query with G.input.down(a) (held), G.input.pressed(a) (this frame), G.input.released(a).
  * Pointer (mouse / tap) in VIEW coordinates: G.input.pointer {x, y, down, clicked}.
  */
@@ -16,6 +16,7 @@
     Enter: ['confirm', 'action'],
     Escape: ['pause', 'back'], KeyP: ['pause'],
     KeyR: ['restart'],
+    ShiftLeft: ['dash'], ShiftRight: ['dash'], KeyC: ['dash'], KeyL: ['dash'],
     Backspace: ['back'],
   };
 
@@ -159,6 +160,7 @@
       if (b(0)) { padHeld.jump = true; padHeld.confirm = true; }
       if (b(2) || b(1)) padHeld.action = true;
       if (b(1)) padHeld.back = true;
+      if (b(5)) padHeld.dash = true;
       if (b(9)) padHeld.pause = true;
       if (b(3)) padHeld.restart = true;
       if (Object.keys(padHeld).length) input.lastDevice = 'gamepad';
