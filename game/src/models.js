@@ -4,18 +4,37 @@ import * as THREE from 'three';
 const mat = (color, opts = {}) => new THREE.MeshPhysicalMaterial({ color, roughness: 0.5, metalness: 0.05, clearcoat: 0.4, clearcoatRoughness: 0.35, sheen: 0.3, ...opts });
 const glow = (color, i = 2) => new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: i });
 
+
+// Big glossy cartoon eyes — the single biggest "animated film" read.
+const EYE_W = new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: 0.15, clearcoat: 1 });
+const EYE_P = new THREE.MeshPhysicalMaterial({ color: 0x1a1020, roughness: 0.1, clearcoat: 1 });
+const EYE_H = new THREE.MeshBasicMaterial({ color: 0xffffff });
+export function addEyes(parent, { y = 0.05, z = 0.36, spread = 0.15, size = 0.11, iris = 0x5a3a1a, angry = false, lid = 0 } = {}) {
+  const irisM = new THREE.MeshPhysicalMaterial({ color: iris, roughness: 0.2, clearcoat: 1 });
+  for (const s of [-1, 1]) {
+    const g = new THREE.Group(); g.position.set(spread * s, y, z);
+    const w = new THREE.Mesh(new THREE.SphereGeometry(size, 24, 16), EYE_W); w.scale.z = 0.7; g.add(w);
+    const ir = new THREE.Mesh(new THREE.SphereGeometry(size * 0.6, 20, 14), irisM); ir.position.z = size * 0.5; ir.scale.z = 0.5; g.add(ir);
+    const p = new THREE.Mesh(new THREE.SphereGeometry(size * 0.33, 16, 12), EYE_P); p.position.z = size * 0.68; p.scale.z = 0.5; g.add(p);
+    const h = new THREE.Mesh(new THREE.SphereGeometry(size * 0.12, 8, 6), EYE_H); h.position.set(size * 0.2 * -s, size * 0.25, size * 0.8); g.add(h);
+    if (lid) { const l = new THREE.Mesh(new THREE.SphereGeometry(size * 1.05, 20, 12, 0, Math.PI * 2, 0, Math.PI * lid), new THREE.MeshPhysicalMaterial({ color: 0xd8a080, roughness: 0.6 })); l.rotation.x = -0.3; g.add(l); }
+    if (angry) { const b = new THREE.Mesh(new THREE.BoxGeometry(size * 1.8, size * 0.35, size * 0.4), EYE_P); b.position.set(0, size * 1.15, size * 0.4); b.rotation.z = 0.45 * s; g.add(b); }
+    parent.add(g);
+  }
+}
+
 function shadowAll(o) { o.traverse(c => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } }); return o; }
 
 function humanoid(skin, shirt, pants) {
   const g = new THREE.Group();
   const rig = {};
-  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.45, 0.7, 6, 14), mat(shirt));
+  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.45, 0.7, 10, 24), mat(shirt));
   body.position.y = 1.35; g.add(body); rig.body = body;
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.42, 24, 18), mat(skin, { roughness: 0.6 }));
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.42, 40, 30), mat(skin, { roughness: 0.55, sheen: 0.6, sheenColor: new THREE.Color(0xffc8a8) }));
   head.position.y = 2.25; g.add(head); rig.head = head;
   const mkLimb = (x, y, len, r, m) => {
     const pivot = new THREE.Group(); pivot.position.set(x, y, 0);
-    const l = new THREE.Mesh(new THREE.CapsuleGeometry(r, len, 4, 10), m);
+    const l = new THREE.Mesh(new THREE.CapsuleGeometry(r, len, 8, 16), m);
     l.position.y = -len / 2 - r; pivot.add(l); g.add(pivot); return pivot;
   };
   rig.armL = mkLimb(-0.58, 1.75, 0.55, 0.14, mat(skin));
@@ -48,6 +67,7 @@ export function buildHero(def) {
     case 'rizz': {
       h = humanoid(0xf2c6a8, 0xff5fb0, 0x2b0a24);
       const hair = new THREE.Mesh(new THREE.SphereGeometry(0.5, 18, 14), mat(0xffe066, { roughness: 0.3 })); hair.position.set(0, 0.08, -0.12); hair.scale.set(1, 1.15, 1); h.rig.head.add(hair);
+      addEyes(h.rig.head, { iris: 0x2e9d6a, size: 0.12, spread: 0.16 });
       const lips = new THREE.Mesh(new THREE.TorusGeometry(0.08, 0.035, 6, 12), glow(0xff2e88, 2)); lips.position.set(0, -0.17, 0.4); h.rig.head.add(lips);
       const phone = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.45, 0.04), glow(0xff9cd5, 1.2)); phone.position.set(0, -0.75, 0.15); h.rig.armR.add(phone);
       const skirt = new THREE.Mesh(new THREE.ConeGeometry(0.75, 0.7, 20, 1, true), mat(0xff2e88)); skirt.position.y = 0.95; h.g.add(skirt);
@@ -59,6 +79,7 @@ export function buildHero(def) {
       h.rig.body.scale.set(1.45, 1.05, 1.15);
       h.rig.armL.scale.set(1.8, 1.1, 1.8); h.rig.armR.scale.set(1.8, 1.1, 1.8);
       h.rig.armL.position.x = -0.85; h.rig.armR.position.x = 0.85;
+      addEyes(h.rig.head, { iris: 0x3a6ad8, angry: true });
       const band = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.06, 8, 24), glow(0xffd23f, 2)); band.rotation.x = Math.PI / 2; band.position.y = 0.15; h.rig.head.add(band);
       const mkDb = () => { const d = new THREE.Group(); const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.9), mat(0x999999, { metalness: 0.9 })); bar.rotation.z = Math.PI / 2; d.add(bar);
         for (const s of [-0.4, 0.4]) { const p = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 0.14, 18), mat(0x111111, { metalness: 0.7 })); p.rotation.z = Math.PI / 2; p.position.x = s; d.add(p); } d.position.y = -0.85; return d; };
@@ -71,9 +92,10 @@ export function buildHero(def) {
       const head = new THREE.Mesh(new THREE.SphereGeometry(0.55, 24, 18), mat(0x2d2d3a)); head.position.y = 2.15; h.g.add(head); h.rig.head = head;
       for (const s of [-1, 1]) {
         const ear = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.4, 4), mat(0x2d2d3a)); ear.position.set(0.3 * s, 0.5, 0); ear.rotation.z = -0.3 * s; head.add(ear);
-        const eye = new THREE.Mesh(new THREE.SphereGeometry(0.1, 10, 8), glow(0x22ffb0, 3)); eye.position.set(0.2 * s, 0.08, 0.47); head.add(eye);
+        
         const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.12, 16), glow(0x8b5cff, 2)); cup.rotation.z = Math.PI / 2; cup.position.set(0.55 * s, 0, 0); head.add(cup);
       }
+      addEyes(head, { y: 0.08, z: 0.45, spread: 0.2, size: 0.15, iris: 0x22d890 });
       const band = new THREE.Mesh(new THREE.TorusGeometry(0.58, 0.05, 8, 24, Math.PI), mat(0x111111)); band.position.y = 0.1; head.add(band);
       const deck = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.2, 0.7), mat(0x111122, { metalness: 0.6 })); deck.position.set(0, 1.0, 0.75); h.g.add(deck);
       for (const s of [-1, 1]) { const disc = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 0.05, 24), glow(0x22ffb0, 1.5)); disc.position.set(0.4 * s, 1.13, 0.75); h.g.add(disc); (h.rig.discs ||= []).push(disc); }
@@ -82,6 +104,7 @@ export function buildHero(def) {
     }
     case 'baba': {
       h = humanoid(0xf0cfb0, 0xd94a3a, 0x5a2a20);
+      addEyes(h.rig.head, { iris: 0x7a4a2a, size: 0.1, lid: 0.3 });
       const scarf = new THREE.Mesh(new THREE.SphereGeometry(0.5, 18, 12, 0, Math.PI * 2, 0, 1.9), mat(0xffd23f)); scarf.position.y = 0.05; h.rig.head.add(scarf);
       const skirt = new THREE.Mesh(new THREE.ConeGeometry(0.8, 1.0, 20), mat(0x3b6bd9)); skirt.position.y = 0.85; h.g.add(skirt);
       const apron = new THREE.Mesh(new THREE.PlaneGeometry(0.6, 0.8), mat(0xffffff, { side: THREE.DoubleSide })); apron.position.set(0, 1.0, 0.62); apron.rotation.x = -0.25; h.g.add(apron);
@@ -139,7 +162,7 @@ export function buildEnemy(type) {
   if (type === 'soldier' || type === 'runner') {
     const h = humanoid(0xc9a07a, type === 'runner' ? 0xcc3333 : 0x4a5a2a, 0x2a3018); rig = h.rig;
     const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.47, 16, 10, 0, Math.PI * 2, 0, 1.5), mat(type === 'runner' ? 0x881111 : 0x3a4a1a)); helmet.position.y = 0.08; rig.head.add(helmet);
-    const visor = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.1, 0.1), glow(0xff2020, 3)); visor.position.set(0, 0.02, 0.38); rig.head.add(visor);
+    addEyes(rig.head, { y: -0.02, z: 0.34, iris: type === 'runner' ? 0xd02020 : 0x556b2f, angry: true, size: 0.1 });
     const gun = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.14, 0.9), mat(0x111111)); gun.position.set(0, -0.6, 0.3); rig.armR.add(gun);
     root.add(h.g);
   } else if (type === 'tank' || type === 'boss') {
@@ -155,6 +178,7 @@ export function buildEnemy(type) {
   } else if (type === 'mage') {
     const robe = new THREE.Mesh(new THREE.ConeGeometry(0.75, 2.0, 20), mat(0x3a1a8a)); robe.position.y = 1.0; root.add(robe);
     const head = new THREE.Mesh(new THREE.SphereGeometry(0.35, 16, 12), mat(0xb8a0ff)); head.position.y = 2.15; root.add(head);
+    addEyes(head, { y: 0.02, z: 0.28, spread: 0.12, size: 0.09, iris: 0x8a2be2, angry: true });
     const hat = new THREE.Mesh(new THREE.ConeGeometry(0.45, 1.1, 16), mat(0x2a0a6a)); hat.position.y = 2.75; hat.rotation.z = 0.2; root.add(hat);
     const orb = new THREE.Mesh(new THREE.IcosahedronGeometry(0.28, 1), glow(0x22e6ff, 4)); orb.position.set(0.8, 1.8, 0.3); root.add(orb);
     rig = { orb, robe, hat };

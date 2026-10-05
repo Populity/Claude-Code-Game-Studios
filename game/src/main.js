@@ -4,6 +4,9 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
+import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { GRID, HEROES, ENEMIES, LEVELS, difficulty, ULT, COMBO, EARLY_WAVE_BONUS, SELL_RATIO } from './data.js';
 import { buildHero, setHeroLevel, animateHero, buildEnemy, animateEnemy } from './models.js';
 import { Sfx } from './audio.js';
@@ -18,25 +21,41 @@ save.stars ||= {}; save.diff ||= 4;
 const persist = () => { try { localStorage.setItem('reelswars', JSON.stringify(save)); } catch {} };
 
 // ---------- Renderer ----------
+// Quality: ULTRA renders at >=1080p internal resolution with GTAO + SMAA; HIGH skips AO.
+save.quality ||= 'ultra';
 const canvas = $('c');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, preserveDrawingBuffer: true, powerPreference: 'high-performance' });
 renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
+renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.0;
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 400);
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture; scene.environmentIntensity = 0.55;
+const camera = new THREE.PerspectiveCamera(42, 1, 0.5, 600);
 const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
-const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.35, 0.4, 0.92);
+const gtao = new GTAOPass(scene, camera, 1, 1);
+gtao.updateGtaoMaterial({ radius: 1.6, distanceExponent: 1.5, thickness: 2, scale: 1.2, samples: 16 });
+gtao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 16 });
+gtao.blendIntensity = 0.85;
+composer.addPass(gtao);
+const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.3, 0.45, 0.9);
 composer.addPass(bloom); composer.addPass(new OutputPass());
-function resize() { const w = innerWidth, h = innerHeight; renderer.setSize(w, h, false); composer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix(); }
+const smaa = new SMAAPass(1, 1); composer.addPass(smaa);
+function pixelRatio() { return save.quality === 'ultra' ? Math.min(2.5, Math.max(devicePixelRatio, 1080 / innerHeight, 1920 / innerWidth)) : Math.min(devicePixelRatio, 1.5); }
+function resize() {
+  const w = innerWidth, h = innerHeight, pr = pixelRatio();
+  renderer.setPixelRatio(pr); composer.setPixelRatio(pr);
+  renderer.setSize(w, h, false); composer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix();
+  gtao.enabled = save.quality === 'ultra';
+}
 addEventListener('resize', resize); resize();
 
-const hemi = new THREE.HemisphereLight(0xc8bcff, 0x403020, 1.6); scene.add(hemi);
-const sun = new THREE.DirectionalLight(0xfff0e0, 2.4);
-sun.position.set(-30, 50, 25); sun.castShadow = true; sun.shadow.mapSize.set(4096, 4096);
-Object.assign(sun.shadow.camera, { left: -42, right: 42, top: 32, bottom: -32, near: 1, far: 140 }); sun.shadow.bias = -0.0005;
+const hemi = new THREE.HemisphereLight(0xc8bcff, 0x403020, 0.7); scene.add(hemi);
+const sun = new THREE.DirectionalLight(0xfff0e0, 3.2);
+sun.position.set(-30, 55, 28); sun.castShadow = true; sun.shadow.mapSize.set(4096, 4096);
+Object.assign(sun.shadow.camera, { left: -42, right: 42, top: 32, bottom: -32, near: 1, far: 160 }); sun.shadow.bias = -0.0003; sun.shadow.normalBias = 0.03; sun.shadow.radius = 3;
 scene.add(sun);
+const rim = new THREE.DirectionalLight(0xaad4ff, 0.8); rim.position.set(30, 20, -30); scene.add(rim);
 
 // ---------- Camera control ----------
 const cam = { yaw: 0, pitch: 0.95, dist: 42, target: new THREE.Vector3(0, 0, 1), shake: 0 };
@@ -59,7 +78,7 @@ let world = null;
 function buildLevelWorld(lvl) {
   if (world) scene.remove(world);
   const w = buildWorld(scene, lvl); world = w.world;
-  hemi.color.set(w.theme.hemiSky); hemi.groundColor.set(w.theme.hemiGround); sun.color.set(w.theme.sun);
+  hemi.color.set(w.theme.hemiSky); hemi.groundColor.set(w.theme.hemiGround); sun.color.set(w.theme.sun); rim.color.set(w.theme.hemiSky);
   return w;
 }
 
@@ -394,6 +413,9 @@ function hideSel() { $('sel').classList.add('hidden'); }
 
 // ---------- UI ----------
 function show(id) { document.querySelectorAll('.screen').forEach(s => s.classList.toggle('active', s.id === id)); }
+const qBtn = $('btnQuality');
+const qLabel = () => qBtn.textContent = 'ГРАФИКА: ' + (save.quality === 'ultra' ? 'УЛЬТРА 1080p+' : 'ВЫСОКАЯ');
+qBtn.onclick = () => { save.quality = save.quality === 'ultra' ? 'high' : 'ultra'; persist(); qLabel(); resize(); }; qLabel();
 document.querySelectorAll('[data-go]').forEach(b => b.onclick = () => { Sfx.click(); if (b.dataset.go === 'levels') renderLevels(); if (b.dataset.go === 'heroes') renderHeroes(); show(b.dataset.go); });
 let bannerT;
 function banner(text, dur) { const b = $('banner'); b.textContent = text; b.classList.add('show'); clearTimeout(bannerT); bannerT = setTimeout(() => b.classList.remove('show'), dur * 1000); }

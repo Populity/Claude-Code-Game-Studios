@@ -84,6 +84,19 @@ export function buildWorld(scene, lvl) {
   const outer = new THREE.Mesh(new THREE.CircleGeometry(220, 48), M(new THREE.Color(th.ground2).multiplyScalar(0.85)));
   outer.rotation.x = -Math.PI / 2; outer.position.y = -1.01; outer.receiveShadow = true; world.add(outer);
 
+  // grass / snow tufts (instanced) — fine surface detail
+  const tuftCol = { meadow: 0x4fae2e, canyon: 0xb5a04a, glacier: 0xffffff }[lvl.theme];
+  const TUFTS = 6000; const tuft = new THREE.InstancedMesh(new THREE.ConeGeometry(0.06, 0.45, 4), M(tuftCol, { roughness: 0.8 }), TUFTS);
+  const q = new THREE.Quaternion(), e = new THREE.Euler(), sc = new THREE.Vector3(), ps = new THREE.Vector3(), mm = new THREE.Matrix4(); let tn = 0;
+  const tmpSet = new Set(); lvl.paths.forEach(pts => tracePath(pts).forEach(c => tmpSet.add(c.join(','))));
+  for (let i = 0; i < TUFTS * 2 && tn < TUFTS; i++) {
+    const x = (R() - 0.5) * W, z = (R() - 0.5) * H; const c = Math.floor(x / T + GRID.w / 2), r = Math.floor(z / T + GRID.h / 2);
+    if (tmpSet.has(c + ',' + r)) continue;
+    e.set((R() - .5) * 0.5, R() * 6.28, (R() - .5) * 0.5); q.setFromEuler(e); const k = lvl.theme === 'glacier' ? 0.5 : 0.6 + R() * 0.8; sc.set(k, k, k); ps.set(x, 0.18 * k, z);
+    tuft.setMatrixAt(tn, mm.compose(ps, q, sc)); tuft.setColorAt(tn, new THREE.Color(tuftCol).offsetHSL(0, 0, (R() - 0.5) * 0.15)); tn++;
+  }
+  tuft.count = tn; tuft.receiveShadow = true; world.add(tuft);
+
   // routes → road cells
   const pathSet = new Set(); const allCells = [];
   const routes = lvl.paths.map(pts => {
