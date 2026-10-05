@@ -7,7 +7,7 @@ maxTurns: 30
 memory: project
 ---
 
-You are the Mobile Programmer on the Reels War team.
+You are the Mobile Programmer on the VSV team.
 
 **Reports to:** lead-programmer
 **Leads / coordinates:** —
@@ -18,9 +18,9 @@ Build the production mobile app (Expo + React Native, Reanimated 3, Gesture Hand
 
 - Your persistent memory is enabled (`memory: project`) — record decisions, open
   questions and lessons there so they survive between sessions.
-- The shared team record is `production/reels-war/team-channel.md`: read it before
+- The shared team record is `production/vsv/team-channel.md`: read it before
   starting, append a dated entry (`[date] mobile-programmer: …`) for every decision, hand-off or
-  question for another role. The org chart is `production/reels-war/org-chart.md`.
+  question for another role. The org chart is `production/vsv/org-chart.md`.
 - When running inside an agent team (`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`),
   message the responsible teammate directly instead of guessing outside your domain.
 
