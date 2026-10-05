@@ -7,10 +7,10 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { GRID, HEROES, ENEMIES, LEVELS, difficulty, ULT, COMBO, EARLY_WAVE_BONUS, SELL_RATIO } from './data.js';
 import { buildHero, setHeroLevel, animateHero, buildEnemy, animateEnemy } from './models.js';
 import { Sfx } from './audio.js';
+import { buildWorld, cellToWorld } from './world.js';
 
 const $ = id => document.getElementById(id);
 const T = GRID.tile;
-const cellToWorld = (c, r) => new THREE.Vector3((c - GRID.w / 2 + 0.5) * T, 0, (r - GRID.h / 2 + 0.5) * T);
 
 // ---------- Save ----------
 const save = (() => { try { return JSON.parse(localStorage.getItem('reelswars') || '{}'); } catch { return {}; } })();
@@ -22,20 +22,20 @@ const canvas = $('c');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.25;
+renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 400);
 const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
-const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.7, 0.5, 0.82);
+const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.35, 0.4, 0.92);
 composer.addPass(bloom); composer.addPass(new OutputPass());
 function resize() { const w = innerWidth, h = innerHeight; renderer.setSize(w, h, false); composer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix(); }
 addEventListener('resize', resize); resize();
 
 const hemi = new THREE.HemisphereLight(0xc8bcff, 0x403020, 1.6); scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xfff0e0, 2.4);
-sun.position.set(-20, 35, 15); sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048);
-Object.assign(sun.shadow.camera, { left: -30, right: 30, top: 25, bottom: -25, near: 1, far: 100 }); sun.shadow.bias = -0.0005;
+sun.position.set(-30, 50, 25); sun.castShadow = true; sun.shadow.mapSize.set(4096, 4096);
+Object.assign(sun.shadow.camera, { left: -42, right: 42, top: 32, bottom: -32, near: 1, far: 140 }); sun.shadow.bias = -0.0005;
 scene.add(sun);
 
 // ---------- Camera control ----------
@@ -52,85 +52,16 @@ canvas.addEventListener('contextmenu', e => e.preventDefault());
 canvas.addEventListener('pointerdown', e => { if (e.button === 2) drag = { x: e.clientX, y: e.clientY }; });
 addEventListener('pointerup', () => drag = null);
 addEventListener('pointermove', e => { if (drag) { cam.yaw -= (e.clientX - drag.x) * 0.005; cam.pitch = THREE.MathUtils.clamp(cam.pitch + (e.clientY - drag.y) * 0.004, 0.45, 1.35); drag = { x: e.clientX, y: e.clientY }; } });
-canvas.addEventListener('wheel', e => { cam.dist = THREE.MathUtils.clamp(cam.dist + e.deltaY * 0.03, 20, 70); }, { passive: true });
+canvas.addEventListener('wheel', e => { cam.dist = THREE.MathUtils.clamp(cam.dist + e.deltaY * 0.04, 25, 110); }, { passive: true });
 
 // ---------- World building ----------
-let world = null; // THREE.Group for current level
-function gridTexture(color, path) {
-  const c = document.createElement('canvas'); c.width = GRID.w * 32; c.height = GRID.h * 32; const x = c.getContext('2d');
-  const base = new THREE.Color(color);
-  for (let i = 0; i < GRID.w; i++) for (let j = 0; j < GRID.h; j++) {
-    const k = ((i + j) % 2 ? 0.92 : 1) * (0.9 + Math.random() * 0.12);
-    x.fillStyle = base.clone().multiplyScalar(k).getStyle(); x.fillRect(i * 32, j * 32, 32, 32);
-    for (let n = 0; n < 6; n++) { x.fillStyle = 'rgba(255,255,255,0.05)'; x.fillRect(i * 32 + Math.random() * 30, j * 32 + Math.random() * 30, 2, 2); }
-  }
-  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t;
-}
-function tracePath(points) {
-  const cells = []; const set = new Set();
-  for (let i = 0; i < points.length - 1; i++) {
-    let [c, r] = points[i]; const [c2, r2] = points[i + 1];
-    while (c !== c2 || r !== r2) { const k = c + ',' + r; if (!set.has(k)) { set.add(k); cells.push([c, r]); } c += Math.sign(c2 - c); r += Math.sign(r2 - r); }
-  }
-  const last = points.at(-1); set.add(last.join(',')); cells.push(last);
-  return { cells, set };
-}
-
-function buildWorld(lvl) {
+let world = null;
+function buildLevelWorld(lvl) {
   if (world) scene.remove(world);
-  world = new THREE.Group(); scene.add(world);
-  scene.background = new THREE.Color(lvl.sky); scene.fog = new THREE.Fog(lvl.fog, 55, 120);
-  const { cells, set } = tracePath(lvl.path);
-  const ground = new THREE.Mesh(new THREE.BoxGeometry(GRID.w * T, 1, GRID.h * T), new THREE.MeshStandardMaterial({ map: gridTexture(lvl.ground), roughness: 0.9 }));
-  ground.position.y = -0.5; ground.receiveShadow = true; ground.name = 'ground'; world.add(ground);
-  // outer terrain
-  const outer = new THREE.Mesh(new THREE.CircleGeometry(150, 48), new THREE.MeshStandardMaterial({ color: new THREE.Color(lvl.ground).multiplyScalar(0.45), roughness: 1 }));
-  outer.rotation.x = -Math.PI / 2; outer.position.y = -1.02; outer.receiveShadow = true; world.add(outer);
-  // path tiles (instanced) with neon edges
-  const tileGeo = new THREE.BoxGeometry(T * 0.98, 0.25, T * 0.98);
-  const tiles = new THREE.InstancedMesh(tileGeo, new THREE.MeshStandardMaterial({ color: 0x2a2238, roughness: 0.7, metalness: 0.2 }), cells.length);
-  const m4 = new THREE.Matrix4();
-  cells.forEach(([c, r], i) => { const p = cellToWorld(c, r); m4.makeTranslation(p.x, 0.02, p.z); tiles.setMatrixAt(i, m4); });
-  tiles.receiveShadow = true; world.add(tiles);
-  const edgeMat = new THREE.MeshStandardMaterial({ color: 0xff2e88, emissive: 0xff2e88, emissiveIntensity: 2 });
-  const strips = [];
-  for (const [c, r] of cells) for (const [dc, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-    if (set.has((c + dc) + ',' + (r + dr))) continue; const nc = c + dc, nr = r + dr;
-    if (nc < 0 || nc >= GRID.w || nr < 0 || nr >= GRID.h) continue;
-    const p = cellToWorld(c, r); strips.push([p.x + dc * T * 0.48, p.z + dr * T * 0.48, dc !== 0]);
-  }
-  const edges = new THREE.InstancedMesh(new THREE.BoxGeometry(0.08, 0.08, T), edgeMat, strips.length);
-  strips.forEach(([x, z, vert], i) => { const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), vert ? 0 : Math.PI / 2); m4.compose(new THREE.Vector3(x, 0.18, z), q, new THREE.Vector3(1, 1, 1)); edges.setMatrixAt(i, m4); });
-  world.add(edges);
-  // portal (spawn) and base (goal)
-  const start = cellToWorld(...lvl.path[0]).add(new THREE.Vector3(-T, 0, 0));
-  const portal = new THREE.Mesh(new THREE.TorusGeometry(2.2, 0.25, 12, 48), new THREE.MeshStandardMaterial({ color: 0x8b00ff, emissive: 0x8b00ff, emissiveIntensity: 3 }));
-  portal.position.copy(start).setY(2.4); portal.rotation.y = Math.PI / 2; world.add(portal);
-  const portalCore = new THREE.Mesh(new THREE.CircleGeometry(2.0, 32), new THREE.MeshBasicMaterial({ color: 0x3a0060, transparent: true, opacity: 0.8, side: THREE.DoubleSide }));
-  portalCore.position.copy(portal.position); portalCore.rotation.y = Math.PI / 2; world.add(portalCore);
-  const endP = cellToWorld(...lvl.path.at(-1)).add(new THREE.Vector3(T * 1.2, 0, 0));
-  const base = new THREE.Group(); base.position.copy(endP); world.add(base);
-  const tower = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.8, 5, 6), new THREE.MeshStandardMaterial({ color: 0x1a1030, metalness: 0.7, roughness: 0.3 })); tower.position.y = 2.5; tower.castShadow = true; base.add(tower);
-  const phone = new THREE.Mesh(new THREE.BoxGeometry(1.6, 2.8, 0.2), new THREE.MeshStandardMaterial({ color: 0x22e6ff, emissive: 0x22e6ff, emissiveIntensity: 1.6 })); phone.position.y = 6.6; base.add(phone);
-  const heart = new THREE.PointLight(0x22e6ff, 30, 14); heart.position.y = 6; base.add(heart);
-  // decorations
-  const rng = mulberry(lvl.id * 999);
-  const trunkM = new THREE.MeshStandardMaterial({ color: 0x4a2a1a }), leafM = new THREE.MeshStandardMaterial({ color: new THREE.Color(lvl.ground).offsetHSL(0.02, 0.1, -0.05), roughness: 0.8 });
-  const crystalM = new THREE.MeshStandardMaterial({ color: 0x22e6ff, emissive: 0x22e6ff, emissiveIntensity: 1.2, roughness: 0.2 });
-  for (let i = 0; i < 70; i++) {
-    const a = rng() * Math.PI * 2, d = 26 + rng() * 40; const x = Math.cos(a) * d, z = Math.sin(a) * d * 0.8;
-    const g = new THREE.Group(); g.position.set(x, -1, z); const s = 0.8 + rng() * 1.6; g.scale.setScalar(s);
-    if (rng() < 0.75) {
-      const tr = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.3, 1.5), trunkM); tr.position.y = 0.75; g.add(tr);
-      const lf = new THREE.Mesh(new THREE.ConeGeometry(1.2, 2.8, 7), leafM); lf.position.y = 2.6; g.add(lf);
-    } else { const cr = new THREE.Mesh(new THREE.OctahedronGeometry(0.8), crystalM); cr.position.y = 0.8; cr.scale.y = 2; g.add(cr); }
-    g.traverse(o => o.castShadow = true); world.add(g);
-  }
-  // waypoints in world space
-  const wps = [start.clone(), ...lvl.path.map(p => cellToWorld(...p)), endP.clone()];
-  return { pathSet: set, waypoints: wps, portal, phone, base };
+  const w = buildWorld(scene, lvl); world = w.world;
+  hemi.color.set(w.theme.hemiSky); hemi.groundColor.set(w.theme.hemiGround); sun.color.set(w.theme.sun);
+  return w;
 }
-function mulberry(a) { return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
 
 // ---------- Particles ----------
 const MAXP = 3000;
@@ -172,12 +103,12 @@ const heroDef = id => HEROES.find(h => h.id === id);
 function startLevel(idx) {
   const lvl = LEVELS[idx]; const D = difficulty(save.diff);
   labels.innerHTML = ''; floats.length = 0; parts.length = 0;
-  const w = buildWorld(lvl);
+  const w = buildLevelWorld(lvl);
   G = { idx, lvl, D, ...w, gold: lvl.startGold, lives: Math.max(1, Math.round(lvl.lives * D.lives)), maxLives: 0,
-    wave: 0, spawnQ: [], enemies: [], heroes: [], shots: [], beams: [], occupied: new Set(), time: 0, waveTimer: 6, between: true,
+    wave: 0, spawnQ: [], enemies: [], heroes: [], shots: [], beams: [], occupied: new Set(w.blocked), time: 0, waveTimer: 6, between: true,
     combo: 1, comboT: 0, comboKills: 0, ult: 0, speed: 1, paused: false, over: false, selectedShop: null, selectedHero: null, kills: 0, leaks: 0 };
   G.maxLives = G.lives;
-  cam.target.set(0, 0, 1); cam.pitch = 0.95; cam.dist = 42; cam.yaw = 0;
+  cam.target.set(0, 0, 2); cam.pitch = 1.0; cam.dist = 66; cam.yaw = 0;
   buildShop(); hideSel(); show('hud'); updateHud();
   $('waveMax').textContent = lvl.waves.length;
   banner(`УРОВЕНЬ ${lvl.id}: ${lvl.name}`, 2.5);
@@ -190,7 +121,9 @@ function spawnWave() {
   let t = 0;
   for (const [type, count, gap] of groups) {
     const n = Math.max(1, Math.round(count * (type === 'boss' ? 1 : G.D.countMul)));
-    for (let i = 0; i < n; i++) { G.spawnQ.push({ type, at: G.time + t + i * gap }); }
+    const R = G.routes.length;
+    if (type === 'boss') for (let i = 0; i < n; i++) G.spawnQ.push({ type, route: (G.wave + i) % R, at: G.time + t + i * gap * 2 });
+    else for (let r = 0; r < R; r++) { const m = Math.max(1, Math.ceil(n * 0.7)); for (let i = 0; i < m; i++) G.spawnQ.push({ type, route: r, at: G.time + t + i * gap + r * 0.3 }); }
     t += 0.5;
   }
   G.spawnQ.sort((a, b) => a.at - b.at);
@@ -199,13 +132,14 @@ function spawnWave() {
   updateHud();
 }
 
-function makeEnemy(type) {
+function makeEnemy(type, route = 0) {
+  const wps = G.routes[route];
   const def = ENEMIES[type]; const m = buildEnemy(type);
-  m.root.scale.setScalar(def.scale); m.root.position.copy(G.waypoints[0]); world.add(m.root);
+  m.root.scale.setScalar(def.scale); m.root.position.copy(wps[0]); world.add(m.root);
   const hpEl = document.createElement('div'); hpEl.className = 'hpb'; hpEl.innerHTML = '<i></i>'; labels.appendChild(hpEl);
   const hp = def.hp * G.D.hp * (1 + G.wave * 0.06);
-  G.enemies.push({ type, def, m, hp, maxHp: hp, shield: 0, wp: 1, speed: def.speed * G.D.speed, slow: 0, slowT: 0, stun: 0, burn: 0, burnT: 0, cd: def.shieldCd || 0, t: Math.random() * 10, hpEl, dist: 0, dead: false });
-  burst(G.waypoints[0].clone().setY(2), 0x8b00ff, 25, 5);
+  G.enemies.push({ type, def, m, hp, maxHp: hp, shield: 0, wp: 1, speed: def.speed * G.D.speed, slow: 0, slowT: 0, stun: 0, burn: 0, burnT: 0, cd: def.shieldCd || 0, wps, t: Math.random() * 10, hpEl, dist: 0, dead: false });
+  burst(wps[0].clone().setY(2), 0xffffff, 25, 5);
 }
 
 function damage(e, amt, src) {
@@ -313,7 +247,7 @@ function useUlt() {
   G.ult = 0; cam.shake = 2.2; Sfx.ult();
   banner('🔥 ВИРУСНЫЙ МОМЕНТ 🔥', 1.4);
   for (const e of [...G.enemies]) { if (e.dead) continue; e.stun = ULT.stun; damage(e, ULT.dmg * G.D.hp * 0.7, 'ult'); burst(e.m.root.position.clone().setY(1), 0x22e6ff, 25, 10, 1, 8); }
-  for (let i = 0; i < 6; i++) ringFx(G.waypoints[1 + Math.floor(Math.random() * (G.waypoints.length - 2))], 12, i % 2 ? 0xff2e88 : 0x22e6ff);
+  for (let i = 0; i < 6; i++) { const rw = G.routes[i % G.routes.length]; ringFx(rw[1 + Math.floor(Math.random() * (rw.length - 2))], 12, i % 2 ? 0xff2e88 : 0x22e6ff); }
   updateHud();
 }
 
@@ -324,7 +258,7 @@ function frame(now) {
   let dt = Math.min(0.05, (now - last) / 1000); last = now;
   const rt = now / 1000;
   if (G && !G.paused && !G.over) for (let i = 0; i < G.speed; i++) step(dt);
-  if (G) { G.portal.rotation.z = rt; G.phone.rotation.y = rt * 0.8; updateLabels(); }
+  if (G) { G.base.rotation.y = Math.sin(rt * 0.5) * 0.3; updateLabels(); }
   updateParticles(dt * (G?.paused ? 0 : 1)); updateFloats(dt);
   if (!G || $('menu').classList.contains('active') || $('levels').classList.contains('active') || $('heroes').classList.contains('active') || $('howto').classList.contains('active')) menuScene(rt);
   updateCamera(dt, rt);
@@ -335,7 +269,7 @@ function step(dt) {
   G.time += dt;
   // waves
   if (G.between && G.wave < G.lvl.waves.length) { G.waveTimer -= dt; if (G.waveTimer <= 0) spawnWave(); }
-  while (G.spawnQ.length && G.spawnQ[0].at <= G.time) makeEnemy(G.spawnQ.shift().type);
+  while (G.spawnQ.length && G.spawnQ[0].at <= G.time) { const q = G.spawnQ.shift(); makeEnemy(q.type, q.route); };
   if (!G.between && !G.spawnQ.length && !G.enemies.length) {
     if (G.wave >= G.lvl.waves.length) return finish(true);
     G.between = true; G.waveTimer = 9; G.gold += 40 + G.wave * 10; floatText(G.base.position.clone(), `ВОЛНА ПРОЙДЕНА +${40 + G.wave * 10}`, '#22e6ff', 18); updateHud();
@@ -350,9 +284,9 @@ function step(dt) {
     if (e.def.shieldAura) { e.cd -= dt; if (e.cd <= 0) { e.cd = e.def.shieldCd; for (const o of G.enemies) if (!o.dead && o.m.root.position.distanceTo(e.m.root.position) < e.def.shieldAura) o.shield = Math.max(o.shield, e.def.shieldAmt * G.D.hp); ringFx(e.m.root.position, e.def.shieldAura, 0x22e6ff); } }
     if (e.stun > 0) { e.stun -= dt; e.m.shield.visible = e.shield > 0; continue; }
     const v = e.speed * (1 - e.slow) * dt;
-    const target = G.waypoints[e.wp]; const pos = e.m.root.position;
+    const target = e.wps[e.wp]; const pos = e.m.root.position;
     const dir = target.clone().sub(pos); const d = dir.length();
-    if (d <= v) { pos.copy(target); e.wp++; if (e.wp >= G.waypoints.length) { leak(e); continue; } }
+    if (d <= v) { pos.copy(target); e.wp++; if (e.wp >= e.wps.length) { leak(e); continue; } }
     else { dir.normalize(); pos.addScaledVector(dir, v); e.m.root.rotation.y = lerpAngle(e.m.root.rotation.y, Math.atan2(dir.x, dir.z), Math.min(1, dt * 8)); }
     e.dist += v; e.m.shield.visible = e.shield > 0;
     animateEnemy(e.m, e.type, e.t, e.speed * (1 - e.slow));
@@ -510,7 +444,7 @@ function renderLevels() {
     const unlocked = i === 0 || save.stars[LEVELS[i - 1].id];
     const st = save.stars[l.id] || 0;
     const c = document.createElement('div'); c.className = 'card' + (unlocked ? '' : ' locked');
-    c.innerHTML = `<div class="em">${['🏙️', '🏜️', '🏰'][i]}</div><h3>${l.id}. ${l.name}</h3><p>${l.waves.length} волн · ${l.lives} ❤</p><div class="stars">${'★'.repeat(st)}${'☆'.repeat(3 - st)}</div>${unlocked ? '' : '<p>🔒 пройди предыдущий</p>'}`;
+    c.innerHTML = `<div class="em">${l.emoji}</div><h3>${l.id}. ${l.name}</h3><p>${l.waves.length} волн · ${l.paths.length} входа · ${l.lives} ❤</p><div class="stars">${'★'.repeat(st)}${'☆'.repeat(3 - st)}</div>${unlocked ? '' : '<p>🔒 пройди предыдущий</p>'}`;
     c.onclick = () => { Sfx.click(); startLevel(i); }; wrap.appendChild(c);
   });
   diffUi();
@@ -526,14 +460,14 @@ function renderHeroes() {
 // ---------- Menu background scene ----------
 let menuHeroes = [];
 function setupMenuScene() {
-  const w = buildWorld(LEVELS[0]); G = null;
+  const w = buildLevelWorld(LEVELS[0]); G = null;
   menuHeroes = HEROES.map((def, i) => { const m = buildHero(def); setHeroLevel(m, def, 3); m.root.position.set((i - 2) * 4, 0, 6); world.add(m.root); return { m, def }; });
-  window.__menuPortal = w.portal;
+  
 }
 function menuScene(t) {
-  cam.yaw = Math.sin(t * 0.1) * 0.5; cam.dist = 34; cam.pitch = 0.55; cam.target.set(0, 2, 2);
+  cam.yaw = Math.sin(t * 0.1) * 0.5; cam.dist = 40; cam.pitch = 0.5; cam.target.set(0, 2, 4);
   menuHeroes.forEach((h, i) => { animateHero(h.m, h.def, t + i, Math.max(0, Math.sin(t * 2 + i))); h.m.body.rotation.y = Math.sin(t * 0.6 + i) * 0.6; });
-  if (window.__menuPortal) window.__menuPortal.rotation.z = t;
+  
 }
 document.addEventListener('click', () => Sfx.unlock(), { once: true });
 

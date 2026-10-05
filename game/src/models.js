@@ -1,7 +1,7 @@
 // Procedural 3D models for heroes and enemies, with animation rigs.
 import * as THREE from 'three';
 
-const mat = (color, opts = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.45, metalness: 0.1, ...opts });
+const mat = (color, opts = {}) => new THREE.MeshPhysicalMaterial({ color, roughness: 0.5, metalness: 0.05, clearcoat: 0.4, clearcoatRoughness: 0.35, sheen: 0.3, ...opts });
 const glow = (color, i = 2) => new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: i });
 
 function shadowAll(o) { o.traverse(c => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } }); return o; }

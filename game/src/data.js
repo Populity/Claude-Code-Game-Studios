@@ -1,7 +1,7 @@
 // Game data — all tuning values live here (data-driven, no magic numbers in logic).
 // Heroes are ORIGINAL parody archetypes of viral Reels trends, not real people.
 
-export const GRID = { w: 20, h: 12, tile: 2 };
+export const GRID = { w: 30, h: 20, tile: 2 };
 
 export const HEROES = [
   { id: 'sigma', name: 'Сигма Мьюер', emoji: '🗿', color: 0x9aa7ff, accent: 0x22e6ff,
@@ -41,9 +41,12 @@ export const ENEMIES = {
 
 // Waypoints are grid cells (col,row); path tiles are traced between them.
 export const LEVELS = [
-  { id: 1, name: 'Неоновый Пригород', sky: 0x1a0b3a, ground: 0x2a6b3a, fog: 0x2a1250,
-    startGold: 320, lives: 20,
-    path: [[0,2],[6,2],[6,8],[12,8],[12,3],[17,3],[17,9],[19,9]],
+  { id: 1, name: 'Солнечная Долина', theme: 'meadow', emoji: '🌳',
+    startGold: 420, lives: 20,
+    paths: [
+      [[0,2],[8,2],[8,8],[3,8],[3,15],[14,15],[14,6],[20,6],[20,10],[29,10]],
+      [[16,0],[16,3],[25,3],[25,17],[22,17],[22,10],[29,10]],
+    ],
     waves: [
       [['soldier', 8, 0.9]],
       [['soldier', 10, 0.7], ['runner', 5, 0.5]],
@@ -54,9 +57,13 @@ export const LEVELS = [
       [['soldier', 16, 0.4], ['mage', 4, 1.2], ['tank', 3, 2]],
       [['boss', 1, 1], ['soldier', 14, 0.5], ['mage', 3, 2]],
     ] },
-  { id: 2, name: 'Пустыня Трендов', sky: 0x3a1a0b, ground: 0xb08a4a, fog: 0x5a2a20,
-    startGold: 360, lives: 18,
-    path: [[0,10],[4,10],[4,1],[9,1],[9,10],[14,10],[14,1],[19,1]],
+  { id: 2, name: 'Каньон Трендов', theme: 'canyon', emoji: '🏜️',
+    startGold: 520, lives: 18,
+    paths: [
+      [[0,3],[6,3],[6,16],[11,16],[11,10],[15,10]],
+      [[29,4],[22,4],[22,15],[18,15],[18,10],[15,10]],
+      [[12,0],[12,6],[19,6],[19,8],[15,8],[15,10]],
+    ],
     waves: [
       [['runner', 12, 0.5]],
       [['soldier', 12, 0.6], ['mage', 2, 2]],
@@ -68,9 +75,14 @@ export const LEVELS = [
       [['boss', 1, 1], ['tank', 4, 3], ['runner', 16, 0.3]],
       [['boss', 2, 6], ['mage', 6, 1.5], ['soldier', 20, 0.3]],
     ] },
-  { id: 3, name: 'Цитадель Алгоритма', sky: 0x050a1f, ground: 0x283048, fog: 0x0a1a40,
-    startGold: 400, lives: 15,
-    path: [[0,5],[3,5],[3,1],[8,1],[8,6],[5,6],[5,10],[11,10],[11,4],[15,4],[15,10],[19,10]],
+  { id: 3, name: 'Ледяная Цитадель', theme: 'glacier', emoji: '🏔️',
+    startGold: 650, lives: 15,
+    paths: [
+      [[0,1],[10,1],[10,5],[2,5],[2,12],[8,12],[8,17],[15,17],[15,19]],
+      [[29,1],[19,1],[19,5],[27,5],[27,12],[21,12],[21,17],[15,17],[15,19]],
+      [[0,19],[5,19],[5,15],[8,15],[8,17],[15,17],[15,19]],
+      [[15,0],[15,9],[12,9],[12,14],[15,14],[15,17],[15,19]],
+    ],
     waves: [
       [['soldier', 14, 0.5], ['mage', 2, 2]],
       [['runner', 18, 0.3], ['tank', 2, 3]],

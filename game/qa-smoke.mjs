@@ -9,7 +9,7 @@ const errs=[]; p.on('pageerror',e=>errs.push(e.message)); p.on('console',m=>{ if
 await p.goto('http://localhost:8123/'); await p.waitForTimeout(2500);
 await p.screenshot({path:out+'/01-menu.png'});
 await p.click('text=ИГРАТЬ'); await p.waitForTimeout(500); await p.screenshot({path:out+'/02-levels.png'});
-await p.evaluate(()=>{ __game.startLevel(0); const G=__game.G; G.gold=5000; [['sigma',[3,4]],['rizz',[7,5]],['giga',[5,3]],['cat',[8,6]],['baba',[11,5]],['giga',[13,4]],['sigma',[16,6]]].forEach(([id,c])=>__game.placeHero(id,c)); __game.spawnWave(); });
+await p.evaluate(()=>{ __game.startLevel(0); const G=__game.G; G.gold=5000; [['sigma',[4,4]],['rizz',[9,5]],['giga',[7,9]],['cat',[13,9]],['baba',[17,8]],['giga',[24,8]],['sigma',[19,12]]].forEach(([id,c])=>__game.placeHero(id,c)); __game.spawnWave(); });
 await p.waitForTimeout(6000); await p.screenshot({path:out+'/03-battle.png'});
 await p.evaluate(()=>{ const G=__game.G; G.wave=7; G.between=true; __game.spawnWave(); G.speed=3; });
 await p.waitForTimeout(7000); await p.screenshot({path:out+'/04-boss.png'});
