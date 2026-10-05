@@ -142,10 +142,10 @@ export function buildWorld(scene, lvl) {
   // HQ: chunky phone-tower base
   const endP = routes[0].at(-1);
   const base = new THREE.Group(); base.position.copy(endP); world.add(base);
-  const plinth = new THREE.Mesh(new THREE.CylinderGeometry(2.2, 2.6, 0.8, 24), M(0xeceff1)); plinth.position.y = 0.4; base.add(plinth);
+  const plinth = new THREE.Mesh(new THREE.CylinderGeometry(2.2, 2.6, 0.8, 32), M(0xb0bec5)); plinth.position.y = 0.4; base.add(plinth);
   const body = new THREE.Mesh(new THREE.BoxGeometry(2.4, 4.4, 0.7), M(0x263238, { roughness: 0.3 })); body.position.y = 3; base.add(body);
   const phone = new THREE.Mesh(new THREE.BoxGeometry(2.1, 3.9, 0.1), new THREE.MeshStandardMaterial({ color: 0xff2e88, emissive: 0xff2e88, emissiveIntensity: 0.9 })); phone.position.set(0, 3, 0.36); base.add(phone);
-  const heart = new THREE.Mesh(new THREE.SphereGeometry(0.5, 16, 12), M(0xffffff, { emissive: 0xffffff, emissiveIntensity: 0.6 })); heart.position.set(0, 3, 0.5); base.add(heart);
+  const heart = new THREE.Mesh(new THREE.SphereGeometry(0.5, 16, 12), M(0xffffff, { emissive: 0xff8fc0, emissiveIntensity: 0.15 })); heart.position.set(0, 3, 0.5); base.add(heart);
   base.traverse(o => { o.castShadow = true; });
 
   // props: inside field on free cells (blocking them), and a dense ring outside
