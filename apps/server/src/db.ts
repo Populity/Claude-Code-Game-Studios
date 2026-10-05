@@ -40,14 +40,16 @@ export function tx<T>(db: Db, fn: () => T): T {
 }
 
 export class SqlNonceStore implements NonceStore {
-  constructor(private db: Db) {}
+  private db: Db;
+  constructor(db: Db) { this.db = db; }
   async consume(nonce: string, expiresAt: number, now: number) {
     this.db.prepare("DELETE FROM nonces WHERE exp <= ?").run(now);
     return Number(this.db.prepare("INSERT OR IGNORE INTO nonces (nonce, exp) VALUES (?, ?)").run(nonce, expiresAt).changes) === 1;
   }
 }
 export class SqlWindowStore implements WindowStore {
-  constructor(private db: Db) {}
+  private db: Db;
+  constructor(db: Db) { this.db = db; }
   private list(key: string, now: number, windowMs: number) {
     return (this.db.prepare("SELECT ts FROM hits WHERE key = ? AND ts > ? ORDER BY ts").all(key, now - windowMs) as { ts: number }[]).map(r => r.ts);
   }
