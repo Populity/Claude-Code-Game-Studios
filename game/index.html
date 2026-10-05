@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reels Wars: Meme Defense</title>
+<link rel="stylesheet" href="style.css">
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.min.js", "three/addons/": "./vendor/addons/" } }
+</script>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="labels"></div>
+
+<!-- MAIN MENU -->
+<section id="menu" class="screen active">
+  <div class="logo"><span class="l1">REELS</span><span class="l2">WARS</span><small>MEME DEFENSE</small></div>
+  <div class="menu-buttons">
+    <button class="btn big" data-go="levels" data-i18n="menu.play">▶ PLAY</button>
+    <button class="btn" data-go="heroes" data-i18n="menu.heroes">🧬 HEROES</button>
+    <button class="btn" data-go="howto" data-i18n="menu.howto">❔ HOW TO PLAY</button>
+    <button class="btn" id="btnLang">🌐</button>
+    <button class="btn" id="btnQuality">ГРАФИКА</button>
+  </div>
+  <div class="footer" data-i18n="menu.footer"></div>
+</section>
+
+<!-- LEVEL SELECT -->
+<section id="levels" class="screen">
+  <h1 data-i18n="levels.title">SELECT LEVEL</h1>
+  <div id="levelCards" class="cards"></div>
+  <div class="diff">
+    <label><span data-i18n="levels.diff">DIFFICULTY:</span> <b id="diffName"></b> <span id="diffVal">4</span>/10</label>
+    <input type="range" id="diff" min="1" max="10" value="4">
+    <div id="diffInfo" class="muted"></div>
+  </div>
+  <button class="btn" data-go="menu" data-i18n="back">← BACK</button>
+</section>
+
+<!-- HEROES -->
+<section id="heroes" class="screen">
+  <h1 data-i18n="heroes.title">REELS HEROES</h1>
+  <div id="heroCards" class="cards"></div>
+  <button class="btn" data-go="menu" data-i18n="back">← BACK</button>
+</section>
+
+<!-- HOW TO -->
+<section id="howto" class="screen">
+  <h1 data-i18n="howto.title">HOW TO PLAY</h1>
+  <ul class="howto" data-i18n-html="howto.list"></ul>
+  <button class="btn" data-go="menu" data-i18n="back">← BACK</button>
+</section>
+
+<!-- HUD -->
+<section id="hud" class="screen">
+  <div class="top">
+    <div class="stat">❤ <b id="lives">20</b></div>
+    <div class="stat">👍 <b id="gold">0</b></div>
+    <div class="stat">🌊 <b id="wave">0</b>/<span id="waveMax">0</span></div>
+    <div class="stat combo" id="comboBox"><span data-i18n="hud.combo">COMBO x</span><b id="combo">1</b></div>
+    <div class="spacer"></div>
+    <button class="btn sm" id="btnReward" hidden data-i18n="hud.reward">📺 +150 👍</button>
+    <button class="btn sm" id="btnSpeed">x1</button>
+    <button class="btn sm" id="btnWave" data-i18n="hud.next">NEXT WAVE ⏭</button>
+    <button class="btn sm" id="btnPause">❚❚</button>
+  </div>
+  <div class="ult"><div class="ultbar"><i id="ultFill"></i></div><button class="btn sm" id="btnUlt" data-i18n="hud.ult">VIRAL MOMENT [Q]</button></div>
+  <div id="allies" class="allies"></div>
+  <div id="shop" class="shop"></div>
+  <div id="sel" class="selpanel hidden"></div>
+  <div id="banner" class="banner"></div>
+</section>
+
+<section id="pause" class="screen overlay">
+  <h1 data-i18n="pause.title">PAUSED</h1>
+  <button class="btn big" id="btnResume" data-i18n="pause.resume">RESUME</button>
+  <button class="btn" id="btnRestart" data-i18n="pause.restart">RESTART</button>
+  <button class="btn" id="btnQuit" data-i18n="pause.quit">MAIN MENU</button>
+</section>
+
+<section id="end" class="screen overlay">
+  <h1 id="endTitle"></h1>
+  <div id="endStars" class="stars"></div>
+  <div id="endText" class="muted"></div>
+  <button class="btn big" id="btnNext" data-i18n="end.next">NEXT</button>
+  <button class="btn" id="btnEndMenu" data-i18n="end.menu">MAIN MENU</button>
+</section>
+
+<script type="module" src="src/main.js"></script>
+</body>
+</html>

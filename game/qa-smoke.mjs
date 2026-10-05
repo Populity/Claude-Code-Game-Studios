@@ -1,0 +1,20 @@
+import { chromium } from 'playwright';
+import http from 'http'; import fs from 'fs'; import path from 'path';
+const root = process.argv[2], out = process.argv[3];
+const types = { '.html':'text/html','.js':'text/javascript','.css':'text/css' };
+const srv = http.createServer((q,r)=>{ const f = path.join(root, decodeURIComponent(q.url.split('?')[0]) === '/' ? 'index.html' : decodeURIComponent(q.url.split('?')[0])); fs.readFile(f,(e,d)=>{ if(e){r.writeHead(404);return r.end();} r.writeHead(200,{'content-type':types[path.extname(f)]||'application/octet-stream'}); r.end(d); }); }).listen(8123);
+const b = await chromium.launch({ args:['--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader'] });
+const p = await b.newPage({ viewport:{width:1920,height:1080} });
+p.setDefaultTimeout(300000); const errs=[]; p.on('pageerror',e=>errs.push(e.message)); p.on('console',m=>{ if(m.type()==='error') errs.push(m.text()); });
+await p.goto('http://localhost:8123/'); await p.waitForTimeout(2500);
+await p.screenshot({path:out+'/01-menu.png'});
+await p.click('text=ИГРАТЬ'); await p.waitForTimeout(500); await p.screenshot({path:out+'/02-levels.png'});
+await p.evaluate(()=>{ __game.startLevel(0); const G=__game.G; G.gold=5000; [['sigma',[4,4]],['rizz',[9,5]],['giga',[7,9]],['cat',[13,9]],['baba',[17,8]],['giga',[24,8]],['sigma',[19,12]]].forEach(([id,c])=>__game.placeHero(id,c)); __game.spawnWave(); });
+await p.waitForTimeout(6000); await p.screenshot({path:out+'/03-battle.png'});
+await p.evaluate(()=>{ const G=__game.G; G.wave=7; G.between=true; __game.spawnWave(); G.speed=3; });
+await p.waitForTimeout(7000); await p.screenshot({path:out+'/04-boss.png'});
+await p.evaluate(()=>{ __game.G.ult=1; __game.useUlt(); }); await p.waitForTimeout(400); await p.screenshot({path:out+'/05-ult.png'});
+const st = await p.evaluate(()=>{const G=__game.G; return {lives:G.lives,wave:G.wave,enemies:G.enemies.length,kills:G.kills,gold:G.gold,over:G.over};});
+for (const i of [1,2]) { await p.evaluate(i=>{document.getElementById('end').classList.remove('active'); __game.startLevel(i); __game.spawnWave();},i); await p.waitForTimeout(4000); await p.screenshot({path:out+`/06-level${i+1}.png`}); }
+console.log(JSON.stringify(st), 'ERRORS:', errs);
+await b.close(); srv.close();

@@ -5,14 +5,17 @@ Each agent owns a specific domain, enforcing separation of concerns and quality.
 
 ## Technology Stack
 
-- **Engine**: [CHOOSE: Godot 4 / Unity / Unreal Engine 5]
-- **Language**: [CHOOSE: GDScript / C# / C++ / Blueprint]
+- **Game**: *Reels Wars: Meme Defense* — 3D tower defense, lives in `game/`
+- **Engine**: Three.js r170 (vendored in `game/vendor/`, no CDN at runtime)
+- **Language**: JavaScript (ES modules, no build step yet; Vite planned — see `docs/architecture/technical-strategy.md`)
+- **Platforms**: Steam (desktop wrapper, Tauri planned) + free web demo. Price $3.79 — see `production/decisions.md`
+- **Localization**: `game/src/i18n.js` (EN/RU/ES/PT-BR, auto-detected)
+- **Assets**: GLB models in `game/assets/models/` (AI-generated via Higgsfield); balance data in `game/src/data.js`
+- **Tests**: Playwright smoke `game/qa-smoke.mjs`, `game/langcheck.mjs`; evidence screenshots in `production/qa/evidence/`
 - **Version Control**: Git with trunk-based development
-- **Build System**: [SPECIFY after choosing engine]
-- **Asset Pipeline**: [SPECIFY after choosing engine]
 
-> **Note**: Engine-specialist agents exist for Godot, Unity, and Unreal with
-> dedicated sub-specialists. Use the set matching your engine.
+> **Note**: The Godot/Unity/Unreal specialist agents and `docs/engine-reference/godot/`
+> do NOT apply to this project. Code root is `game/src/`, not `src/`.
 
 ## Project Structure
 
@@ -20,14 +23,7 @@ Each agent owns a specific domain, enforcing separation of concerns and quality.
 
 ## Engine Version Reference
 
-<!-- ENGINE-REFERENCE-IMPORT: the line below is engine-specific. /setup-engine
-     rewrites it to @docs/engine-reference/<engine>/VERSION.md for the chosen
-     engine, so a Unity or Unreal project stops loading the Godot reference every
-     session. It defaults to Godot (the template's example engine); skills that
-     need the pinned version read docs/engine-reference/<engine>/VERSION.md on
-     demand regardless of this import. -->
-@docs/engine-reference/godot/VERSION.md
-
+Three.js r170, vendored in `game/vendor/` (see `game/vendor/LICENSE`). No Godot reference is loaded.
 
 ## Technical Preferences
 
