@@ -12,3 +12,4 @@
 [2026-10-05] trust-safety-specialist: Проверка бренда и прав — design/legal/brand-and-ip-compliance.md. «REELS» — товарный знак Instagram (USPTO 88925610); look and feel Instagram копировать нельзя (brand guidelines, App Store 4.1).
 [2026-10-05] product-director: Основатель выбрал название VSV. Ролики в интерфейсе — «клипы».
 [2026-10-05] design-lead: Прототип v3: своя айдентика VSV (лайм/мята/циан), молния-голос, жалобы и блокировка, галочка прав. Прогон в Chromium без ошибок, скриншоты vsv-*.png.
+[2026-10-05] lead-programmer: ADR-0001 (Expo + Supabase + packages/core). Ядро правил packages/core готово: 25 тестов проходят (npm test).
