@@ -8,9 +8,12 @@ _Updated 2026-10-05. Read this first after any new session, `/clear` or compacti
   `ufw` 22/80/443 only, `fail2ban`, unattended upgrades, swap, `vsv-update.timer`.
 - **Auto-deploy:** the server pulls branch `claude/exciting-darwin-vvv3fd` every 5 min and rebuilds.
   Push to that branch = deploy. Nobody needs SSH for normal releases.
-- **Access:** SSH by key from the founder's PC only (password login disabled). Root password was rotated;
-  never put credentials in chat, commits or docs.
-- **App URL:** http://45.128.234.165 (no domain yet → no HTTPS → camera recording in the browser is unavailable).
+- **Access:** SSH by key from the founder's PC. ⚠ **Password login is still ENABLED** (probe on 2026-10-05:
+  `Permission denied (publickey,password)`); hardening + root password rotation are pending — the founder does
+  them by hand (auto-mode blocked the agent). Never put credentials in chat, commits or docs.
+- **App URL:** https://45-128-234-165.sslip.io (free sslip.io name → Let's Encrypt HTTPS; http redirects).
+  Set in `/opt/vsv/deploy/.env` (`SITE_ADDRESS`, `PUBLIC_URL`; gitignored, survives auto-updates).
+  Own domain later: replace both values and `docker compose up -d`.
 
 ## Who can do what
 | Session | Can | Cannot |
@@ -23,11 +26,15 @@ PC checkpoint: `production/session-state/active.md` (local, gitignored).
 
 ## What is built
 - `packages/core` — battle rules (25 tests). `packages/security` — 23 tests. `apps/server` — API (9 HTTP tests).
-- `apps/mobile` — Expo app (single-user trial, local data). `deploy/` — Docker, Caddy, bootstrap, task file.
+- `apps/mobile` — Expo app, **talks to the API** (`src/api.ts`): register, battles with signed tickets and
+  min-watch countdown, votes, video upload with progress, Instagram links, ranking, explore, profile,
+  report/block, account deletion. `deploy/` — Docker, Caddy, bootstrap, task file.
+- Live E2E (headless Chrome, `tools/e2e/`) PASS on 2026-10-05: onboarding → battle → vote; upload a real
+  video → another user sees it in a battle and it plays. Evidence: `production/qa/evidence/2026-10-05-api-wiring/`.
 
 ## In progress / next
-1. **Connect the mobile app to the API** (was being done by the `mobile-programmer` agent on the PC; uncommitted
-   changes in `apps/mobile` may exist on the PC — review and commit them first).
-2. Rebuild `deploy/web` with `deploy/publish-web.sh` after the app talks to the API, then push.
-3. Domain + HTTPS (`DOMAIN=<domain>` re-run of bootstrap).
-4. Native builds (EAS) for Google Play / App Store — later.
+1. Native device check (camera/gallery, expo-video) — needs a phone with Expo Go / dev build.
+2. Server gaps from the mobile agent: logout/session revoke, streak/stats on /api/me, delete own clip,
+   video poster/thumbnail, explicit `ticket_expired` code for stale prefetched battles (>15 min).
+3. Before real users: `DEMO_SEED=0`, SSH hardening, backups of the `vsv_data` volume.
+4. Own domain + native builds (EAS) for Google Play / App Store.
