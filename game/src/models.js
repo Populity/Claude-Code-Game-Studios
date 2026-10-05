@@ -7,7 +7,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 const GLB = {};
 export async function preloadModels(defs) {
   const loader = new GLTFLoader();
-  await Promise.all(defs.filter(d => d.model).map(d => loader.loadAsync(d.model).then(g => { GLB[d.id] = g.scene; }).catch(e => console.warn('model fallback', d.id, e.message))));
+  await Promise.all(defs.filter(d => d.model).map(d => loader.loadAsync(d.model + (window.ASSET_SUFFIX || '')).then(g => { GLB[d.id] = g.scene; }).catch(e => console.warn('model fallback', d.id, e.message))));
 }
 function glbBody(id, height) {
   const src = GLB[id].clone(true); const wrap = new THREE.Group(); wrap.add(src);
