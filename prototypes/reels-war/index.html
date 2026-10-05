@@ -2,173 +2,940 @@
 <html lang="ru">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Война рилсами</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#000000">
+<title>Reels War</title>
 <style>
-:root{--bg:#0e0e12;--card:#1a1a22;--fg:#f2f2f5;--mut:#9a9aa8;--acc:#ff3d6e;--ok:#2ecc71;--bad:#e74c3c;--gold:#f5c542}
-*{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.4 system-ui,sans-serif;display:flex;justify-content:center}
-.phone{width:100%;max-width:430px;min-height:100vh;display:flex;flex-direction:column}
-header{padding:14px 16px;font-weight:700;font-size:18px}
-main{flex:1;padding:0 16px 90px}
-nav{position:fixed;bottom:0;width:100%;max-width:430px;display:flex;background:#15151c;border-top:1px solid #2a2a35}
-nav button{flex:1;padding:12px 4px;background:none;border:0;color:var(--mut);font-size:13px}
-nav button.on{color:var(--acc);font-weight:700}
-.card{background:var(--card);border-radius:14px;padding:14px;margin-bottom:12px}
-input,select{width:100%;padding:10px;border-radius:10px;border:1px solid #333;background:#111;color:var(--fg);margin:6px 0}
-.btn{width:100%;padding:12px;border:0;border-radius:12px;background:var(--acc);color:#fff;font-weight:700;font-size:15px}
-.btn:disabled{opacity:.4}
-.duel{display:grid;gap:10px}
-.duel.side{grid-template-columns:1fr 1fr}
-.reel{background:#000;border-radius:12px;aspect-ratio:9/16;overflow:hidden;position:relative;display:flex;align-items:center;justify-content:center;text-align:center;padding:8px}
-.reel iframe{width:100%;height:100%;border:0}
-.reel .t{font-weight:700}
-.reel .seen{position:absolute;top:6px;right:6px;font-size:11px;background:#0008;padding:2px 6px;border-radius:6px}
-.row{display:flex;gap:8px;margin-top:8px}
-.row .btn{flex:1}
-.ghost{background:#2a2a35}
-.tag{display:inline-block;padding:2px 8px;border-radius:8px;font-size:12px;margin-left:4px}
-.q{background:#2a2a35}.k{background:var(--gold);color:#000}.x{background:var(--bad)}.a{background:var(--ok);color:#000}
+:root{
+  --bg:#000;--bg2:#121212;--bg3:#1f1f1f;--line:#262626;--fg:#f5f5f5;--mut:#a8a8a8;
+  --blue:#0095f6;--red:#ff3040;--ok:#3ddc84;--gold:#ffcc33;
+  --ig:linear-gradient(45deg,#feda75 0%,#fa7e1e 25%,#d62976 50%,#962fbf 75%,#4f5bd5 100%);
+  --spring:cubic-bezier(.34,1.56,.64,1);--out:cubic-bezier(.22,1,.36,1);--in:cubic-bezier(.64,0,.78,0);
+  --safe-b:env(safe-area-inset-bottom,0px);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;margin:0;padding:0}
+html,body{height:100%;background:var(--bg);color:var(--fg);font:15px/1.35 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;overflow:hidden;overscroll-behavior:none}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+input,textarea{font:inherit;color:var(--fg)}
+svg{display:block}
+#app{position:relative;max-width:480px;height:100%;margin:0 auto;overflow:hidden;background:var(--bg)}
+.reduce *{animation-duration:1ms!important;transition-duration:1ms!important}
+
+/* ---------- pages & transitions ---------- */
+.page{position:absolute;inset:0;display:flex;flex-direction:column;background:var(--bg);will-change:transform,opacity}
+.page.enter{animation:pageIn .42s var(--out) both}
+.page.leave{animation:pageOut .3s var(--in) both;pointer-events:none}
+.page.enter.back{animation-name:pageInBack}.page.leave.back{animation-name:pageOutBack}
+@keyframes pageIn{from{transform:translateX(28%);opacity:0}to{transform:none;opacity:1}}
+@keyframes pageOut{to{transform:translateX(-18%);opacity:0}}
+@keyframes pageInBack{from{transform:translateX(-28%);opacity:0}}
+@keyframes pageOutBack{to{transform:translateX(18%);opacity:0}}
+.fade.enter{animation:fadeIn .35s var(--out) both}.fade.leave{animation:fadeOut .25s both}
+@keyframes fadeIn{from{opacity:0;transform:scale(1.03)}}@keyframes fadeOut{to{opacity:0;transform:scale(.98)}}
+.stagger>*{animation:rise .55s var(--out) both}
+.stagger>*:nth-child(1){animation-delay:.04s}.stagger>*:nth-child(2){animation-delay:.09s}.stagger>*:nth-child(3){animation-delay:.14s}
+.stagger>*:nth-child(4){animation-delay:.19s}.stagger>*:nth-child(5){animation-delay:.24s}.stagger>*:nth-child(6){animation-delay:.29s}
+.stagger>*:nth-child(7){animation-delay:.34s}.stagger>*:nth-child(n+8){animation-delay:.39s}
+@keyframes rise{from{opacity:0;transform:translateY(18px) scale(.98)}}
+
+/* ---------- common ---------- */
+.top{display:flex;align-items:center;gap:12px;padding:12px 16px;min-height:52px}
+.top h1{font-size:22px;font-weight:700;letter-spacing:-.3px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.logo{font-family:"Brush Script MT","Segoe Script",cursive;font-size:30px;font-weight:400;background:var(--ig);-webkit-background-clip:text;background-clip:text;color:transparent;flex:1}
+.icon{width:26px;height:26px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.ibtn{padding:6px;border-radius:50%;transition:transform .2s var(--spring)}
+.ibtn:active{transform:scale(.82)}
+.scroll{flex:1;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+.scroll::-webkit-scrollbar{display:none}
+.btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:13px 16px;border-radius:12px;background:var(--blue);color:#fff;font-weight:600;transition:transform .18s var(--spring),filter .2s,opacity .2s}
+.btn:active{transform:scale(.96);filter:brightness(.9)}
+.btn.ig{background:var(--ig);background-size:200% 200%;animation:igShift 6s ease infinite}
+.btn.sec{background:var(--bg3)}
+.btn:disabled{opacity:.35;pointer-events:none}
+@keyframes igShift{0%,100%{background-position:0 50%}50%{background-position:100% 50%}}
 .mut{color:var(--mut);font-size:13px}
-.toast{position:fixed;top:12px;left:50%;transform:translateX(-50%);background:#000c;padding:10px 14px;border-radius:10px;display:none;z-index:9}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:7px 13px;border-radius:999px;background:var(--bg3);font-size:14px;font-weight:500;white-space:nowrap;transition:transform .25s var(--spring),background .25s,color .25s}
+.chip:active{transform:scale(.9)}
+.chip.on{background:var(--fg);color:#000}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.hscroll{display:flex;gap:8px;overflow-x:auto;padding:0 16px 10px;scrollbar-width:none;flex:none}.hscroll::-webkit-scrollbar{display:none}
+.badge{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:700;padding:3px 7px;border-radius:999px;text-transform:uppercase;letter-spacing:.3px;white-space:nowrap}
+.b-qual{background:#ffffff26;color:#fff;backdrop-filter:blur(8px)}.b-king{background:var(--gold);color:#000}
+.b-out{background:var(--red);color:#fff}.b-active{background:var(--ok);color:#000}
+.av{border-radius:50%;padding:2px;background:var(--ig);flex:none}
+.av>div{width:100%;height:100%;border-radius:50%;border:2px solid var(--bg);display:flex;align-items:center;justify-content:center;font-weight:700;background:#333}
+.appicon{border-radius:26px;background:var(--ig);display:flex;align-items:center;justify-content:center}
+.appicon .icon{stroke:#fff;width:55%;height:55%;stroke-width:2.2}
+
+/* ---------- tab bar ---------- */
+.tabbar{display:flex;justify-content:space-around;align-items:center;height:calc(54px + var(--safe-b));padding-bottom:var(--safe-b);border-top:1px solid var(--line);background:#000;position:relative;z-index:5;flex:none}
+.tabbar button{flex:1;height:100%;display:flex;align-items:center;justify-content:center;color:var(--fg);position:relative}
+.tabbar button .icon{transition:transform .35s var(--spring)}
+.tabbar button.on .icon{stroke-width:2.7}
+.tabbar .pop{animation:tabPop .45s var(--spring)}
+@keyframes tabPop{0%{transform:scale(.6)}60%{transform:scale(1.18)}100%{transform:scale(1)}}
+.tabbar .me{width:27px;height:27px;border-radius:50%;background:var(--ig);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;transition:box-shadow .25s}
+.tabbar button.on .me{box-shadow:0 0 0 2px #000,0 0 0 3.5px #fff}
+
+/* ---------- onboarding ---------- */
+.splash{align-items:center;justify-content:center;gap:18px}
+.splash .appicon{width:110px;height:110px;border-radius:30px;animation:markIn 1s var(--spring) both,glow 2.4s ease-in-out .9s infinite}
+.splash .word{font-size:34px;font-weight:800;letter-spacing:-1px;animation:rise .7s var(--out) .35s both}
+@keyframes markIn{0%{transform:scale(0) rotate(-140deg);opacity:0}100%{transform:none;opacity:1}}
+@keyframes glow{50%{box-shadow:0 0 60px #d6297688,0 0 120px #4f5bd544}}
+.onb{padding:24px 20px calc(24px + var(--safe-b));gap:16px;justify-content:flex-end}
+.onb h2{font-size:28px;font-weight:800;letter-spacing:-.6px;line-height:1.1}
+.onb .hero{flex:1;display:flex;align-items:center;justify-content:center;position:relative}
+.orb{position:absolute;border-radius:50%;filter:blur(40px);opacity:.55;animation:float 9s ease-in-out infinite}
+@keyframes float{50%{transform:translate(20px,-30px) scale(1.15)}}
+.duo{display:flex;gap:10px;transform:rotate(-6deg)}
+.duo>div{width:130px;height:220px;border-radius:18px;display:flex;align-items:center;justify-content:center;font-size:56px;box-shadow:0 20px 60px #0009;animation:duoIn .9s var(--spring) both}
+.duo>div:nth-child(2){margin-top:30px;animation-delay:.12s}
+@keyframes duoIn{from{opacity:0;transform:translateY(80px) rotate(10deg)}}
+.vsbig{position:absolute;font-size:44px;font-weight:900;font-style:italic;background:var(--ig);-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 4px 20px #000);animation:vsPulse 1.6s var(--spring) .7s infinite}
+@keyframes vsPulse{0%,100%{transform:scale(1)}15%{transform:scale(1.25)}}
+.lang{display:flex;gap:10px}.lang .chip{flex:1;justify-content:center;padding:12px}
+.perm{display:flex;gap:12px;align-items:center;padding:14px;border-radius:14px;background:var(--bg2)}
+.perm .t{font-weight:600}.perm .d{color:var(--mut);font-size:13px;margin-top:2px}
+.sw{flex:none;width:46px;height:28px;border-radius:999px;background:#3a3a3a;position:relative;transition:background .25s}
+.sw::after{content:"";position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:#fff;transition:transform .35s var(--spring)}
+.sw.on{background:var(--blue)}.sw.on::after{transform:translateX(18px)}
+.sw.lock{opacity:.6}
+.note{font-size:12px;color:var(--mut);padding:10px 12px;border-radius:10px;border:1px solid var(--line)}
+.scan{position:relative;width:140px;height:140px}
+.scan .ring{position:absolute;inset:0;border-radius:50%;background:conic-gradient(#feda75,#fa7e1e,#d62976,#962fbf,#4f5bd5,transparent 85%);animation:spin 1.1s linear infinite;-webkit-mask:radial-gradient(circle,transparent 62%,#000 63%);mask:radial-gradient(circle,transparent 62%,#000 63%)}
+.scan .core{position:absolute;inset:18px;border-radius:50%;background:var(--bg2);display:flex;align-items:center;justify-content:center;font-size:44px;animation:breathe 1.4s ease-in-out infinite}
+@keyframes spin{to{transform:rotate(360deg)}}@keyframes breathe{50%{transform:scale(.9)}}
+.found .chip{animation:chipIn .5s var(--spring) both}
+@keyframes chipIn{from{opacity:0;transform:scale(.3) translateY(20px)}}
+.mock{border:1px dashed #555;border-radius:14px;padding:16px;background:var(--bg2)}
+
+/* ---------- stories (topics) ---------- */
+.stories{display:flex;gap:14px;overflow-x:auto;padding:4px 14px 10px;scrollbar-width:none;flex:none}.stories::-webkit-scrollbar{display:none}
+.story{display:flex;flex-direction:column;align-items:center;gap:5px;width:68px;flex:none;font-size:12px;transition:transform .25s var(--spring)}
+.story:active{transform:scale(.9)}
+.story .av{width:66px;height:66px}.story .av>div{font-size:28px}
+.story.seen .av{background:#444}
+.story.cur .av{background:conic-gradient(#feda75,#fa7e1e,#d62976,#962fbf,#4f5bd5,#feda75);animation:spin 3s linear infinite}
+.story.cur .av>div{animation:spin 3s linear infinite reverse}
+.story span{max-width:68px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* ---------- battle feed ---------- */
+.feed{flex:1;overflow-y:auto;scroll-snap-type:y mandatory;scrollbar-width:none;position:relative}
+.feed::-webkit-scrollbar{display:none}
+.battle{height:100%;scroll-snap-align:start;scroll-snap-stop:always;position:relative;display:flex;flex-direction:column;padding:0 0 10px}
+.arena{flex:1;position:relative;display:flex;gap:3px;overflow:hidden}
+.half{flex:1;position:relative;overflow:hidden;transition:flex .6s var(--out),filter .5s,opacity .5s;border-radius:4px;touch-action:pan-y}
+.arena.seq .half{position:absolute;inset:0;transition:transform .5s var(--out),opacity .4s}
+.arena.seq .half.hide{transform:translateX(100%);opacity:0;pointer-events:none}
+.arena.seq .half[data-side="0"].hide{transform:translateX(-100%)}
+.arena.voted .half.win{flex:1.9}
+.arena.voted .half.lose{filter:grayscale(1) brightness(.45)}
+.media{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.media video,.media iframe{width:100%;height:100%;object-fit:cover;border:0;background:#000}
+.fake{position:absolute;inset:-20%;background-size:300% 300%;animation:fakeMove 7s ease-in-out infinite}
+@keyframes fakeMove{0%,100%{background-position:0% 30%}50%{background-position:100% 70%}}
+.fake-emoji{position:relative;font-size:64px;animation:bob 2.2s ease-in-out infinite;filter:drop-shadow(0 8px 24px #0008)}
+@keyframes bob{50%{transform:translateY(-14px) rotate(6deg) scale(1.06)}}
+.spark{position:absolute;bottom:0;font-size:22px;opacity:.75;animation:drift 6s linear infinite}
+@keyframes drift{from{transform:translateY(120%) rotate(0)}to{transform:translateY(-900%) rotate(240deg)}}
+.prog{position:absolute;top:8px;left:8px;right:8px;height:2.5px;border-radius:2px;background:#ffffff40;overflow:hidden;z-index:2}
+.prog i{display:block;height:100%;width:100%;background:#fff;transform-origin:left;animation:progress 8s linear infinite}
+@keyframes progress{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+.meta{position:absolute;left:0;right:0;bottom:0;padding:40px 10px 10px;background:linear-gradient(transparent,#000c);z-index:2;display:flex;flex-direction:column;gap:5px;pointer-events:none}
+.who{display:flex;align-items:center;gap:7px;font-weight:600;font-size:13px;flex-wrap:wrap}
+.who .av{width:26px;height:26px}.who .av>div{font-size:11px}
+.cap{font-size:12.5px;opacity:.9;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.sideTag{position:absolute;top:18px;left:10px;z-index:3;font-weight:900;font-size:13px;width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#000a;backdrop-filter:blur(6px)}
+.seenTag{position:absolute;top:18px;right:10px;z-index:3;font-size:11px;padding:3px 8px;border-radius:999px;background:#000a;backdrop-filter:blur(6px);animation:chipIn .4s var(--spring)}
+.vs{position:absolute;left:50%;top:44%;z-index:4;transform:translate(-50%,-50%);width:58px;height:58px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:900;font-style:italic;font-size:20px;pointer-events:none}
+.vs::before{content:"";position:absolute;inset:-3px;border-radius:50%;background:conic-gradient(#feda75,#fa7e1e,#d62976,#962fbf,#4f5bd5,#feda75);z-index:-2;animation:spin 3s linear infinite}
+.vs::after{content:"";position:absolute;inset:0;border-radius:50%;background:#000;z-index:-1}
+.vs span{background:var(--ig);-webkit-background-clip:text;background-clip:text;color:transparent}
+.battle.active .vs{animation:clash .9s var(--spring) both}
+@keyframes clash{0%{transform:translate(-50%,-50%) scale(0) rotate(-180deg)}70%{transform:translate(-50%,-50%) scale(1.25) rotate(10deg)}100%{transform:translate(-50%,-50%) scale(1)}}
+.battle.active .arena:not(.seq) .half[data-side="0"]{animation:slideL .7s var(--out) both}.battle.active .arena:not(.seq) .half[data-side="1"]{animation:slideR .7s var(--out) both}
+@keyframes slideL{from{transform:translateX(-40%);opacity:.2}}@keyframes slideR{from{transform:translateX(40%);opacity:.2}}
+.arena.seq .vs,.arena.voted .vs{opacity:0;transition:opacity .3s}
+.ctrl{display:flex;align-items:center;gap:8px;padding:10px 12px 0}
+.seg{display:flex;background:var(--bg3);border-radius:10px;padding:3px;position:relative}
+.seg button{position:relative;z-index:1;padding:6px 11px;font-size:13px;font-weight:600;color:var(--mut);transition:color .25s}
+.seg button.on{color:#000}
+.seg .knob{position:absolute;top:3px;bottom:3px;border-radius:8px;background:#fff;transition:left .4s var(--spring),width .4s var(--spring)}
+.ctrl .sp{flex:1}
+.votes{display:flex;gap:8px;padding:10px 12px 0}
+.vbtn{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:12px;border-radius:12px;background:var(--bg3);font-weight:700;transition:transform .2s var(--spring),background .3s,opacity .3s}
+.vbtn:active{transform:scale(.93)}
+.vbtn .icon{width:20px;height:20px}
+.vbtn.pick{background:var(--red);animation:tabPop .5s var(--spring)}
+.vbtn.pick .icon{fill:#fff}
+.vbtn:disabled{opacity:.35}
+.hint{padding:8px 12px 0;text-align:center;color:var(--mut);font-size:12.5px;min-height:24px}
+.result{position:absolute;top:64%;z-index:6;transform:translate(-50%,-50%);text-align:center;pointer-events:none;animation:resultIn .7s var(--spring) both}
+.result .big{font-size:40px;font-weight:900;letter-spacing:-1px;text-shadow:0 6px 30px #000}
+.result .delta{font-size:16px;font-weight:700;color:var(--ok);text-shadow:0 2px 10px #000}
+@keyframes resultIn{from{opacity:0;transform:translate(-50%,-30%) scale(.4)}}
+.heart{position:absolute;z-index:7;pointer-events:none;width:110px;height:110px;margin:-55px 0 0 -55px;animation:heart .9s var(--spring) forwards}
+.heart svg{width:100%;height:100%;fill:#fff;filter:drop-shadow(0 6px 20px #0008)}
+@keyframes heart{0%{transform:scale(0) rotate(-20deg);opacity:0}25%{transform:scale(1.25) rotate(8deg);opacity:1}45%{transform:scale(.95)}70%{transform:scale(1.05);opacity:1}100%{transform:scale(1.2) translateY(-60px);opacity:0}}
+.particle{position:absolute;z-index:6;pointer-events:none;border-radius:2px;animation:burst 1s var(--out) forwards}
+@keyframes burst{to{transform:translate(var(--dx),var(--dy)) rotate(var(--r)) scale(.2);opacity:0}}
+.skel{background:linear-gradient(100deg,#1a1a1a 30%,#2a2a2a 50%,#1a1a1a 70%);background-size:300% 100%;animation:shimmer 1.3s linear infinite}
+@keyframes shimmer{from{background-position:100% 0}to{background-position:-100% 0}}
+
+/* ---------- explore ---------- */
+.search{margin:0 16px 12px;display:flex;align-items:center;gap:8px;padding:9px 12px;border-radius:10px;background:var(--bg3)}
+.search input{flex:1;background:none;border:0;outline:0;min-width:0}
+.search .icon{width:18px;height:18px;color:var(--mut)}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);grid-auto-flow:dense;gap:2px;padding-bottom:20px}
+.tile{position:relative;aspect-ratio:3/4;overflow:hidden;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;transition:transform .3s var(--spring)}
+.tile:active{transform:scale(.95)}
+.tile.tall{grid-row:span 2;aspect-ratio:auto}
+.tile .e{font-size:38px;animation:bob 3s ease-in-out infinite}
+.tile .n{font-weight:700;font-size:13px;text-shadow:0 2px 8px #0008;position:relative}
+.tile .c{font-size:11px;opacity:.85;position:relative}
+
+/* ---------- ranking ---------- */
+.podium{display:flex;align-items:flex-end;justify-content:center;gap:10px;padding:44px 16px 18px}
+.pod{display:flex;flex-direction:column;align-items:center;gap:6px;width:31%}
+.pod .av{width:64px;height:64px}.pod.p1 .av{width:84px;height:84px}
+.pod .av>div{font-size:30px}
+.pod .col{width:100%;border-radius:12px 12px 0 0;background:linear-gradient(#2a2a2a,#111);display:flex;align-items:flex-start;justify-content:center;padding-top:8px;font-weight:900;font-size:22px;transform-origin:bottom;animation:grow .9s var(--spring) both}
+.pod.p1 .col{height:110px;background:linear-gradient(#5c4a10,#1a1505);animation-delay:.25s}.pod.p2 .col{height:80px;animation-delay:.1s}.pod.p3 .col{height:60px;animation-delay:.4s}
+@keyframes grow{from{transform:scaleY(0)}}
+.crown{font-size:30px;margin-bottom:-12px;animation:crownDrop 1s var(--spring) .8s both;z-index:1}
+@keyframes crownDrop{0%{transform:translateY(-80px) rotate(-30deg);opacity:0}100%{transform:none;opacity:1}}
+.pod .h{font-size:12px;font-weight:600;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row{display:flex;align-items:center;gap:10px;padding:10px 16px}
+.row .rk{width:22px;text-align:center;font-weight:700;color:var(--mut)}
+.row .av{width:44px;height:44px}.row .av>div{font-size:20px}
+.row .info{flex:1;min-width:0}.row .info b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row .score{font-weight:800;font-variant-numeric:tabular-nums;width:44px;text-align:right}
+
+/* ---------- profile ---------- */
+.ph{display:flex;align-items:center;gap:22px;padding:6px 16px 12px}
+.ph .av{width:88px;height:88px}.ph .av>div{font-size:34px}
+.stats{flex:1;display:flex;justify-content:space-around;text-align:center}
+.stats b{display:block;font-size:18px}
+.bio{padding:0 16px 12px}
+.bio b{display:block}
+.ptabs{display:flex;border-top:1px solid var(--line)}
+.ptabs button{flex:1;padding:11px;display:flex;justify-content:center;color:var(--mut);border-top:1px solid transparent;margin-top:-1px;transition:color .2s,border-color .2s}
+.ptabs button.on{color:var(--fg);border-color:var(--fg)}
+.mygrid{display:grid;grid-template-columns:repeat(3,1fr);gap:2px}
+.mycell{position:relative;aspect-ratio:9/16;overflow:hidden;background:#111}
+.mycell .ov{position:absolute;left:0;right:0;bottom:0;padding:6px;background:linear-gradient(transparent,#000d);font-size:11px;display:flex;flex-direction:column;gap:4px}
+.dots{display:flex;gap:2px}.dots i{flex:1;height:3px;border-radius:2px;background:#ffffff40}
+.dots i.w{background:var(--ok)}.dots i.l{background:var(--red)}
+.mycell .badge{position:absolute;top:6px;left:6px}
+.empty{padding:50px 30px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:12px}
+.empty .big{width:76px;height:76px;border-radius:50%;border:2px solid var(--fg);display:flex;align-items:center;justify-content:center}
+
+/* ---------- sheets ---------- */
+.scrim{position:absolute;inset:0;z-index:30;background:#0009;animation:fadeIn .3s both}
+.scrim.out{animation:fadeOut .25s both}
+.sheet{position:absolute;left:0;right:0;bottom:0;z-index:31;max-height:92%;overflow-y:auto;background:#1c1c1c;border-radius:18px 18px 0 0;padding:8px 16px calc(18px + var(--safe-b));animation:sheetUp .5s var(--out) both}
+.sheet.out{animation:sheetDown .3s var(--in) both}
+@keyframes sheetUp{from{transform:translateY(100%)}}@keyframes sheetDown{to{transform:translateY(100%)}}
+.grab{width:40px;height:4px;border-radius:2px;background:#555;margin:2px auto 12px}
+.sheet h3{text-align:center;font-size:16px;margin-bottom:14px}
+.opt{display:flex;align-items:center;gap:14px;padding:14px 4px;border-radius:12px;transition:background .2s,transform .2s var(--spring);width:100%;text-align:left}
+.opt:active{background:#2a2a2a;transform:scale(.98)}
+.opt .oi{width:46px;height:46px;border-radius:14px;display:flex;align-items:center;justify-content:center;flex:none}
+.opt .oi .icon{width:24px;height:24px;stroke:#fff}
+.opt b{display:block}
+.field{width:100%;padding:12px;border-radius:12px;background:var(--bg3);border:1px solid transparent;outline:0;transition:border-color .2s}
+.field:focus{border-color:#555}
+.preview{width:120px;aspect-ratio:9/16;border-radius:12px;overflow:hidden;position:relative;flex:none;background:#111}
+.compose{display:flex;gap:12px;margin-bottom:6px}
+.compose textarea{flex:1;resize:none;height:120px}
+.lbl{font-size:13px;font-weight:600;margin:14px 0 8px;display:flex;justify-content:space-between;gap:8px}
+.ringwrap{display:flex;flex-direction:column;align-items:center;gap:14px;padding:30px 0;position:relative}
+.ringwrap svg{width:110px;height:110px;transform:rotate(-90deg)}
+.ringwrap circle{fill:none;stroke-width:7;stroke-linecap:round;transition:stroke-dashoffset .12s linear}
+.ringwrap .pct{position:absolute;top:70px;font-size:22px;font-weight:800}
+.err{color:var(--red);font-size:13px;margin-top:6px;animation:shake .45s}
+@keyframes shake{20%,60%{transform:translateX(-6px)}40%,80%{transform:translateX(6px)}}
+
+/* ---------- camera ---------- */
+.cam{background:#000;z-index:40}
+.cam video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
+.cam.env video{transform:none}
+.cam .camtop{position:relative;z-index:2;display:flex;justify-content:space-between;padding:14px}
+.cam .camtop .ibtn{background:#0006;backdrop-filter:blur(8px)}
+.cam .shut{position:absolute;bottom:calc(40px + var(--safe-b));left:50%;transform:translateX(-50%);z-index:2;width:86px;height:86px}
+.cam .shut svg{position:absolute;inset:0;transform:rotate(-90deg)}
+.cam .shut .dot{position:absolute;inset:12px;border-radius:50%;background:#fff;transition:all .35s var(--spring)}
+.cam .shut.rec .dot{inset:26px;border-radius:9px;background:var(--red)}
+.cam .timer{position:absolute;top:70px;left:50%;transform:translateX(-50%);z-index:2;padding:4px 10px;border-radius:8px;background:var(--red);font-weight:700;font-variant-numeric:tabular-nums;opacity:0;transition:opacity .2s}
+.cam .timer.on{opacity:1}
+.cam .camerr{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:30px;text-align:center;color:var(--mut)}
+
+/* ---------- toast & celebration ---------- */
+.toast{position:absolute;left:12px;right:12px;top:12px;z-index:60;padding:12px 14px;border-radius:14px;background:#262626ee;backdrop-filter:blur(14px);font-weight:500;display:flex;gap:10px;align-items:center;animation:toastIn .5s var(--spring) both;box-shadow:0 10px 40px #0008}
+.toast.out{animation:toastOut .3s var(--in) both}
+@keyframes toastIn{from{transform:translateY(-140%)}}@keyframes toastOut{to{transform:translateY(-140%);opacity:0}}
+.celebrate{position:absolute;inset:0;z-index:50;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:radial-gradient(circle at 50% 45%,#000a,#000e);animation:fadeIn .3s both;text-align:center;padding:30px}
+.celebrate .ico{font-size:96px;animation:crownDrop .9s var(--spring) both}
+.celebrate h2{font-size:28px;font-weight:900;animation:rise .6s var(--out) .3s both}
+.celebrate p{color:var(--mut);animation:rise .6s var(--out) .45s both}
+.celebrate.fail .ico{animation:failDrop 1s var(--out) both}
+.celebrate.out{animation:fadeOut .4s both}
+@keyframes failDrop{0%{transform:scale(1.6);opacity:0;filter:blur(6px)}40%{transform:scale(1);opacity:1;filter:none}55%{transform:rotate(-8deg)}70%{transform:rotate(6deg)}100%{transform:none}}
+canvas.fx{position:absolute;inset:0;width:100%;height:100%;z-index:55;pointer-events:none}
 </style>
 </head>
 <body>
-<div class="phone">
-<header>⚔️ Война рилсами</header>
-<main id="view"></main>
-<nav>
-  <button data-tab="battle" class="on">Битва</button>
-  <button data-tab="post">Мой Reels</button>
-  <button data-tab="top">Рейтинг</button>
-</nav>
-</div>
-<div class="toast" id="toast"></div>
+<div id="app"></div>
 <script>
-// Rules (data-driven): see README.md
-const RULES = { qualBattles: 10, maxQualLosses: 7, kingWinRate: 0.7, kingWeight: 3, eloK: 32, startRating: 1500 };
-const THEMES = ["Юмор", "Спорт", "Еда", "Танцы", "Путешествия"];
+"use strict";
+/* =====================================================================
+   Reels War — prototype v2. Throwaway code: see README.md.
+   ===================================================================== */
 
-const store = {
-  load() { try { return JSON.parse(localStorage.getItem("reelsWar")) } catch { return null } },
-  save(s) { try { localStorage.setItem("reelsWar", JSON.stringify(s)) } catch {} }
+// ---- Rules (data-driven) -------------------------------------------
+const RULES = { qualBattles: 10, maxQualLosses: 7, kingWinRate: 0.7, kingWeight: 3, qualWeight: 2, eloK: 32, startRating: 1500, maxRecordSec: 30 };
+
+// ---- Topics (Instagram-style) ---------------------------------------
+const TOPICS = [
+  { id: "humor", e: "😂", ru: "Юмор", en: "Comedy", g: ["#f7971e", "#ffd200"], kw: ["смешн", "юмор", "прикол", "funny", "lol", "meme", "мем"] },
+  { id: "sport", e: "⚽", ru: "Спорт", en: "Sports", g: ["#00c6ff", "#0072ff"], kw: ["спорт", "футбол", "goal", "sport", "match", "гол"] },
+  { id: "food", e: "🍜", ru: "Еда", en: "Food", g: ["#f12711", "#f5af19"], kw: ["еда", "рецепт", "food", "cook", "вкусн", "recipe"] },
+  { id: "dance", e: "💃", ru: "Танцы", en: "Dance", g: ["#ee0979", "#ff6a00"], kw: ["танец", "танц", "dance", "choreo"] },
+  { id: "travel", e: "✈️", ru: "Путешествия", en: "Travel", g: ["#43cea2", "#185a9d"], kw: ["путеш", "travel", "trip", "море", "горы", "beach"] },
+  { id: "beauty", e: "💄", ru: "Красота", en: "Beauty", g: ["#ff9a9e", "#fad0c4"], kw: ["макияж", "beauty", "makeup", "уход", "skincare"] },
+  { id: "fashion", e: "👗", ru: "Мода", en: "Fashion", g: ["#8e2de2", "#4a00e0"], kw: ["мода", "образ", "outfit", "fashion", "style", "стиль"] },
+  { id: "music", e: "🎵", ru: "Музыка", en: "Music", g: ["#fc466b", "#3f5efb"], kw: ["музык", "песн", "music", "song", "cover", "кавер"] },
+  { id: "pets", e: "🐶", ru: "Животные", en: "Pets", g: ["#f6d365", "#fda085"], kw: ["кот", "собак", "cat", "dog", "pet", "питом"] },
+  { id: "gaming", e: "🎮", ru: "Игры", en: "Gaming", g: ["#11998e", "#38ef7d"], kw: ["игр", "game", "gaming", "стрим"] },
+  { id: "fitness", e: "💪", ru: "Фитнес", en: "Fitness", g: ["#e52d27", "#b31217"], kw: ["фитнес", "зал", "gym", "workout", "трениров"] },
+  { id: "art", e: "🎨", ru: "Искусство", en: "Art", g: ["#c471f5", "#fa71cd"], kw: ["рису", "арт", "art", "paint", "draw"] },
+  { id: "tech", e: "📱", ru: "Технологии", en: "Tech", g: ["#4b6cb7", "#182848"], kw: ["техн", "гаджет", "tech", "iphone", "нейросет"] },
+  { id: "cars", e: "🏎️", ru: "Авто", en: "Cars", g: ["#232526", "#ff512f"], kw: ["авто", "машин", "car", "drift", "дрифт"] },
+  { id: "edu", e: "🧠", ru: "Обучение", en: "Learning", g: ["#56ab2f", "#a8e063"], kw: ["урок", "learn", "факт", "fact", "how to", "лайфхак"] },
+  { id: "life", e: "☕", ru: "Лайфстайл", en: "Lifestyle", g: ["#c79081", "#dfa579"], kw: ["день", "влог", "vlog", "life", "утро", "morning"] },
+];
+const topic = id => TOPICS.find(x => x.id === id) || TOPICS[0];
+
+// ---- i18n ------------------------------------------------------------
+const I18N = {
+  ru: {
+    next: "Далее", start: "Начать",
+    onb1t: "Два рилса. Один победитель.", onb1d: "Смотрите пару рилсов одной темы и голосуйте за лучший. Рейтинг строится на реальных битвах, а не на лайках.",
+    onb2t: "Царь горы 👑", onb2d: "Каждый новый рилс проходит 10 битв. Проиграл 7+ — выбывает. Выигрывает больше 70% — становится Царём горы и сражается снова и снова.",
+    loginT: "Войдите через Instagram", loginD: "Так мы подберём битвы под ваши темы, а ваши рилсы будут подписаны вашим аккаунтом.",
+    loginBtn: "Продолжить с Instagram", loginMock: "Демо-прототип: здесь откроется официальное окно входа Instagram (Meta). Пароль вводится только на сайте Instagram — приложение его не видит.",
+    loginAs: "Войти как демо-пользователь", handlePh: "ваш_ник",
+    consentT: "Доступ к данным", consentD: "Reels War запрашивает доступ. Изменить можно в любой момент в настройках.",
+    pProfile: "Профиль Instagram", pProfileD: "Имя пользователя и фото — чтобы подписывать ваши рилсы. Обязательно.",
+    pMedia: "Ваши публикации и подписи", pMediaD: "Анализируем подписи и хэштеги ваших постов, чтобы определить ваши топики.",
+    pNotif: "Уведомления", pNotifD: "Результаты битв ваших рилсов и новые цари горы.",
+    pAnalytics: "Улучшение рекомендаций", pAnalyticsD: "Учитываем ваши голоса, чтобы показывать более интересные битвы.",
+    consentNote: "Мы никогда не публикуем от вашего имени и не читаем личные сообщения. Instagram отдаёт данные только профессиональных аккаунтов (Автор / Бизнес) — для личного аккаунта топики выбираются вручную.",
+    allow: "Разрешить и продолжить", scanning: "Анализируем ваш Instagram…", found: "Мы нашли ваши топики",
+    topicsT: "Ваши топики", topicsD: "Выберите минимум 3 темы — по ним мы подбираем битвы и советуем, в какую тему отправить ваш рилс.",
+    picked: "выбрано", forYou: "Для вас", both: "Оба", seq: "По очереди", voteFor: "Голос", watchBoth: "Посмотрите оба рилса, чтобы проголосовать",
+    dblTap: "Двойной тап по рилсу — тоже голос", win: "Победа!", rating: "рейтинг", battles: "битв",
+    qual: "квалификация", king: "царь горы", out: "выбыл", active: "в игре",
+    kingT: "Царь горы!", kingD: "побеждает в {p}% битв и будет сражаться снова и снова.",
+    outT: "Проверка провалена", outD: "проиграл {l} из {n} битв и выбывает из Войны рилсов.",
+    explore: "Поиск", searchPh: "Поиск тем", reelsN: "{n} рилсов", ranking: "Рейтинг", all: "Все",
+    create: "Новый рилс", recordO: "Записать", recordD: "Снять рилс прямо в приложении, до {s} сек",
+    galleryO: "Из галереи", galleryD: "Выбрать готовое видео с телефона", linkO: "Ссылка на Instagram Reels", linkD: "Вставьте ссылку — видео покажем через Instagram",
+    linkPh: "https://www.instagram.com/reel/…", badLink: "Это не похоже на ссылку на Instagram Reels",
+    dup: "Этот рилс уже участвует в Войне рилсов (@{h}, {t}). Каждый рилс можно отправить только один раз.",
+    caption: "Подпись…", topicFor: "Тема битвы", suggested: "✨ по подписи и вашим топикам", publish: "Отправить в битву", uploading: "Загружаем…",
+    published: "Рилс отправлен на квалификацию!", publishedD: "Первые 10 битв решат его судьбу. Результаты — в профиле.",
+    camErr: "Нет доступа к камере. Разрешите доступ в браузере или выберите видео из галереи.",
+    reels: "рилсы", wins: "победы", kings: "цари", edit: "Настройки", noReels: "Пока нет рилсов", noReelsD: "Отправьте первый рилс в битву — нажмите +",
+    settings: "Настройки", language: "Язык", reduceMotion: "Уменьшить анимацию", dataAccess: "Доступ к данным Instagram", revoke: "Отозвать доступ и выйти",
+    simulate: "Демо: прогнать 10 битв моих рилсов", reset: "Сбросить демо-данные", myTopics: "Мои топики", streak: "🔥 {n}",
+    noPair: "В этой теме пока мало рилсов для битвы", tryOther: "Выберите другую тему", min3: "Нужно минимум 3 топика",
+  },
+  en: {
+    next: "Next", start: "Get started",
+    onb1t: "Two Reels. One winner.", onb1d: "Watch a pair of Reels on the same topic and vote for the best. Ranking comes from real battles, not likes.",
+    onb2t: "King of the Hill 👑", onb2d: "Every new Reel fights 10 battles. Lose 7+ and it's out. Win more than 70% and it becomes King of the Hill and battles again and again.",
+    loginT: "Log in with Instagram", loginD: "We'll match battles to your topics and credit your Reels to your account.",
+    loginBtn: "Continue with Instagram", loginMock: "Demo prototype: the official Instagram (Meta) login window opens here. Your password is entered only on Instagram — the app never sees it.",
+    loginAs: "Log in as demo user", handlePh: "your_handle",
+    consentT: "Data access", consentD: "Reels War is requesting access. You can change this any time in Settings.",
+    pProfile: "Instagram profile", pProfileD: "Username and photo — to credit your Reels. Required.",
+    pMedia: "Your posts and captions", pMediaD: "We analyse your captions and hashtags to detect your topics.",
+    pNotif: "Notifications", pNotifD: "Battle results for your Reels and new kings.",
+    pAnalytics: "Better recommendations", pAnalyticsD: "We use your votes to show more interesting battles.",
+    consentNote: "We never post on your behalf or read your DMs. Instagram only shares data of professional accounts (Creator / Business) — personal accounts pick topics manually.",
+    allow: "Allow and continue", scanning: "Analysing your Instagram…", found: "We found your topics",
+    topicsT: "Your topics", topicsD: "Pick at least 3 — we use them to match battles and suggest which topic to send your Reel to.",
+    picked: "selected", forYou: "For you", both: "Both", seq: "One by one", voteFor: "Vote", watchBoth: "Watch both Reels to vote",
+    dblTap: "Double-tap a Reel to vote too", win: "Win!", rating: "rating", battles: "battles",
+    qual: "qualifying", king: "king", out: "out", active: "active",
+    kingT: "King of the Hill!", kingD: "wins {p}% of battles and will keep battling again and again.",
+    outT: "Failed the check", outD: "lost {l} of {n} battles and leaves Reels War.",
+    explore: "Explore", searchPh: "Search topics", reelsN: "{n} reels", ranking: "Ranking", all: "All",
+    create: "New Reel", recordO: "Record", recordD: "Shoot a Reel in the app, up to {s} sec",
+    galleryO: "From gallery", galleryD: "Pick a finished video from your phone", linkO: "Instagram Reels link", linkD: "Paste a link — we play it via Instagram",
+    linkPh: "https://www.instagram.com/reel/…", badLink: "That doesn't look like an Instagram Reels link",
+    dup: "This Reel is already in Reels War (@{h}, {t}). Each Reel can be submitted only once.",
+    caption: "Write a caption…", topicFor: "Battle topic", suggested: "✨ from caption and your topics", publish: "Send to battle", uploading: "Uploading…",
+    published: "Your Reel is qualifying!", publishedD: "The first 10 battles decide its fate. Results are on your profile.",
+    camErr: "No camera access. Allow it in the browser or pick a video from the gallery.",
+    reels: "reels", wins: "wins", kings: "kings", edit: "Settings", noReels: "No Reels yet", noReelsD: "Send your first Reel to battle — tap +",
+    settings: "Settings", language: "Language", reduceMotion: "Reduce motion", dataAccess: "Instagram data access", revoke: "Revoke access and log out",
+    simulate: "Demo: run 10 battles for my Reels", reset: "Reset demo data", myTopics: "My topics", streak: "🔥 {n}",
+    noPair: "Not enough Reels in this topic yet", tryOther: "Pick another topic", min3: "At least 3 topics are required",
+  },
 };
-let state = store.load() || seed();
+const t = (k, v = {}) => (I18N[S.lang || "ru"][k] ?? I18N.ru[k] ?? k).replace(/\{(\w+)\}/g, (_, x) => v[x] ?? "");
+const tn = id => topic(id)[S.lang || "ru"];
 
-function seed() {
+// ---- Icons -------------------------------------------------------------
+const P = {
+  home: '<path d="M3 10.5 12 3l9 7.5V21h-6v-6H9v6H3z"/>',
+  search: '<circle cx="11" cy="11" r="7.5"/><path d="m21 21-4.6-4.6"/>',
+  plus: '<rect x="3" y="3" width="18" height="18" rx="5"/><path d="M12 8v8M8 12h8"/>',
+  trophy: '<path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/>',
+  heart: '<path d="M12 21s-7.5-4.6-9.5-9.3C1 8 3.4 4 7.2 4c2 0 3.6 1.1 4.8 2.8C13.2 5.1 14.8 4 16.8 4 20.6 4 23 8 21.5 11.7 19.5 16.4 12 21 12 21z"/>',
+  close: '<path d="M6 6l12 12M18 6 6 18"/>',
+  camera: '<path d="M3 8a2 2 0 0 1 2-2h2l2-2h6l2 2h2a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="4"/>',
+  image: '<rect x="3" y="3" width="18" height="18" rx="4"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5-11 11"/>',
+  link: '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>',
+  menu: '<path d="M4 7h16M4 12h16M4 17h16"/>', flip: '<path d="M4 9a8 8 0 0 1 14-3l2 2M20 15a8 8 0 0 1-14 3l-2-2"/><path d="M20 4v4h-4M4 20v-4h4"/>',
+  grid: '<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/>',
+  crown: '<path d="M3 18h18M4 8l4 4 4-7 4 7 4-4-2 10H6z"/>',
+  swords: '<path d="M14.5 17.5 3 6V3h3l11.5 11.5M13 19l6-6M16 16l4 4M19 21l2-2M9.5 17.5 21 6V3h-3L6.5 14.5M11 19l-6-6M8 16l-4 4M5 21l-2-2"/>',
+  insta: '<rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r=".6"/>',
+};
+const ic = (n, cls = "icon") => `<svg class="${cls}" viewBox="0 0 24 24">${P[n]}</svg>`;
+
+// ---- Persistence ---------------------------------------------------------
+const LS = "reelsWarV2";
+const save = () => { try { localStorage.setItem(LS, JSON.stringify(S)); } catch {} };
+const load = () => { try { return JSON.parse(localStorage.getItem(LS)); } catch { return null; } };
+const idb = (() => { // video blobs of uploaded/recorded reels
+  let dbp; const open = () => dbp ||= new Promise((res, rej) => { try { const r = indexedDB.open("reelsWar", 1);
+    r.onupgradeneeded = () => r.result.createObjectStore("v"); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); } catch (e) { rej(e); } });
+  const tx = (mode, fn) => open().then(db => new Promise((res, rej) => { const q = fn(db.transaction("v", mode).objectStore("v")); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); }));
+  return { put: (k, v) => tx("readwrite", s => s.put(v, k)).catch(() => {}), get: k => tx("readonly", s => s.get(k)).catch(() => null), clear: () => tx("readwrite", s => s.clear()).catch(() => {}) };
+})();
+const blobUrls = {};
+
+// ---- Demo data -----------------------------------------------------------
+const HANDLES = ["mila.vibes", "dan_runs", "katya.cooks", "max.moves", "travel.with.lia", "artem.art", "nika_style", "the.lev", "sasha.beats", "pixel.pasha", "olya.fit", "gleb.drive", "tanya.learns", "vova.lol", "yana.pets", "kirill.tech"];
+const CAPS = { ru: ["Ждали продолжение? 🔥", "Сняли с первого дубля", "Это надо видеть до конца", "Повторите, если сможете", "Мой лучший рилс за месяц", "Без монтажа!"],
+               en: ["Waited for part 2? 🔥", "Shot in one take", "Watch till the end", "Try to repeat this", "My best Reel this month", "No editing!"] };
+const rnd = a => a[Math.floor(Math.random() * a.length)];
+function mkReel(o) {
+  return { id: Math.random().toString(36).slice(2, 10), owner: "demo", handle: rnd(HANDLES), topic: "humor", cap: Math.floor(Math.random() * 6), capText: "",
+           src: "fake", url: "", code: null, hash: null, w: 0, l: 0, hist: [], rating: RULES.startRating, status: "qual", ts: Date.now(), ...o };
+}
+function seedReels() {
   const reels = [];
-  THEMES.forEach(t => { for (let i = 1; i <= 4; i++) reels.push(mkReel(`${t} #${i}`, t, "")); });
-  return { reels, theme: "Юмор" };
+  TOPICS.forEach((tp, ti) => { for (let i = 0; i < 6; i++) {
+    const r = mkReel({ topic: tp.id, handle: HANDLES[(ti * 5 + i) % HANDLES.length] });
+    const n = Math.floor(Math.random() * 16);            // pre-play some battles so the ranking is alive
+    const p = [0.85, 0.75, 0.55, 0.45, 0.3, 0.2][i];
+    for (let k = 0; k < n && r.status !== "out"; k++) { const won = Math.random() < p; won ? r.w++ : r.l++; r.hist.push(won ? 1 : 0); r.rating += won ? 14 : -14; r.status = statusOf(r); }
+    reels.push(r);
+  } });
+  return reels;
 }
-function mkReel(title, theme, url) {
-  return { id: Math.random().toString(36).slice(2), title, theme, url, w: 0, l: 0, rating: RULES.startRating, status: "qual" };
-}
+function fresh() { return { v: 2, lang: null, step: "splash", user: null, consent: { profile: true, media: true, notif: true, analytics: true }, topics: [], reels: seedReels(), mode: "both", reduce: false, streak: 1, feedTopic: "foryou" }; }
 
-/** Pure status rule: qualification → eliminated / king / active. */
+// ---- Game logic (pure) -----------------------------------------------------
+/** Status rule: 10 qualifying battles; ≥7 losses → out; after qualification >70% wins → king. */
 function statusOf(r) {
   const n = r.w + r.l;
-  if (r.l >= RULES.maxQualLosses && n <= RULES.qualBattles) return "out";
   if (r.status === "out") return "out";
+  if (n <= RULES.qualBattles && r.l >= RULES.maxQualLosses) return "out";
   if (n < RULES.qualBattles) return "qual";
   return r.w / n > RULES.kingWinRate ? "king" : "active";
 }
-
-/** Matchmaking: same theme, never eliminated; qualifiers and kings are weighted up. */
-function pickPair(theme) {
-  const pool = state.reels.filter(r => r.theme === theme && r.status !== "out");
+/** Matchmaking: same topic, never eliminated; qualifiers and kings are weighted up, recently seen down. */
+function pickPair(topicId, avoid = new Set()) {
+  const pool = S.reels.filter(r => r.topic === topicId && r.status !== "out");
   if (pool.length < 2) return null;
-  const weight = r => r.status === "king" ? RULES.kingWeight : r.status === "qual" ? 2 : 1;
-  const pick = (list) => { let s = list.reduce((a, r) => a + weight(r), 0) * Math.random();
-    for (const r of list) { s -= weight(r); if (s <= 0) return r; } return list[list.length - 1]; };
-  const a = pick(pool);
-  const b = pick(pool.filter(r => r.id !== a.id));
-  return [a, b];
+  const wt = r => (r.status === "king" ? RULES.kingWeight : r.status === "qual" ? RULES.qualWeight : 1) * (avoid.has(r.id) ? 0.15 : 1);
+  const pick = list => { let s = list.reduce((a, r) => a + wt(r), 0) * Math.random(); for (const r of list) { s -= wt(r); if (s <= 0) return r; } return list.at(-1); };
+  const a = pick(pool), b = pick(pool.filter(r => r.id !== a.id));
+  return Math.random() < 0.5 ? [a, b] : [b, a];
+}
+function applyVote(win, lose) {
+  const exp = 1 / (1 + 10 ** ((lose.rating - win.rating) / 400));
+  const d = Math.max(1, Math.round(RULES.eloK * (1 - exp)));
+  win.rating += d; lose.rating -= d; win.w++; lose.l++; win.hist.push(1); lose.hist.push(0);
+  const changes = [];
+  for (const r of [win, lose]) { const b = r.status; r.status = statusOf(r); if (b !== r.status && (r.status === "king" || r.status === "out")) changes.push(r); }
+  save(); return { d, changes };
 }
 
-function vote(winner, loser) {
-  const exp = 1 / (1 + 10 ** ((loser.rating - winner.rating) / 400));
-  const d = Math.round(RULES.eloK * (1 - exp));
-  winner.rating += d; loser.rating -= d;
-  winner.w++; loser.l++;
-  for (const r of [winner, loser]) {
-    const before = r.status; r.status = statusOf(r);
-    if (before !== r.status && r.status === "out") toast(`«${r.title}» провалил проверку ❌`);
-    if (before !== r.status && r.status === "king") toast(`«${r.title}» — Царь горы 👑`);
-  }
-  store.save(state);
+let S = load();
+if (!S || S.v !== 2) S = fresh();
+
+// ---- Helpers -----------------------------------------------------------------
+const $ = (s, el = document) => el.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const haptic = (p = 10) => { try { navigator.vibrate?.(p); } catch {} };
+const app = $("#app");
+const reelCode = url => (url || "").match(/instagram\.com\/(?:[\w.]+\/)?(?:reel|reels|p)\/([\w-]+)/)?.[1] || null;
+const statusBadge = s => `<span class="badge b-${s}">${s === "king" ? "👑 " : ""}${t(s)}</span>`;
+const initials = h => esc((h || "?").replace(/[^a-zа-я0-9]/gi, "").slice(0, 1).toUpperCase() || "?");
+const grad = tp => `linear-gradient(135deg,${topic(tp).g[0]},${topic(tp).g[1]})`;
+const replay = (el, anim) => { el.style.animation = "none"; el.offsetWidth; el.style.animation = anim; };
+
+function mediaHTML(r, { thumb = false } = {}) {
+  if (r.src === "blob" && blobUrls[r.id]) return `<video src="${blobUrls[r.id]}" ${thumb ? "" : "autoplay"} muted loop playsinline preload="metadata"></video>`;
+  if (r.src === "link" && r.code && !thumb) return `<iframe src="https://www.instagram.com/reel/${esc(r.code)}/embed" loading="lazy" allow="autoplay; encrypted-media" title="Instagram Reel"></iframe>`;
+  const tp = topic(r.topic);
+  const sparks = thumb ? "" : [0, 1, 2].map(i => `<span class="spark" style="left:${15 + i * 30}%;animation-delay:${-i * 2}s">${tp.e}</span>`).join("");
+  return `<div class="fake" style="background-image:linear-gradient(135deg,${tp.g[0]},${tp.g[1]},${tp.g[0]})"></div>${sparks}<div class="fake-emoji" style="${thumb ? "font-size:34px" : ""}">${r.src === "link" ? "🔗" : tp.e}</div>`;
 }
 
-/** Shortcode identifies a reel regardless of URL form (reel/reels/p, query, trailing slash). */
-const reelCode = url => (url || "").match(/instagram\.com\/(?:reel|reels|p)\/([\w-]+)/)?.[1] || null;
-
-function embed(r) {
-  const m = r.url.match(/instagram\.com\/(?:reel|reels|p)\/([\w-]+)/);
-  if (m) return `<iframe src="https://www.instagram.com/reel/${m[1]}/embed" allowfullscreen loading="lazy"></iframe>`;
-  return `<div><div class="t">${esc(r.title)}</div><div class="mut">демо-рилс</div></div>`;
+// ---- Toast / celebration / particles ------------------------------------------
+function toast(msg, ms = 2600) {
+  document.querySelectorAll(".toast").forEach(x => x.remove());
+  const el = document.createElement("div"); el.className = "toast"; el.innerHTML = msg; app.appendChild(el);
+  setTimeout(() => { el.classList.add("out"); setTimeout(() => el.remove(), 320); }, ms);
 }
-const esc = s => s.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-const badge = s => ({ qual: '<span class="tag q">квалификация</span>', king: '<span class="tag k">👑 царь</span>', out: '<span class="tag x">выбыл</span>', active: '<span class="tag a">в игре</span>' }[s]);
-function toast(t) { const e = document.getElementById("toast"); e.textContent = t; e.style.display = "block"; clearTimeout(e._t); e._t = setTimeout(() => e.style.display = "none", 2500); }
+function confetti(n = 150) {
+  if (S.reduce) return;
+  const c = document.createElement("canvas"); c.className = "fx"; app.appendChild(c);
+  const dpr = devicePixelRatio || 1, W = c.width = app.clientWidth * dpr, H = c.height = app.clientHeight * dpr, x = c.getContext("2d");
+  const cols = ["#feda75", "#fa7e1e", "#d62976", "#962fbf", "#4f5bd5", "#ffffff"];
+  const ps = Array.from({ length: n }, () => ({ x: W / 2, y: H * 0.42, vx: (Math.random() - .5) * 26 * dpr, vy: (-Math.random() * 22 - 6) * dpr,
+    s: (5 + Math.random() * 7) * dpr, r: Math.random() * 6, vr: (Math.random() - .5) * .4, c: rnd(cols) }));
+  let f = 0; (function tick() { x.clearRect(0, 0, W, H); f++;
+    ps.forEach(p => { p.vy += .55 * dpr; p.vx *= .985; p.x += p.vx; p.y += p.vy; p.r += p.vr;
+      x.save(); x.translate(p.x, p.y); x.rotate(p.r); x.globalAlpha = Math.max(0, 1 - f / 140); x.fillStyle = p.c; x.fillRect(-p.s / 2, -p.s / 4, p.s, p.s / 2); x.restore(); });
+    f < 140 ? requestAnimationFrame(tick) : c.remove(); })();
+}
+function burst(host, x, y, color = "#ff3040") {
+  if (S.reduce) return;
+  for (let i = 0; i < 18; i++) { const p = document.createElement("i"); p.className = "particle"; const a = Math.random() * Math.PI * 2, d = 60 + Math.random() * 90, s = 6 + Math.random() * 6;
+    p.style.cssText = `left:${x}px;top:${y}px;width:${s}px;height:${s}px;background:${i % 3 ? color : "#fff"};--dx:${Math.cos(a) * d}px;--dy:${Math.sin(a) * d}px;--r:${Math.random() * 540}deg`;
+    host.appendChild(p); setTimeout(() => p.remove(), 1000); }
+}
+function celebrate(r) {
+  const king = r.status === "king", n = r.w + r.l;
+  const el = document.createElement("div"); el.className = "celebrate" + (king ? "" : " fail");
+  el.innerHTML = `<div class="ico">${king ? "👑" : "💔"}</div><h2>${t(king ? "kingT" : "outT")}</h2>
+    <p><b>@${esc(r.handle)}</b> · ${tn(r.topic)}<br>${t(king ? "kingD" : "outD", { p: Math.round(r.w / n * 100), l: r.l, n })}</p>`;
+  app.appendChild(el); haptic(king ? [20, 40, 20, 40, 60] : [80, 50, 120]); if (king) confetti();
+  let done = false; const close = () => { if (done) return; done = true; el.classList.add("out"); setTimeout(() => el.remove(), 420); };
+  el.onclick = close; setTimeout(close, 2600);
+}
 
-let pair = null, mode = "side", seen = {};
-const views = {
-  battle() {
-    if (!pair) { pair = pickPair(state.theme); seen = {}; }
-    const opts = THEMES.map(t => `<option ${t === state.theme ? "selected" : ""}>${t}</option>`).join("");
-    if (!pair) return `<div class="card"><select id="theme">${opts}</select><p>В этой теме мало рилсов для битвы.</p></div>`;
-    const [a, b] = pair;
-    const one = i => `<div class="reel" data-i="${i}">${embed(pair[i])}${seen[i] ? '<span class="seen">просмотрен ✓</span>' : ""}</div>`;
-    const body = mode === "side" ? `<div class="duel side">${one(0)}${one(1)}</div>`
-      : `<div class="duel">${one(mode === "a" ? 0 : 1)}</div><div class="row"><button class="btn ghost" id="sw">${mode === "a" ? "Смотреть рилс Б →" : "← Рилс А"}</button></div>`;
-    const ready = mode === "side" || (seen[0] && seen[1]);
-    return `<div class="card"><select id="theme">${opts}</select>
-      <div class="row"><button class="btn ${mode === "side" ? "" : "ghost"}" id="mSide">Оба сразу</button><button class="btn ${mode !== "side" ? "" : "ghost"}" id="mSeq">По очереди</button></div></div>
-      ${body}
-      <div class="row"><button class="btn" id="vA" ${ready ? "" : "disabled"}>👍 А: ${esc(a.title)}</button><button class="btn" id="vB" ${ready ? "" : "disabled"}>👍 Б: ${esc(b.title)}</button></div>
-      ${ready ? "" : '<p class="mut">Посмотрите оба рилса, чтобы проголосовать.</p>'}`;
-  },
-  post() {
-    const opts = THEMES.map(t => `<option>${t}</option>`).join("");
-    return `<div class="card"><b>Запостить свой Reels</b>
-      <input id="url" placeholder="https://www.instagram.com/reel/...">
-      <input id="ttl" placeholder="Название">
-      <select id="pt">${opts}</select>
-      <button class="btn" id="add">Отправить в битвы</button>
-      <p class="mut">Первые ${RULES.qualBattles} битв — квалификация. ${RULES.maxQualLosses}+ поражений → провал проверки. Больше ${RULES.kingWinRate * 100}% побед → Царь горы.</p>
-      <p class="mut">Можно залить любой Reels. Каждый рилс участвует только один раз — повторная ссылка отклоняется.</p></div>`;
-  },
-  top() {
-    const list = [...state.reels].sort((x, y) => y.rating - x.rating);
-    return list.map(r => `<div class="card"><b>${esc(r.title)}</b>${badge(r.status)}
-      <div class="mut">${r.theme} · рейтинг ${r.rating} · ${r.w}W/${r.l}L</div></div>`).join("")
-      + `<button class="btn ghost" id="reset">Сбросить демо-данные</button>`;
-  }
-};
+// ---- Router ----------------------------------------------------------------------
+let current = null, tab = "home";
+function go(html, { anim = "page", back = false, after } = {}) {
+  const el = document.createElement("div"); el.className = `page ${anim} enter${back ? " back" : ""}`; el.innerHTML = html;
+  if (current) { const old = current; old.classList.remove("enter"); old.classList.add("leave"); if (back) old.classList.add("back"); setTimeout(() => old.remove(), 320); }
+  app.appendChild(el); current = el; setTimeout(() => el.classList.remove("enter"), 450); after?.(el); return el;
+}
+function renderStep(back) {
+  document.documentElement.lang = S.lang || "ru";
+  app.classList.toggle("reduce", !!S.reduce);
+  ({ splash: vSplash, lang: vLang, intro1: vIntro1, intro2: vIntro2, login: vLogin, consent: vConsent, scan: vScan, topics: vTopics, main: vMain }[S.step] || vSplash)(back);
+}
+const step = (s, back) => { S.step = s; save(); renderStep(back); };
 
-let tab = "battle";
-function render() {
-  document.getElementById("view").innerHTML = views[tab]();
-  const $ = id => document.getElementById(id);
-  $("theme")?.addEventListener("change", e => { state.theme = e.target.value; pair = null; store.save(state); render(); });
-  $("mSide")?.addEventListener("click", () => { mode = "side"; render(); });
-  $("mSeq")?.addEventListener("click", () => { mode = "a"; seen[0] = true; render(); });
-  $("sw")?.addEventListener("click", () => { mode = mode === "a" ? "b" : "a"; seen[mode === "a" ? 0 : 1] = true; render(); });
-  $("vA")?.addEventListener("click", () => { vote(pair[0], pair[1]); pair = null; mode = "side"; render(); });
-  $("vB")?.addEventListener("click", () => { vote(pair[1], pair[0]); pair = null; mode = "side"; render(); });
-  $("add")?.addEventListener("click", () => {
-    const url = $("url").value.trim();
-    const code = reelCode(url);
-    if (!code) return toast("Нужна ссылка на Instagram Reels");
-    const dup = state.reels.find(r => reelCode(r.url) === code);
-    if (dup) return toast(`Этот рилс уже постили: «${dup.title}» (${dup.theme})`);
-    state.reels.push(mkReel($("ttl").value.trim() || "Мой рилс", $("pt").value, url));
-    store.save(state); toast("Рилс отправлен на квалификацию"); tab = "battle"; state.theme = $("pt").value; pair = null; sync();
+// ---- Onboarding --------------------------------------------------------------------
+function vSplash() {
+  go(`<div class="splash" style="display:flex;flex-direction:column;flex:1"><div class="appicon">${ic("swords")}</div><div class="word">Reels War</div></div>`, { anim: "fade" });
+  setTimeout(() => step(!S.lang ? "lang" : !S.user ? "intro1" : S.topics.length < 3 ? "topics" : "main"), S.reduce ? 300 : 1500);
+}
+function vLang() {
+  go(`<div class="onb" style="display:flex;flex-direction:column;flex:1">
+    <div class="hero"><div class="orb" style="width:220px;height:220px;background:#d62976;left:5%;top:20%"></div><div class="orb" style="width:200px;height:200px;background:#4f5bd5;right:5%;top:40%;animation-delay:-4s"></div>
+      <div class="appicon" style="width:96px;height:96px;animation:markIn 1s var(--spring) both,glow 2.4s ease-in-out 1s infinite">${ic("swords")}</div></div>
+    <div class="stagger" style="display:flex;flex-direction:column;gap:14px">
+      <h2>Reels War</h2><p class="mut">Выберите язык · Choose language</p>
+      <div class="lang"><button class="chip" data-l="ru">🇷🇺 Русский</button><button class="chip" data-l="en">🇬🇧 English</button></div>
+    </div></div>`, { after: el => el.querySelectorAll("[data-l]").forEach(b => b.onclick = () => {
+      S.lang = b.dataset.l; b.classList.add("on"); replay(b, "tabPop .4s var(--spring)"); haptic(); save(); setTimeout(() => step("intro1"), 260); }) });
+}
+function introPage(title, desc, hero, nextStep, dot) {
+  go(`<div class="onb" style="display:flex;flex-direction:column;flex:1">
+    <div class="hero">${hero}</div>
+    <div class="stagger" style="display:flex;flex-direction:column;gap:12px">
+      <div style="display:flex;gap:6px">${[0, 1].map(i => `<i style="height:4px;border-radius:2px;width:${i === dot ? 22 : 8}px;background:${i === dot ? "#fff" : "#555"}"></i>`).join("")}</div>
+      <h2>${title}</h2><p class="mut" style="font-size:15px">${desc}</p><button class="btn" id="nx">${t("next")}</button>
+    </div></div>`, { after: el => { $("#nx", el).onclick = () => { haptic(); step(nextStep); }; } });
+}
+function vIntro1() {
+  introPage(t("onb1t"), t("onb1d"), `<div class="orb" style="width:240px;height:240px;background:#fa7e1e;left:0;top:10%"></div><div class="orb" style="width:220px;height:220px;background:#962fbf;right:0;bottom:10%;animation-delay:-3s"></div>
+    <div class="duo"><div style="background:${grad("dance")}">💃</div><div style="background:${grad("music")}">🎸</div></div><div class="vsbig">VS</div>`, "intro2", 0);
+}
+function vIntro2() {
+  introPage(t("onb2t"), t("onb2d"), `<div class="orb" style="width:260px;height:260px;background:#ffcc33;left:10%;top:15%;opacity:.35"></div>
+    <div style="display:flex;flex-direction:column;align-items:center;gap:16px;position:relative"><div style="font-size:90px;animation:crownDrop 1s var(--spring) both">👑</div>
+    <div class="dots" style="width:220px;gap:5px">${[1, 1, 0, 1, 1, 1, 0, 1, 1, 1].map((w, i) => `<i class="${w ? "w" : "l"}" style="height:8px;border-radius:4px;animation:chipIn .4s var(--spring) ${0.3 + i * 0.08}s both"></i>`).join("")}</div>
+    <div style="font-weight:800;font-size:28px;animation:rise .5s var(--out) 1.2s both">8 / 10 · 80%</div></div>`, "login", 1);
+}
+function vLogin() {
+  go(`<div class="onb" style="display:flex;flex-direction:column;flex:1">
+    <div class="hero"><div class="orb" style="width:260px;height:260px;background:#d62976;left:10%;top:20%"></div>
+      <div class="appicon" style="width:120px;height:120px;border-radius:34px;animation:markIn 1s var(--spring) both,glow 2.4s ease-in-out 1s infinite">${ic("insta")}</div></div>
+    <div class="stagger" style="display:flex;flex-direction:column;gap:12px">
+      <h2>${t("loginT")}</h2><p class="mut" style="font-size:15px">${t("loginD")}</p>
+      <button class="btn ig" id="ig">${ic("insta")} ${t("loginBtn")}</button>
+      <div class="mock" id="mock" style="display:none;flex-direction:column;gap:10px"><p class="mut">${t("loginMock")}</p>
+        <input class="field" id="hd" placeholder="${t("handlePh")}" maxlength="30" autocomplete="off"><button class="btn" id="as">${t("loginAs")}</button></div>
+    </div></div>`, { after: el => {
+      $("#ig .icon", el).style.cssText = "width:20px;height:20px;stroke:#fff";
+      $("#ig", el).onclick = () => { haptic(); const m = $("#mock", el); m.style.display = "flex"; m.style.animation = "rise .5s var(--out) both"; $("#ig", el).style.display = "none"; $("#hd", el).focus(); };
+      $("#as", el).onclick = () => { const h = $("#hd", el).value.trim().replace(/^@/, "").replace(/[^\w.]/g, "").slice(0, 30) || "you";
+        S.user = { handle: h, since: Date.now() }; haptic(15); step("consent"); };
+    } });
+}
+function vConsent() {
+  const rows = [["profile", "pProfile", "pProfileD", true], ["media", "pMedia", "pMediaD"], ["notif", "pNotif", "pNotifD"], ["analytics", "pAnalytics", "pAnalyticsD"]];
+  go(`<div class="scroll" style="padding:24px 20px calc(24px + var(--safe-b))">
+    <div class="stagger" style="display:flex;flex-direction:column;gap:12px">
+      <div style="display:flex;align-items:center;gap:12px"><div class="av" style="width:52px;height:52px"><div>${initials(S.user.handle)}</div></div>
+        <div style="font-size:22px;animation:breathe 1.4s ease-in-out infinite">⇄</div><div class="appicon" style="width:52px;height:52px;border-radius:16px">${ic("swords")}</div></div>
+      <h2 style="font-size:26px;font-weight:800">${t("consentT")}</h2><p class="mut">@${esc(S.user.handle)} · ${t("consentD")}</p>
+      ${rows.map(([k, a, b, lock]) => `<div class="perm"><div style="flex:1"><div class="t">${t(a)}</div><div class="d">${t(b)}</div></div>
+        <button class="sw ${S.consent[k] ? "on" : ""} ${lock ? "lock" : ""}" data-k="${k}" ${lock ? "disabled" : ""} aria-label="${t(a)}"></button></div>`).join("")}
+      <div class="note">${t("consentNote")}</div>
+      <button class="btn" id="ok">${t("allow")}</button>
+    </div></div>`, { after: el => {
+      el.querySelectorAll(".sw:not(.lock)").forEach(s => s.onclick = () => { S.consent[s.dataset.k] = !S.consent[s.dataset.k]; s.classList.toggle("on"); haptic(6); save(); });
+      $("#ok", el).onclick = () => { haptic(); step(S.consent.media ? "scan" : "topics"); };
+    } });
+}
+function vScan() {
+  // Prototype stand-in for "derive topics from the user's own captions/hashtags" (Instagram API, professional accounts).
+  const guess = [...TOPICS].sort(() => Math.random() - .5).slice(0, 4).map(x => x.id);
+  go(`<div style="display:flex;flex-direction:column;flex:1;align-items:center;justify-content:center;gap:26px;padding:30px;text-align:center">
+    <div class="scan"><div class="ring"></div><div class="core" id="core">📷</div></div>
+    <h2 id="st" style="font-size:20px">${t("scanning")}</h2><div class="chips found" id="found" style="justify-content:center;min-height:80px"></div></div>`, { anim: "fade", after: el => {
+      const icons = ["📷", "#️⃣", "🧠", "✨"]; let i = 0; const iv = setInterval(() => { $("#core", el).textContent = icons[++i % 4]; }, 450);
+      setTimeout(() => { clearInterval(iv); $("#core", el).textContent = "✅"; $("#st", el).textContent = t("found"); haptic([10, 30, 10]);
+        $("#found", el).innerHTML = guess.map((g, k) => `<span class="chip on" style="animation-delay:${k * .12}s">${topic(g).e} ${tn(g)}</span>`).join("");
+        S.topics = guess; save(); setTimeout(() => step("topics"), 1700); }, S.reduce ? 200 : 2200);
+    } });
+}
+function vTopics() {
+  go(`<div class="scroll" style="padding:24px 20px 10px"><div class="stagger" style="display:flex;flex-direction:column;gap:12px">
+      <h2 style="font-size:26px;font-weight:800">${t("topicsT")}</h2><p class="mut">${t("topicsD")}</p>
+      <div class="chips">${TOPICS.map(x => `<button class="chip ${S.topics.includes(x.id) ? "on" : ""}" data-t="${x.id}">${x.e} ${x[S.lang]}</button>`).join("")}</div>
+    </div></div>
+    <div style="padding:12px 20px calc(16px + var(--safe-b));border-top:1px solid var(--line)"><button class="btn" id="go"></button></div>`, { after: el => {
+      const upd = () => { const b = $("#go", el); b.disabled = S.topics.length < 3; b.textContent = `${t("start")} · ${S.topics.length} ${t("picked")}`; };
+      el.querySelectorAll("[data-t]").forEach(c => c.onclick = () => { const id = c.dataset.t; S.topics = S.topics.includes(id) ? S.topics.filter(x => x !== id) : [...S.topics, id];
+        c.classList.toggle("on"); replay(c, "tabPop .4s var(--spring)"); haptic(6); save(); upd(); });
+      upd(); $("#go", el).onclick = () => { haptic(20); confetti(80); step("main"); };
+    } });
+}
+
+// ---- Main shell ------------------------------------------------------------------------
+function vMain() {
+  go(`<div id="view" style="flex:1;position:relative;overflow:hidden"></div>
+    <nav class="tabbar">
+      <button data-tab="home" aria-label="home">${ic("home")}</button><button data-tab="explore" aria-label="explore">${ic("search")}</button>
+      <button data-tab="create" aria-label="create">${ic("plus")}</button><button data-tab="rank" aria-label="ranking">${ic("trophy")}</button>
+      <button data-tab="me" aria-label="profile"><div class="me">${initials(S.user?.handle)}</div></button></nav>`, { anim: "fade", after: el => {
+      el.querySelectorAll(".tabbar button").forEach(b => b.onclick = () => { haptic(6); if (b.dataset.tab === "create") { replay(b.querySelector(".icon"), "tabPop .45s var(--spring)"); return openCreate(); } switchTab(b.dataset.tab); });
+      switchTab(tab, true);
+    } });
+}
+let feedState = null;
+function switchTab(name, instant) {
+  const order = ["home", "explore", "rank", "me"]; const back = order.indexOf(name) < order.indexOf(tab);
+  tab = name; const view = $("#view", current); if (!view) return;
+  current.querySelectorAll(".tabbar button").forEach(b => { const on = b.dataset.tab === name; b.classList.toggle("on", on); const s = b.querySelector(".icon,.me"); if (on && s && !instant) replay(s, "tabPop .45s var(--spring)"); });
+  const old = view.firstElementChild; const el = document.createElement("div");
+  el.className = `page${instant ? "" : " enter"}${back ? " back" : ""}`; view.appendChild(el);
+  if (old) { old.classList.add("leave"); if (back) old.classList.add("back"); setTimeout(() => old.remove(), 320); }
+  setTimeout(() => el.classList.remove("enter"), 450);
+  ({ home: tHome, explore: tExplore, rank: tRank, me: tMe })[name](el);
+}
+
+// ---- Home: battle feed ----------------------------------------------------------------------
+function tHome(el) {
+  const cur = S.feedTopic;
+  const ids = [...S.topics, ...TOPICS.map(x => x.id).filter(x => !S.topics.includes(x))];
+  const stories = [{ id: "foryou", e: "✨", n: t("forYou") }, ...ids.map(id => ({ id, e: topic(id).e, n: tn(id) }))];
+  el.innerHTML = `<div class="top"><div class="logo">Reels War</div><span style="font-weight:700">${t("streak", { n: S.streak })}</span>
+      <button class="ibtn" id="lg" aria-label="language" style="font-weight:800;font-size:13px;border:1.5px solid #fff;border-radius:8px;padding:3px 6px">${(S.lang || "ru").toUpperCase()}</button></div>
+    <div class="stories">${stories.map(s => `<button class="story ${s.id === cur ? "cur" : ""} ${S.topics.includes(s.id) || s.id === "foryou" ? "" : "seen"}" data-s="${s.id}">
+      <div class="av"><div style="background:${s.id === "foryou" ? "var(--bg3)" : grad(s.id)}">${s.e}</div></div><span>${s.n}</span></button>`).join("")}</div>
+    <div class="feed" id="feed"></div>`;
+  $("#lg", el).onclick = () => { S.lang = S.lang === "en" ? "ru" : "en"; save(); haptic(); document.documentElement.lang = S.lang; vMain(); };
+  el.querySelectorAll("[data-s]").forEach(b => b.onclick = () => { S.feedTopic = b.dataset.s; save(); haptic(6); switchTab("home", true); });
+  const feed = $("#feed", el);
+  feedState = { battles: [], recent: new Set(), feed };
+  feed.innerHTML = `<div class="battle"><div class="arena"><div class="half skel"></div><div class="half skel"></div></div><div class="votes"><div class="vbtn skel" style="height:44px"></div><div class="vbtn skel"></div></div></div>`;
+  setTimeout(() => { if (!feed.isConnected) return; feed.innerHTML = ""; for (let i = 0; i < 3; i++) addBattle(); observe(); }, S.reduce ? 0 : 450);
+}
+function nextTopic() {
+  if (S.feedTopic !== "foryou") return S.feedTopic;
+  return rnd(S.topics.length ? S.topics : TOPICS.map(x => x.id));
+}
+function addBattle() {
+  const fs = feedState; let pair = null, tp;
+  for (let k = 0; k < 8 && !pair; k++) { tp = nextTopic(); pair = pickPair(tp, fs.recent); }
+  if (!pair) { if (!fs.battles.length) fs.feed.innerHTML = `<div class="empty"><div style="font-size:48px">🥲</div><b>${t("noPair")}</b><p class="mut">${t("tryOther")}</p></div>`; return null; }
+  pair.forEach(r => fs.recent.add(r.id)); if (fs.recent.size > 12) fs.recent = new Set([...fs.recent].slice(-12));
+  const b = { pair, topic: tp, mode: S.mode, seen: [S.mode === "seq", false], showing: 0, voted: false, idx: fs.battles.length };
+  fs.battles.push(b);
+  const sec = document.createElement("section"); sec.className = "battle"; sec.dataset.i = b.idx; fs.feed.appendChild(sec); b.el = sec;
+  drawBattle(b); return b;
+}
+function drawBattle(b) {
+  const half = (r, i) => `<div class="half ${b.mode === "seq" && b.showing !== i ? "hide" : ""}" data-side="${i}">
+      <div class="media">${mediaHTML(r)}</div>${r.src === "fake" ? '<div class="prog"><i></i></div>' : ""}
+      <div class="sideTag">${i ? "B" : "A"}</div>${b.mode === "seq" && b.seen[i] ? `<div class="seenTag">✓</div>` : ""}
+      <div class="meta"><div class="who"><div class="av"><div>${initials(r.handle)}</div></div>@${esc(r.handle)} ${statusBadge(r.status)}</div>
+      <div class="cap">${esc(r.owner === "me" ? r.capText : CAPS[S.lang][r.cap])}</div><div class="mut" style="font-size:11px">${t("rating")} ${r.rating} · ${r.w + r.l} ${t("battles")}</div></div></div>`;
+  const canVote = b.mode === "both" || (b.seen[0] && b.seen[1]);
+  b.el.innerHTML = `<div class="arena ${b.mode}">${half(b.pair[0], 0)}${half(b.pair[1], 1)}<div class="vs"><span>VS</span></div></div>
+    <div class="ctrl"><div class="seg"><div class="knob"></div><button data-m="both" class="${b.mode === "both" ? "on" : ""}">${t("both")}</button><button data-m="seq" class="${b.mode === "seq" ? "on" : ""}">${t("seq")}</button></div>
+      <span class="sp"></span><span class="chip" style="padding:5px 10px;font-size:12.5px">${topic(b.topic).e} ${tn(b.topic)}</span></div>
+    <div class="votes">${b.pair.map((r, i) => `<button class="vbtn" data-v="${i}" ${canVote ? "" : "disabled"}>${ic("heart")} ${t("voteFor")} ${i ? "B" : "A"}</button>`).join("")}</div>
+    <div class="hint">${canVote ? t("dblTap") : t("watchBoth")}</div>`;
+  const seg = b.el.querySelector(".seg"), knob = seg.querySelector(".knob");
+  requestAnimationFrame(() => { const on = seg.querySelector("button.on"); knob.style.left = on.offsetLeft + "px"; knob.style.width = on.offsetWidth + "px"; });
+  seg.querySelectorAll("button").forEach(x => x.onclick = () => { if (b.voted || b.mode === x.dataset.m) return; b.mode = S.mode = x.dataset.m; save(); haptic(6);
+    if (b.mode === "seq") { b.showing = 0; b.seen[0] = true; } drawBattle(b); });
+  b.el.querySelectorAll(".vbtn").forEach(x => x.onclick = () => vote(b, +x.dataset.v));
+  b.el.querySelectorAll(".half").forEach(h => {
+    let last = 0, sx = 0, timer = 0;
+    h.addEventListener("pointerdown", e => { sx = e.clientX; });
+    h.addEventListener("pointerup", e => {
+      if (b.voted) return;
+      const i = +h.dataset.side;
+      if (b.mode === "seq" && Math.abs(e.clientX - sx) > 40) return showSide(b, e.clientX < sx ? 1 : 0);
+      const now = Date.now();
+      if (now - last < 320) { clearTimeout(timer); last = 0; const ar = b.el.querySelector(".arena").getBoundingClientRect(); vote(b, i, e.clientX - ar.left, e.clientY - ar.top); }
+      else { last = now; if (b.mode === "seq") timer = setTimeout(() => showSide(b, 1 - b.showing), 330); }
+    });
   });
-  $("reset")?.addEventListener("click", () => { state = seed(); store.save(state); pair = null; render(); });
 }
-function sync() { document.querySelectorAll("nav button").forEach(b => b.classList.toggle("on", b.dataset.tab === tab)); render(); }
-document.querySelectorAll("nav button").forEach(b => b.onclick = () => { tab = b.dataset.tab; sync(); });
-render();
+function showSide(b, i) {
+  if (b.voted || b.showing === i) return; b.showing = i; b.seen[i] = true; haptic(5);
+  const ar = b.el.querySelector(".arena");
+  ar.querySelectorAll(".half").forEach(h => h.classList.toggle("hide", +h.dataset.side !== i));
+  const h = ar.querySelector(`.half[data-side="${i}"]`); if (!h.querySelector(".seenTag")) h.insertAdjacentHTML("beforeend", `<div class="seenTag">✓</div>`);
+  if (b.seen[0] && b.seen[1]) { b.el.querySelectorAll(".vbtn").forEach(v => { v.disabled = false; replay(v, "tabPop .45s var(--spring)"); }); b.el.querySelector(".hint").textContent = t("dblTap"); }
+}
+function vote(b, i, x, y) {
+  if (b.voted) return;
+  if (b.mode === "seq" && !(b.seen[0] && b.seen[1])) { toast("👀 " + t("watchBoth")); haptic([30, 30, 30]); return; }
+  b.voted = true; haptic([12, 30, 18]);
+  const win = b.pair[i], lose = b.pair[1 - i]; const { d, changes } = applyVote(win, lose);
+  if (b.mode === "seq") { b.mode = "both"; drawBattle(b); }
+  const ar = b.el.querySelector(".arena"); ar.classList.add("voted");
+  ar.querySelector(`.half[data-side="${i}"]`).classList.add("win"); ar.querySelector(`.half[data-side="${1 - i}"]`).classList.add("lose");
+  b.el.querySelectorAll(".vbtn").forEach(v => { v.disabled = +v.dataset.v !== i; if (!v.disabled) { v.classList.add("pick"); v.style.pointerEvents = "none"; } });
+  b.el.querySelector(".hint").innerHTML = "&nbsp;";
+  const W = ar.clientWidth, H = ar.clientHeight; x ??= i ? W * 0.75 : W * 0.25; y ??= H * 0.45;
+  const heart = document.createElement("div"); heart.className = "heart"; heart.style.left = x + "px"; heart.style.top = y + "px"; heart.innerHTML = `<svg viewBox="0 0 24 24">${P.heart}</svg>`;
+  ar.appendChild(heart); burst(ar, x, y); setTimeout(() => heart.remove(), 950);
+  const res = document.createElement("div"); res.className = "result"; res.style.left = (i ? 64 : 36) + "%";
+  res.innerHTML = `<div class="big">${t("win")}</div><div class="delta">+${d} ${t("rating")}</div>`; setTimeout(() => ar.appendChild(res), 250);
+  changes.forEach((r, k) => setTimeout(() => celebrate(r), 700 + k * 2800));
+  const wait = changes.length ? 900 + changes.length * 2800 : 1400;
+  setTimeout(() => { const next = feedState?.battles[b.idx + 1]; if (next && next.el.isConnected) next.el.scrollIntoView({ behavior: S.reduce ? "auto" : "smooth" }); }, wait);
+}
+function observe() {
+  const fs = feedState;
+  const io = new IntersectionObserver(es => es.forEach(e => {
+    const b = fs.battles[+e.target.dataset.i]; if (!b) return;
+    if (e.isIntersecting) { e.target.classList.add("active"); b.el.querySelectorAll("video").forEach(v => v.play().catch(() => {}));
+      if (b.idx >= fs.battles.length - 2) [addBattle(), addBattle()].forEach(n => n && io.observe(n.el)); }
+    else { e.target.classList.remove("active"); b.el.querySelectorAll("video").forEach(v => v.pause()); }
+  }), { root: fs.feed, threshold: 0.6 });
+  fs.battles.forEach(b => io.observe(b.el));
+}
+
+// ---- Explore ----------------------------------------------------------------------------------
+function tExplore(el) {
+  el.innerHTML = `<div class="top"><h1>${t("explore")}</h1></div>
+    <label class="search">${ic("search")}<input id="q" placeholder="${t("searchPh")}" autocomplete="off"></label>
+    <div class="scroll"><div class="grid stagger" id="g"></div></div>`;
+  const draw = q => { const list = TOPICS.filter(x => !q || (x.ru + " " + x.en).toLowerCase().includes(q.toLowerCase()));
+    $("#g", el).innerHTML = list.map((x, i) => { const n = S.reels.filter(r => r.topic === x.id && r.status !== "out").length;
+      return `<button class="tile ${i % 5 === 1 ? "tall" : ""}" data-t="${x.id}"><div class="fake" style="background-image:linear-gradient(135deg,${x.g[0]},${x.g[1]},${x.g[0]});animation-duration:${6 + i % 4}s"></div>
+        <div class="e" style="position:relative;animation-delay:${-i * .3}s">${x.e}</div><div class="n">${x[S.lang]}</div><div class="c">${t("reelsN", { n })}</div></button>`; }).join("");
+    el.querySelectorAll("[data-t]").forEach(b => b.onclick = () => { haptic(6); S.feedTopic = b.dataset.t; save(); switchTab("home"); }); };
+  draw(""); $("#q", el).oninput = e => draw(e.target.value.trim());
+}
+
+// ---- Ranking ----------------------------------------------------------------------------------
+let rankTopic = "all";
+function tRank(el) {
+  const list = S.reels.filter(r => r.status !== "out" && (rankTopic === "all" || r.topic === rankTopic)).sort((a, b) => b.rating - a.rating);
+  const top = list.slice(0, 3), rest = list.slice(3, 40);
+  const pod = (r, p) => r ? `<div class="pod p${p}">${p === 1 ? '<div class="crown">👑</div>' : ""}<div class="av"><div style="background:${grad(r.topic)}">${topic(r.topic).e}</div></div>
+    <div class="h">@${esc(r.handle)}</div><div class="mut" style="font-size:12px">${r.rating}</div><div class="col">${p}</div></div>` : `<div class="pod"></div>`;
+  el.innerHTML = `<div class="top"><h1>${t("ranking")}</h1></div>
+    <div class="hscroll">${[{ id: "all", n: t("all") }, ...TOPICS.map(x => ({ id: x.id, n: `${x.e} ${x[S.lang]}` }))].map(x => `<button class="chip ${rankTopic === x.id ? "on" : ""}" data-r="${x.id}">${x.n}</button>`).join("")}</div>
+    <div class="scroll"><div class="podium">${pod(top[1], 2)}${pod(top[0], 1)}${pod(top[2], 3)}</div>
+    <div class="stagger">${rest.map((r, i) => `<div class="row"><div class="rk">${i + 4}</div><div class="av"><div style="background:${grad(r.topic)}">${topic(r.topic).e}</div></div>
+      <div class="info"><b>@${esc(r.handle)}${r.owner === "me" ? " ⭐" : ""}</b><span class="mut" style="white-space:nowrap">${tn(r.topic)} · ${r.w}–${r.l}</span></div>${r.status === "king" ? `<span class="badge b-king">👑</span>` : statusBadge(r.status)}<div class="score">${r.rating}</div></div>`).join("")}</div></div>`;
+  el.querySelectorAll("[data-r]").forEach(b => b.onclick = () => { rankTopic = b.dataset.r; haptic(6); switchTab("rank", true); });
+}
+
+// ---- Profile ----------------------------------------------------------------------------------
+function tMe(el) {
+  const mine = S.reels.filter(r => r.owner === "me").sort((a, b) => b.ts - a.ts);
+  const wins = mine.reduce((a, r) => a + r.w, 0), kings = mine.filter(r => r.status === "king").length;
+  el.innerHTML = `<div class="top"><h1>@${esc(S.user.handle)}</h1><button class="ibtn" id="set" aria-label="${t("settings")}">${ic("menu")}</button></div>
+    <div class="scroll"><div class="ph"><div class="av"><div style="background:var(--bg3)">${initials(S.user.handle)}</div></div>
+      <div class="stats"><div><b>${mine.length}</b><span class="mut">${t("reels")}</span></div><div><b>${wins}</b><span class="mut">${t("wins")}</span></div><div><b>${kings}</b><span class="mut">${t("kings")}</span></div></div></div>
+    <div class="bio"><b>${esc(S.user.handle)}</b><div class="chips" style="margin-top:8px">${S.topics.map(x => `<span class="chip" style="padding:4px 10px;font-size:12.5px">${topic(x).e} ${tn(x)}</span>`).join("")}</div></div>
+    <div style="padding:0 16px 12px"><button class="btn sec" id="set2" style="padding:8px">${t("edit")}</button></div>
+    <div class="ptabs"><button class="on">${ic("grid")}</button><button>${ic("crown")}</button></div>
+    ${mine.length ? `<div class="mygrid stagger">${mine.map(r => { const h = r.hist.slice(0, RULES.qualBattles);
+      return `<div class="mycell"><div class="media">${mediaHTML(r, { thumb: true })}</div>${statusBadge(r.status)}
+        <div class="ov"><div class="dots">${Array.from({ length: RULES.qualBattles }, (_, k) => `<i class="${h[k] === 1 ? "w" : h[k] === 0 ? "l" : ""}"></i>`).join("")}</div>
+        <span>${tn(r.topic)} · ${r.rating}</span></div></div>`; }).join("")}</div>`
+      : `<div class="empty"><div class="big">${ic("camera")}</div><b style="font-size:20px">${t("noReels")}</b><p class="mut">${t("noReelsD")}</p></div>`}</div>`;
+  el.querySelectorAll("#set,#set2").forEach(b => b.onclick = openSettings);
+}
+
+// ---- Sheets ----------------------------------------------------------------------------------
+function sheet(html, onOpen) {
+  const scrim = document.createElement("div"); scrim.className = "scrim";
+  const sh = document.createElement("div"); sh.className = "sheet"; sh.innerHTML = `<div class="grab"></div>${html}`;
+  app.append(scrim, sh);
+  let closed = false; const close = () => { if (closed) return; closed = true; scrim.classList.add("out"); sh.classList.add("out"); setTimeout(() => { scrim.remove(); sh.remove(); }, 300); };
+  scrim.onclick = close;
+  // swipe-down to dismiss (from the grabber / title)
+  let y0 = null, dy = 0;
+  sh.addEventListener("touchstart", e => { if (e.target.closest(".grab,h3")) { y0 = e.touches[0].clientY; dy = 0; sh.style.transition = ""; } }, { passive: true });
+  sh.addEventListener("touchmove", e => { if (y0 == null) return; dy = Math.max(0, e.touches[0].clientY - y0); sh.style.transform = `translateY(${dy}px)`; }, { passive: true });
+  sh.addEventListener("touchend", () => { if (y0 == null) return; y0 = null;
+    if (dy > 100) close(); else { sh.style.transition = "transform .35s var(--spring)"; sh.style.transform = ""; } });
+  onOpen?.(sh, close); return close;
+}
+function openSettings() {
+  sheet(`<h3>${t("settings")}</h3>
+    <div class="lbl">${t("language")}</div><div class="lang"><button class="chip ${S.lang === "ru" ? "on" : ""}" data-l="ru">🇷🇺 Русский</button><button class="chip ${S.lang === "en" ? "on" : ""}" data-l="en">🇬🇧 English</button></div>
+    <div class="perm" style="margin-top:14px"><div style="flex:1"><div class="t">${t("reduceMotion")}</div></div><button class="sw ${S.reduce ? "on" : ""}" id="rm"></button></div>
+    <div class="lbl">${t("dataAccess")}</div>
+    ${[["media", "pMedia"], ["notif", "pNotif"], ["analytics", "pAnalytics"]].map(([k, l]) => `<div class="perm" style="margin-bottom:8px"><div style="flex:1"><div class="t">${t(l)}</div></div><button class="sw ${S.consent[k] ? "on" : ""}" data-k="${k}"></button></div>`).join("")}
+    <div class="lbl">${t("myTopics")}</div><div class="chips" id="mt">${TOPICS.map(x => `<button class="chip ${S.topics.includes(x.id) ? "on" : ""}" data-t="${x.id}">${x.e} ${x[S.lang]}</button>`).join("")}</div>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-top:16px"><button class="btn sec" id="sim">${t("simulate")}</button>
+      <button class="btn sec" id="rs">${t("reset")}</button><button class="btn sec" id="rv" style="color:var(--red)">${t("revoke")}</button></div>`, (sh, close) => {
+    sh.querySelectorAll("[data-l]").forEach(b => b.onclick = () => { S.lang = b.dataset.l; save(); close(); haptic(); setTimeout(() => { tab = "me"; document.documentElement.lang = S.lang; vMain(); }, 280); });
+    $("#rm", sh).onclick = e => { S.reduce = !S.reduce; e.currentTarget.classList.toggle("on"); app.classList.toggle("reduce", S.reduce); save(); };
+    sh.querySelectorAll("[data-k]").forEach(s => s.onclick = () => { S.consent[s.dataset.k] = !S.consent[s.dataset.k]; s.classList.toggle("on"); save(); haptic(6); });
+    sh.querySelectorAll("#mt [data-t]").forEach(c => c.onclick = () => { const id = c.dataset.t;
+      if (S.topics.includes(id) && S.topics.length <= 3) { replay(c, "shake .45s"); return toast(t("min3")); }
+      S.topics = S.topics.includes(id) ? S.topics.filter(x => x !== id) : [...S.topics, id]; c.classList.toggle("on"); replay(c, "tabPop .4s var(--spring)"); save(); haptic(6); });
+    $("#sim", sh).onclick = () => { close(); setTimeout(simulateMine, 300); };
+    $("#rs", sh).onclick = () => { const keep = { lang: S.lang, user: S.user, topics: S.topics, consent: S.consent, step: "main" }; S = { ...fresh(), ...keep }; idb.clear(); save(); close(); setTimeout(() => switchTab("me", true), 300); };
+    $("#rv", sh).onclick = () => { S = { ...fresh(), lang: S.lang, step: "login" }; idb.clear(); save(); close(); tab = "home"; setTimeout(() => renderStep(true), 300); };
+  });
+}
+function simulateMine() {
+  const mine = S.reels.filter(r => r.owner === "me" && r.status !== "out");
+  if (!mine.length) { toast(t("noReelsD")); return; }
+  const changed = [];
+  mine.forEach(r => { const p = Math.random(); for (let k = 0; k < RULES.qualBattles && r.status !== "out"; k++) {
+    const opp = S.reels.find(x => x.topic === r.topic && x.id !== r.id && x.status !== "out") || mkReel({ topic: r.topic });
+    const before = r.status; Math.random() < p ? applyVote(r, opp) : applyVote(opp, r);
+    if (before !== r.status && (r.status === "king" || r.status === "out") && !changed.includes(r)) changed.push(r); } });
+  switchTab("me", true); changed.forEach((r, k) => setTimeout(() => celebrate(r), 400 + k * 2800));
+}
+
+// ---- Create: record / gallery / link ------------------------------------------------------------
+function openCreate() {
+  sheet(`<h3>${t("create")}</h3>
+    <button class="opt" data-o="rec"><div class="oi" style="background:var(--ig)">${ic("camera")}</div><div><b>${t("recordO")}</b><span class="mut">${t("recordD", { s: RULES.maxRecordSec })}</span></div></button>
+    <button class="opt" data-o="gal"><div class="oi" style="background:linear-gradient(135deg,#43cea2,#185a9d)">${ic("image")}</div><div><b>${t("galleryO")}</b><span class="mut">${t("galleryD")}</span></div></button>
+    <button class="opt" data-o="link"><div class="oi" style="background:linear-gradient(135deg,#8e2de2,#4a00e0)">${ic("link")}</div><div><b>${t("linkO")}</b><span class="mut">${t("linkD")}</span></div></button>
+    <input type="file" id="file" accept="video/*" hidden>`, (sh, close) => {
+    sh.querySelector("[data-o=rec]").onclick = () => { close(); setTimeout(openCamera, 250); };
+    sh.querySelector("[data-o=gal]").onclick = () => $("#file", sh).click();
+    $("#file", sh).onchange = async e => { const f = e.target.files[0]; if (!f) return; close(); const hash = await fileHash(f); compose({ blob: f, hash }); };
+    sh.querySelector("[data-o=link]").onclick = () => { close(); setTimeout(() => compose({ link: true }), 250); };
+  });
+}
+async function fileHash(blob) {
+  try { const d = await crypto.subtle.digest("SHA-256", await blob.arrayBuffer()); return [...new Uint8Array(d)].map(x => x.toString(16).padStart(2, "0")).join(""); }
+  catch { return `${blob.size}-${blob.type}`; }
+}
+/** Duplicate check: same Instagram shortcode (links) or same file hash (uploads). */
+function findDuplicate({ code, hash }) { return S.reels.find(r => (code && r.code === code) || (hash && r.hash === hash)); }
+function suggestTopic(text) {
+  const s = (text || "").toLowerCase(); const hit = TOPICS.find(x => x.kw.some(k => s.includes(k)));
+  return hit?.id || S.topics[0] || "humor";
+}
+function compose(src) {
+  const dupMsg = d => t("dup", { h: esc(d.handle), t: tn(d.topic) });
+  if (src.hash) { const d = findDuplicate({ hash: src.hash }); if (d) { toast("⛔ " + dupMsg(d), 4200); haptic([40, 40, 40]); return; } }
+  const url = src.blob ? URL.createObjectURL(src.blob) : null;
+  let tp = S.topics[0] || "humor", code = null, touched = false;
+  const order = [...S.topics, ...TOPICS.map(x => x.id).filter(x => !S.topics.includes(x))];
+  sheet(`<h3>${t("create")}</h3>
+    ${src.link ? `<input class="field" id="ln" placeholder="${t("linkPh")}" inputmode="url" autocomplete="off"><div id="le"></div>` : ""}
+    <div class="compose" style="margin-top:${src.link ? 12 : 0}px"><div class="preview" id="pv">${url ? `<video src="${url}" autoplay muted loop playsinline style="width:100%;height:100%;object-fit:cover"></video>` : `<div class="media">${mediaHTML({ topic: tp, src: "fake" }, { thumb: true })}</div>`}</div>
+      <textarea class="field" id="cp" placeholder="${t("caption")}" maxlength="220"></textarea></div>
+    <div class="lbl"><span>${t("topicFor")}</span><span class="mut" style="font-weight:400">${t("suggested")}</span></div>
+    <div class="hscroll" style="padding:0 0 4px" id="tps">${order.map(id => `<button class="chip ${id === tp ? "on" : ""}" data-t="${id}">${topic(id).e} ${tn(id)}</button>`).join("")}</div>
+    <button class="btn" id="pb" style="margin-top:14px" ${src.link ? "disabled" : ""}>${t("publish")}</button>`, (sh, close) => {
+    const setTopic = id => { if (id === tp) return; tp = id; sh.querySelectorAll("#tps .chip").forEach(c => { c.classList.toggle("on", c.dataset.t === id); if (c.dataset.t === id) { replay(c, "tabPop .4s var(--spring)"); c.scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" }); } });
+      if (!url && !code) $("#pv", sh).innerHTML = `<div class="media">${mediaHTML({ topic: tp, src: "fake" }, { thumb: true })}</div>`; };
+    sh.querySelectorAll("#tps .chip").forEach(c => c.onclick = () => { touched = true; setTopic(c.dataset.t); haptic(6); });
+    $("#cp", sh).oninput = e => { if (!touched) setTopic(suggestTopic(e.target.value)); };
+    if (src.link) { const ln = $("#ln", sh), le = $("#le", sh), pb = $("#pb", sh);
+      ln.oninput = () => { code = reelCode(ln.value.trim()); le.innerHTML = ""; pb.disabled = !code;
+        if (ln.value.trim() && !code) le.innerHTML = `<div class="err">${t("badLink")}</div>`;
+        const d = code && findDuplicate({ code }); if (d) { le.innerHTML = `<div class="err">⛔ ${dupMsg(d)}</div>`; pb.disabled = true; haptic([40, 40, 40]); }
+        if (code && !d) $("#pv", sh).innerHTML = `<iframe src="https://www.instagram.com/reel/${esc(code)}/embed" style="width:100%;height:100%;border:0" loading="lazy" title="Instagram Reel"></iframe>`; };
+      setTimeout(() => ln.focus(), 400); }
+    $("#pb", sh).onclick = async () => {
+      if (code && findDuplicate({ code })) return;
+      const r = mkReel({ owner: "me", handle: S.user.handle, topic: tp, capText: $("#cp", sh).value.trim(), src: src.blob ? "blob" : "link", code, hash: src.hash || null, url: code ? `https://www.instagram.com/reel/${code}/` : "" });
+      sh.innerHTML = `<div class="grab"></div><div class="ringwrap"><svg viewBox="0 0 100 100"><defs><linearGradient id="gr"><stop offset="0" stop-color="#feda75"/><stop offset=".5" stop-color="#d62976"/><stop offset="1" stop-color="#4f5bd5"/></linearGradient></defs>
+        <circle cx="50" cy="50" r="44" stroke="#333"/><circle id="rg" cx="50" cy="50" r="44" stroke="url(#gr)" stroke-dasharray="276.5" stroke-dashoffset="276.5"/></svg>
+        <div class="pct" id="pc">0%</div><b>${t("uploading")}</b></div>`;
+      if (src.blob) { await idb.put(r.id, src.blob); blobUrls[r.id] = url; }
+      let p = 0; const iv = setInterval(() => { p = Math.min(100, p + 4 + Math.random() * 9); const rg = $("#rg", sh), pc = $("#pc", sh); if (!rg) return clearInterval(iv);
+        rg.style.strokeDashoffset = 276.5 * (1 - p / 100); pc.textContent = Math.round(p) + "%";
+        if (p >= 100) { clearInterval(iv); S.reels.push(r); save(); haptic([10, 40, 10, 40, 30]); close(); confetti();
+          toast(`🎉 <div><b>${t("published")}</b><div class="mut">${t("publishedD")}</div></div>`, 3600); setTimeout(() => switchTab("me"), 200); } }, 90);
+    };
+  });
+}
+function openCamera() {
+  let stream = null, rec = null, chunks = [], facing = "user", t0 = 0, raf = 0;
+  const pg = document.createElement("div"); pg.className = "page cam enter";
+  pg.innerHTML = `<video id="cv" autoplay muted playsinline></video><div class="camtop"><button class="ibtn" id="cx">${ic("close")}</button><button class="ibtn" id="cf">${ic("flip")}</button></div>
+    <div class="timer" id="tm">0:00</div>
+    <button class="shut" id="sh" aria-label="record"><svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="45" fill="none" stroke="#fff8" stroke-width="6"/><circle id="sr" cx="50" cy="50" r="45" fill="none" stroke="#ff3040" stroke-width="6" stroke-linecap="round" stroke-dasharray="282.7" stroke-dashoffset="282.7"/></svg><div class="dot"></div></button>`;
+  app.appendChild(pg);
+  const stop = () => { stream?.getTracks().forEach(x => x.stop()); cancelAnimationFrame(raf); };
+  const close = () => { stop(); pg.classList.add("leave"); setTimeout(() => pg.remove(), 300); };
+  const start = async () => { stop();
+    try { stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: facing, width: { ideal: 1080 }, height: { ideal: 1920 } }, audio: true }); $("#cv", pg).srcObject = stream; pg.classList.toggle("env", facing === "environment"); }
+    catch { if (!$(".camerr", pg)) pg.insertAdjacentHTML("beforeend", `<div class="camerr">${t("camErr")}</div>`); $("#sh", pg).style.display = "none"; } };
+  $("#cx", pg).onclick = close;
+  $("#cf", pg).onclick = e => { if (rec) return; facing = facing === "user" ? "environment" : "user"; replay(e.currentTarget, "tabPop .45s var(--spring)"); haptic(6); start(); };
+  const finish = () => { if (rec?.state === "recording") rec.stop(); };
+  const tick = () => { const s = (Date.now() - t0) / 1000; $("#tm", pg).textContent = `0:${String(Math.floor(s)).padStart(2, "0")}`;
+    $("#sr", pg).style.strokeDashoffset = 282.7 * (1 - Math.min(1, s / RULES.maxRecordSec)); if (s >= RULES.maxRecordSec) return finish(); raf = requestAnimationFrame(tick); };
+  $("#sh", pg).onclick = () => {
+    if (!stream) return;
+    if (rec) return finish();
+    chunks = []; try { rec = new MediaRecorder(stream); } catch { return toast(t("camErr")); }
+    rec.ondataavailable = e => e.data.size && chunks.push(e.data);
+    rec.onstop = async () => { const blob = new Blob(chunks, { type: rec.mimeType || "video/webm" }); close(); compose({ blob, hash: await fileHash(blob) }); };
+    rec.start(250); t0 = Date.now(); haptic(20); $("#sh", pg).classList.add("rec"); $("#tm", pg).classList.add("on"); tick();
+  };
+  start();
+}
+
+// ---- Boot ----------------------------------------------------------------------------------------
+(async () => {
+  for (const r of S.reels.filter(x => x.src === "blob")) { const b = await idb.get(r.id); if (b) blobUrls[r.id] = URL.createObjectURL(b); else r.src = "fake"; }
+  if (S.step === "main") S.step = "splash";
+  renderStep();
+})();
 </script>
 </body>
 </html>

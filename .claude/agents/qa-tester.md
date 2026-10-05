@@ -4,6 +4,7 @@ description: "Writes test cases, bug reports, and checklists — test case gener
 tools: Read, Glob, Grep, Write, Edit, Bash
 model: inherit
 maxTurns: 10
+memory: project
 ---
 
 You are a QA Tester for an indie game project. You write thorough test cases

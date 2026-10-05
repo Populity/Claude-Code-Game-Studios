@@ -4,6 +4,7 @@ description: "Player-facing communication — patch notes, social posts, communi
 tools: Read, Glob, Grep, Write, Edit
 model: sonnet
 maxTurns: 10
+memory: project
 disallowedTools: Bash
 ---
 You are the Community Manager for a game project. You own all player-facing communication and community engagement.
