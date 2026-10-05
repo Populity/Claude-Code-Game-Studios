@@ -1,5 +1,20 @@
 # VSV — deployment and server sizing
 
+## Install on your server (one command)
+Buy a VPS with **Ubuntu 24.04** (minimum now: 2 vCPU / 4 GB RAM / 40 GB SSD; for real users: 4 vCPU / 8 GB / 80 GB NVMe).
+Open its console (SSH or the provider's web console), become root and run:
+
+```
+curl -fsSL https://raw.githubusercontent.com/Populity/Claude-Code-Game-Studios/claude/exciting-darwin-vvv3fd/deploy/bootstrap.sh | bash
+```
+With a domain pointed at the server IP (A record), add it for automatic HTTPS:
+```
+curl -fsSL https://raw.githubusercontent.com/Populity/Claude-Code-Game-Studios/claude/exciting-darwin-vvv3fd/deploy/bootstrap.sh | DOMAIN=vsv.example.com bash
+```
+The script installs Docker, firewall (22/80/443 only), fail2ban, automatic security updates and swap,
+starts the app behind Caddy (HTTPS), and installs a 5-minute timer that pulls new commits from the
+branch and redeploys. New code pushed to the branch reaches the server automatically — nobody needs SSH.
+
 ## GPU is not needed
 VSV does no 3D rendering and no on-server AI. Votes, ratings and the database are CPU/RAM work;
 video conversion (ffmpeg, H.264) runs fine on CPU. A 2 GB GPU adds nothing — don't pay for it.

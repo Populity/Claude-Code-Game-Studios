@@ -1,0 +1,7 @@
+# Automatic HTTPS when SITE_ADDRESS is a domain (e.g. vsv.example.com); plain HTTP on :80 otherwise.
+{$SITE_ADDRESS::80} {
+	encode zstd gzip
+	header -Server
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+	reverse_proxy web:80
+}
