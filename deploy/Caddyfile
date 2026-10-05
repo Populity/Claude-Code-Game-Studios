@@ -3,5 +3,13 @@
 	encode zstd gzip
 	header -Server
 	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
-	reverse_proxy web:80
+	request_body {
+		max_size 210MB
+	}
+	handle /api/* {
+		reverse_proxy api:8080
+	}
+	handle {
+		reverse_proxy web:80
+	}
 }

@@ -7,6 +7,19 @@ services:
     read_only: true
     tmpfs: ["/var/cache/nginx", "/var/run", "/tmp"]
     security_opt: ["no-new-privileges:true"]
+  api:
+    build: { context: .., dockerfile: deploy/Dockerfile.api }
+    restart: always
+    expose: ["8080"]
+    environment:
+      PUBLIC_URL: ${PUBLIC_URL:-}
+      META_APP_SECRET: ${META_APP_SECRET:-}
+    volumes:
+      - vsv_data:/data
+    read_only: true
+    tmpfs: ["/tmp"]
+    mem_limit: 512m
+    security_opt: ["no-new-privileges:true"]
   caddy:
     image: caddy:2-alpine
     restart: always
@@ -17,8 +30,9 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
-    depends_on: [web]
+    depends_on: [web, api]
     security_opt: ["no-new-privileges:true"]
 volumes:
+  vsv_data:
   caddy_data:
   caddy_config:
