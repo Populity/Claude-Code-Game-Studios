@@ -12,7 +12,7 @@ DIR=/opt/vsv
 echo "==> System packages"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
-apt-get install -y -qq ca-certificates curl git ufw fail2ban unattended-upgrades >/dev/null
+apt-get install -y -qq ca-certificates curl git ufw fail2ban unattended-upgrades util-linux >/dev/null
 dpkg-reconfigure -f noninteractive unattended-upgrades >/dev/null || true
 
 echo "==> Swap (builds need memory on small servers)"
@@ -33,7 +33,13 @@ systemctl enable --now fail2ban >/dev/null
 echo "==> Code"
 if [ -d "$DIR/.git" ]; then git -C "$DIR" fetch -q origin "$BRANCH" && git -C "$DIR" reset -q --hard "origin/$BRANCH"
 else git clone -q --branch "$BRANCH" "$REPO" "$DIR"; fi
-echo "SITE_ADDRESS=${DOMAIN:-:80}" > "$DIR/deploy/.env"
+# .env also holds PUBLIC_URL / META_APP_SECRET set by hand: update only our keys, never truncate it.
+ENVF="$DIR/deploy/.env"; touch "$ENVF"; chmod 600 "$ENVF"
+setenv() { sed -i "/^$1=/d" "$ENVF"; echo "$1=$2" >> "$ENVF"; }
+if [ -n "${DOMAIN:-}" ]; then setenv SITE_ADDRESS "$DOMAIN"; sed -i "/^REJECT_ADDRESS=/d" "$ENVF"
+elif ! grep -q "^SITE_ADDRESS=" "$ENVF"; then setenv SITE_ADDRESS ":80"; fi
+# Plain-HTTP mode serves every Host itself, so Caddy's reject-other-hosts block must not claim :80 too.
+if grep -q "^SITE_ADDRESS=:80$" "$ENVF"; then setenv REJECT_ADDRESS "http://reject.invalid"; fi
 
 echo "==> Start"
 docker compose --project-directory "$DIR/deploy" -f "$DIR/deploy/docker-compose.yml" up -d --build
@@ -76,6 +82,9 @@ Description=VSV nightly backup
 [Service]
 Type=oneshot
 ExecStart=/usr/bin/env bash $DIR/deploy/backup.sh
+# 1 vCPU box: the backup yields to the app.
+Nice=15
+IOSchedulingClass=idle
 UNIT
 cat > /etc/systemd/system/vsv-backup.timer <<'UNIT'
 [Unit]
