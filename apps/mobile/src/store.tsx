@@ -1,6 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { ApiError, api, clearToken, loadToken, setUnauthorizedHandler } from "./api";
+import { ApiError, api, clearToken, loadToken, setUnauthorizedHandler, type Stats } from "./api";
 import { tr, type Key, type Lang } from "./i18n";
 
 export type Step = "lang" | "intro1" | "intro2" | "login" | "consent" | "topics" | "main";
@@ -8,10 +8,11 @@ export interface Consent { media: boolean; notif: boolean; analytics: boolean }
 /** Device-side state; clips, ratings and votes live on the server. */
 export interface State {
   v: 2; step: Step; lang: Lang; handle: string; consent: Consent; topics: string[];
-  mode: "both" | "seq"; votes: number;
+  mode: "both" | "seq"; stats: Stats;
 }
+export const NO_STATS: Stats = { clips: 0, wins: 0, kings: 0, votes: 0, streak: 0, bestStreak: 0 };
 const KEY = "vsv.app.v2";
-const fresh = (): State => ({ v: 2, step: "lang", lang: "ru", handle: "", consent: { media: true, notif: true, analytics: true }, topics: [], mode: "both", votes: 0 });
+const fresh = (): State => ({ v: 2, step: "lang", lang: "ru", handle: "", consent: { media: true, notif: true, analytics: true }, topics: [], mode: "both", stats: NO_STATS });
 
 function useStoreImpl() {
   const [s, setS] = useState<State | null>(null);
@@ -24,16 +25,18 @@ function useStoreImpl() {
   const t = useCallback((k: Key, v?: Record<string, string | number>) => tr(ref.current?.lang ?? "ru", k, v), [s?.lang]);
 
   /** Drops the session and returns to the login step (keeps language). */
-  const logout = useCallback(async () => { await clearToken(); update(x => ({ ...fresh(), lang: x.lang, step: "login" })); }, [update]);
+  const dropSession = useCallback(async () => { await clearToken(); update(x => ({ ...fresh(), lang: x.lang, step: "login" })); }, [update]);
+  /** Revokes the session on the server (errors ignored), then drops it locally. */
+  const logout = useCallback(async () => { await api.logout().catch(() => {}); await dropSession(); }, [dropSession]);
 
   useEffect(() => {
     let alive = true;
     (async () => {
       let st = fresh();
-      try { const raw = await AsyncStorage.getItem(KEY); const p = raw ? JSON.parse(raw) as State : null; if (p?.v === 2) st = p; } catch { /* first run */ }
+      try { const raw = await AsyncStorage.getItem(KEY); const p = raw ? JSON.parse(raw) as State : null; if (p?.v === 2) st = { ...fresh(), ...p }; } catch { /* first run */ }
       const tok = await loadToken();
       if (tok) {
-        try { const me = await api.me(); st = { ...st, step: "main", handle: me.handle, lang: me.lang, topics: me.topics }; }
+        try { const me = await api.me(); st = { ...st, step: "main", handle: me.handle, lang: me.lang, topics: me.topics, stats: me.stats ?? st.stats }; }
         catch (e) {
           if (e instanceof ApiError && e.status === 401) { await clearToken(); st = { ...fresh(), lang: st.lang }; }
           else if (st.step !== "main") st = { ...fresh(), lang: st.lang }; // offline and nothing cached
@@ -41,10 +44,10 @@ function useStoreImpl() {
       } else if (st.step === "main") st = { ...fresh(), lang: st.lang, step: "login" };
       if (!alive) return;
       persist(st); setS(st);
-      setUnauthorizedHandler(() => { void logout(); });
+      setUnauthorizedHandler(() => { void dropSession(); });
     })();
     return () => { alive = false; setUnauthorizedHandler(null); };
-  }, [logout]);
+  }, [dropSession]);
 
   return useMemo(() => ({
     s, t, update, logout,
@@ -58,6 +61,8 @@ function useStoreImpl() {
     setLang(lang: Lang) { update(x => ({ ...x, lang })); api.updateMe({ lang }).catch(() => {}); },
     /** Saves the topic list on the server first; throws on failure so the UI can keep the old list. */
     async setTopics(topics: string[]) { await api.updateMe({ topics }); update(x => ({ ...x, topics })); },
+    /** Re-reads /me so the streak and profile numbers match the server (errors ignored). */
+    async refreshStats() { try { const me = await api.me(); update(x => ({ ...x, stats: me.stats ?? x.stats })); } catch { /* keep old numbers */ } },
     async deleteAccount() { await api.deleteMe(); update(x => ({ ...fresh(), lang: x.lang, step: "login" })); },
   }), [s, t, update, logout]);
 }

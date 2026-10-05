@@ -3,6 +3,7 @@ import { ActivityIndicator, ScrollView, StyleSheet, Switch, TextInput, View } fr
 import * as ImagePicker from "expo-image-picker";
 import { useApp } from "../store";
 import { api, uploadClip } from "../api";
+import { makePoster } from "../poster";
 import { errMsg } from "../errors";
 import { TOPICS, topicOf } from "../data";
 import { instagramShortcode, suggestTopic } from "../core";
@@ -45,7 +46,11 @@ export function Create({ open, onClose, onPublished }: { open: boolean; onClose:
     if (draft.src === "link" && !code) return;
     setBusy(true); setErr(null); setPct(0);
     try {
-      if (draft.src === "file") await uploadClip({ uri: draft.uri, mime: draft.mime }, { topic, caption }, f => setPct(Math.round(f * 100)));
+      if (draft.src === "file") {
+        const clip = await uploadClip({ uri: draft.uri, mime: draft.mime }, { topic, caption }, f => setPct(Math.round(f * 100)));
+        // The poster is a nicety: any failure here must not fail the publish.
+        try { await api.uploadPoster(clip.id, await makePoster(draft.uri)); } catch { /* clip stays without poster */ }
+      }
       else await api.addLink({ url: link.trim(), topic, caption });
     } catch (e) { setBusy(false); haptic("error"); setErr(errMsg(e, t)); return; }
     haptic("success"); toast("🎉 " + t("published")); onClose(); onPublished();

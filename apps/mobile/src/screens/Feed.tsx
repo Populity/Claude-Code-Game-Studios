@@ -11,7 +11,9 @@ import { ClipMedia, Progress, useToast } from "../ui/media";
 import { Icon } from "../ui/Icon";
 import { useCelebrate } from "../celebrate";
 
-type Battle = BattleTicket & { key: string };
+type Battle = BattleTicket & { key: string; at: number };
+/** Tickets live 15 min on the server; prefetched battles older than this are replaced. */
+const MAX_AGE_MS = 14 * 60_000;
 const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
 
 function Half({ clip, side, active, seen, faded, grow, onTap, onMore, lang, t }: {
@@ -37,7 +39,7 @@ function Half({ clip, side, active, seen, faded, grow, onTap, onMore, lang, t }:
 }
 
 function BattleCard({ b, height, active, onDone, onReport }: { b: Battle; height: number; active: boolean; onDone: () => void; onReport: (c: Clip) => void }) {
-  const { s, t, update } = useApp();
+  const { s, t, update, refreshStats } = useApp();
   const toast = useToast();
   const celebrate = useCelebrate();
   const [mode, setMode] = useState(s.mode);
@@ -78,12 +80,13 @@ function BattleCard({ b, height, active, onDone, onReport }: { b: Battle; height
       }
     } catch (e) {
       sending.current = false; haptic("error");
-      const stale = e instanceof ApiError && [403, 409, 425].includes(e.status);
-      toast("⚠️ " + errMsg(e, t));
-      if (stale) setTimeout(onDone, 900);
+      const gone = e instanceof ApiError && e.status === 410;
+      const stale = gone || (e instanceof ApiError && [403, 409, 425].includes(e.status));
+      if (!gone) toast("⚠️ " + errMsg(e, t));
+      if (stale) setTimeout(onDone, gone ? 0 : 900);
       return;
     }
-    update(x => ({ ...x, votes: x.votes + 1 }));
+    refreshStats();
     const clips: [Clip, Clip] = live.map(c => (c.id === r.winner.id ? r.winner : c.id === r.loser.id ? r.loser : c)) as [Clip, Clip];
     setResult({ side: i, delta: r.delta, clips }); setMode("both");
     Animated.parallel([
@@ -157,7 +160,7 @@ export function Feed({ initialTopic = "foryou", onCreate }: { initialTopic?: str
       for (let k = 0; k < n; k++) {
         const b = await api.battle(topic === "foryou" ? undefined : topic);
         if (gen !== r.gen) return;
-        r.count++; setBattles(x => [...x, { ...b, key: b.bid }]); setPhase("ready");
+        r.count++; setBattles(x => [...x, { ...b, key: b.bid, at: Date.now() }]); setPhase("ready");
       }
     } catch (e) {
       if (gen !== r.gen) return;
@@ -188,14 +191,20 @@ export function Feed({ initialTopic = "foryou", onCreate }: { initialTopic?: str
     else if (r.exhausted) { setBattles([]); setPhase("empty"); r.count = 0; }
     else { r.waiting = i + 1; fill(1); }
   };
-  const topics = ["foryou", ...s.topics, ...TOPICS.map(x => x.id).filter(x => !s.topics.includes(x))];
-
-  /** After a report or block the prefetched battles may contain that clip or author, so refetch ahead. */
-  const dropAhead = () => {
+  /** Prefetched battles may hold a blocked/reported clip or an expiring ticket, so refetch everything ahead. */
+  const dropAhead = (scroll = true) => {
     const r = run.current, i = active;
-    r.gen++; r.fetching = false; r.exhausted = false; r.count = i + 1; r.waiting = i + 1;
+    r.gen++; r.fetching = false; r.exhausted = false; r.count = i + 1; r.waiting = scroll ? i + 1 : -1;
     setBattles(x => x.slice(0, i + 1)); fill(2);
   };
+  // Tickets expire server-side after 15 min: skip an expired active battle, refill expired ones ahead.
+  useEffect(() => {
+    const now = Date.now();
+    if (battles[active] && now - battles[active].at > MAX_AGE_MS) advance(active)();
+    else if (battles.slice(active + 1).some(b => now - b.at > MAX_AGE_MS)) dropAhead(false);
+  }, [active, battles.length]);
+  const topics = ["foryou", ...s.topics, ...TOPICS.map(x => x.id).filter(x => !s.topics.includes(x))];
+
   const doReport = async (reason: string) => {
     const c = rep; if (!c) return; setRep(null);
     try { await api.report(c.id, reason); haptic("success"); toast("✅ " + t("reported")); dropAhead(); } catch (e) { toast("⚠️ " + errMsg(e, t)); }
@@ -206,7 +215,7 @@ export function Feed({ initialTopic = "foryou", onCreate }: { initialTopic?: str
   };
 
   return <View style={{ flex: 1 }}>
-    <View style={st.top}><Text style={st.logo}>VSV</Text><T style={{ fontWeight: "700" }}>🔥 {s.votes}</T>
+    <View style={st.top}><Text style={st.logo}>VSV</Text><T style={{ fontWeight: "700" }}>🔥 {s.stats.streak}</T>
       <Tap testID="lang-toggle" onPress={() => { const l = s.lang === "ru" ? "en" : "ru"; update(x => ({ ...x, lang: l })); api.updateMe({ lang: l }).catch(() => {}); }} style={st.lang}><Text style={{ color: C.fg, fontWeight: "800", fontSize: 13 }}>{s.lang.toUpperCase()}</Text></Tap></View>
     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12, paddingHorizontal: 14, paddingBottom: 10, paddingTop: 4 }} style={{ flexGrow: 0, flexShrink: 0 }}>
       {topics.map(id => { const tp = id === "foryou" ? null : topicOf(id); const on = id === topic;

@@ -11,9 +11,10 @@ export const API_BASE: string = Platform.OS === "web"
 /** A clip as the API returns it. */
 export interface Clip {
   id: string; handle: string; topic: string; caption: string; src: "file" | "link" | "demo"; code: string | null;
-  video: string | null; wins: number; losses: number; rating: number; status: ClipStatus; hist: number[]; ts: number;
+  video: string | null; poster: string | null; wins: number; losses: number; rating: number; status: ClipStatus; hist: number[]; ts: number;
 }
-export interface Me { id: string; handle: string; lang: "ru" | "en"; topics: string[] }
+export interface Stats { clips: number; wins: number; kings: number; votes: number; streak: number; bestStreak: number }
+export interface Me { id: string; handle: string; lang: "ru" | "en"; topics: string[]; stats?: Stats }
 export interface BattleTicket { bid: string; ticket: string; topic: string; minWatchMs: number; a: Clip; b: Clip }
 export interface VoteResult { delta: number; winner: Clip; loser: Clip; milestones: string[] }
 
@@ -45,16 +46,17 @@ export async function deviceId(): Promise<string> {
 
 export const mediaUrl = (path: string) => `${API_BASE}${path}`;
 
-async function request<T>(method: string, path: string, opts: { body?: unknown; auth?: boolean; timeoutMs?: number; signal?: AbortSignal } = {}): Promise<T> {
+async function request<T>(method: string, path: string, opts: { body?: unknown; rawBody?: Blob; mime?: string; auth?: boolean; timeoutMs?: number; signal?: AbortSignal } = {}): Promise<T> {
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), opts.timeoutMs ?? 12_000);
   opts.signal?.addEventListener("abort", () => ctl.abort());
   const headers: Record<string, string> = { Accept: "application/json" };
   if (opts.body !== undefined) headers["Content-Type"] = "application/json";
+  if (opts.rawBody) headers["Content-Type"] = opts.mime ?? "application/octet-stream";
   if (opts.auth !== false && token) headers.Authorization = `Bearer ${token}`;
   let res: Response;
   try {
-    res = await fetch(`${API_BASE}${path}`, { method, headers, body: opts.body === undefined ? undefined : JSON.stringify(opts.body), signal: ctl.signal });
+    res = await fetch(`${API_BASE}${path}`, { method, headers, body: opts.rawBody ?? (opts.body === undefined ? undefined : JSON.stringify(opts.body)), signal: ctl.signal });
   } catch {
     throw new ApiError(0, ctl.signal.aborted ? "timeout" : "network");
   } finally { clearTimeout(timer); }
@@ -75,6 +77,13 @@ export const api = {
     return r.user;
   },
   me: () => request<Me>("GET", "/api/me"),
+  /** Revokes this session on the server; callers ignore failures and clear the local token anyway. */
+  logout: () => request<{ ok: true }>("POST", "/api/auth/logout", { timeoutMs: 5000 }),
+  deleteClip: (id: string) => request<{ ok: true }>("DELETE", `/api/clips/${encodeURIComponent(id)}`),
+  /** Uploads a JPEG/PNG/WebP poster (max 300 KB) for an owned clip. */
+  async uploadPoster(id: string, img: Blob): Promise<void> {
+    await request<{ poster: string }>("PUT", `/api/clips/${encodeURIComponent(id)}/poster`, { rawBody: img, mime: img.type || "image/jpeg", timeoutMs: 30_000 });
+  },
   updateMe: (p: { lang?: "ru" | "en"; topics?: string[] }) => request<{ ok: true }>("PUT", "/api/me", { body: p }),
   async deleteMe() { await request<{ ok: true }>("DELETE", "/api/me"); await clearToken(); },
   battle: (topic?: string) => request<BattleTicket>("GET", `/api/battle${topic ? `?topic=${encodeURIComponent(topic)}` : ""}`),

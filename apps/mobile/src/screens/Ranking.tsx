@@ -5,6 +5,7 @@ import { TOPICS, topicOf } from "../data";
 import { api, type Clip } from "../api";
 import { errMsg } from "../errors";
 import { C } from "../theme";
+import { PosterThumb } from "../ui/media";
 import { Avatar, Badge, Chip, Mut, Rise, T, useNative } from "../ui/kit";
 
 function Pod({ c, place, lang }: { c?: Clip; place: 1 | 2 | 3; lang: "ru" | "en" }) {
@@ -14,7 +15,7 @@ function Pod({ c, place, lang }: { c?: Clip; place: 1 | 2 | 3; lang: "ru" | "en"
   const h = { 1: 110, 2: 80, 3: 60 }[place];
   return <View style={{ flex: 1, alignItems: "center", gap: 5 }}>
     {place === 1 ? <Animated.Text style={{ fontSize: 30, marginBottom: -10, transform: [{ translateY: v.interpolate({ inputRange: [0, 1], outputRange: [-60, 0] }) }] }}>👑</Animated.Text> : null}
-    <Avatar size={place === 1 ? 82 : 62} label={topicOf(c.topic).e} colors={topicOf(c.topic).g} />
+    <PosterThumb clip={c} size={place === 1 ? 82 : 62} />
     <Text numberOfLines={1} style={{ color: C.fg, fontWeight: "700", fontSize: 12 }}>@{c.handle}</Text><Mut style={{ fontSize: 12 }}>{c.rating}</Mut>
     <Animated.View style={[st.col, { height: h, backgroundColor: place === 1 ? "#4a3c0e" : "#222", transform: [{ scaleY: v }] }]}><Text style={st.place}>{place}</Text></Animated.View>
   </View>;
@@ -39,7 +40,7 @@ export function Ranking() {
       {err ? <Mut style={{ textAlign: "center", padding: 16 }}>{err}</Mut> : null}
       <View style={st.podium}><Pod c={list[1]} place={2} lang={s.lang} /><Pod c={list[0]} place={1} lang={s.lang} /><Pod c={list[2]} place={3} lang={s.lang} /></View>
       {list.slice(3, 40).map((c, i) => <Rise key={c.id} i={Math.min(i, 8)} style={st.row}>
-        <Text style={st.rk}>{i + 4}</Text><Avatar size={44} label={topicOf(c.topic).e} colors={topicOf(c.topic).g} />
+        <Text style={st.rk}>{i + 4}</Text><PosterThumb clip={c} size={44} />
         <View style={{ flex: 1, minWidth: 0 }}><T numberOfLines={1} style={{ fontWeight: "700" }}>@{c.handle}{c.handle === s.handle ? " ⭐" : ""}</T><Mut numberOfLines={1}>{topicOf(c.topic)[s.lang]} · {c.wins}–{c.losses}</Mut></View>
         <View><Badge status={c.status} label={c.status === "king" ? "" : t(c.status)} /></View><Text style={st.score}>{c.rating}</Text></Rise>)}
     </ScrollView>}

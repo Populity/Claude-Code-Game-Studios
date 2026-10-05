@@ -1,11 +1,11 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
-import { Animated, Easing, Linking, StyleSheet, Text, View } from "react-native";
+import { Animated, Easing, Image, Linking, StyleSheet, Text, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useVideoPlayer, VideoView } from "expo-video";
 import { topicOf } from "../data";
 import { mediaUrl, type Clip } from "../api";
 import { C } from "../theme";
-import { useNative, haptic } from "./kit";
+import { Avatar, useNative, haptic } from "./kit";
 
 function Bob({ children, size, delay = 0 }: { children: string; size: number; delay?: number }) {
   const v = useRef(new Animated.Value(0)).current;
@@ -22,17 +22,31 @@ export function Progress({ active }: { active: boolean }) {
   return <View style={s.prog}><Animated.View style={[s.progFill, { width: v.interpolate({ inputRange: [0, 1], outputRange: ["0%", "100%"] }) }]} /></View>;
 }
 
-function FileVideo({ uri, active }: { uri: string; active: boolean }) {
+/** Plays a video; the poster stays visible until the first frame is ready. */
+function FileVideo({ uri, poster, active }: { uri: string; poster?: string | null; active: boolean }) {
   const player = useVideoPlayer(uri, p => { p.loop = true; p.muted = true; });
+  const [ready, setReady] = useState(player.status === "readyToPlay");
+  useEffect(() => { const sub = player.addListener("statusChange", ({ status }) => { if (status === "readyToPlay") setReady(true); }); return () => sub.remove(); }, [player]);
   useEffect(() => { active ? player.play() : player.pause(); }, [active, player]);
-  return <VideoView player={player} style={StyleSheet.absoluteFill} contentFit="cover" nativeControls={false} />;
+  return <>
+    {poster ? <Image source={{ uri: mediaUrl(poster) }} style={StyleSheet.absoluteFill} resizeMode="cover" /> : null}
+    <VideoView player={player} style={[StyleSheet.absoluteFill, poster && !ready ? { opacity: 0 } : null]} contentFit="cover" nativeControls={false} />
+  </>;
+}
+
+/** Square-ish avatar made from a clip's poster, falling back to its topic emoji. */
+export function PosterThumb({ clip, size }: { clip: Pick<Clip, "topic" | "poster">; size: number }) {
+  const tp = topicOf(clip.topic);
+  if (!clip.poster) return <Avatar size={size} label={tp.e} colors={tp.g} />;
+  return <Image source={{ uri: mediaUrl(clip.poster) }} style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: "#222" }} resizeMode="cover" />;
 }
 
 /** Renders a clip: server video (or a local preview uri), demo gradient, or an Instagram link card. */
-export function ClipMedia({ clip, uri, active = true, thumb = false }: { clip: Pick<Clip, "topic" | "src" | "video" | "code">; uri?: string; active?: boolean; thumb?: boolean }) {
+export function ClipMedia({ clip, uri, active = true, thumb = false }: { clip: Pick<Clip, "topic" | "src" | "video" | "code"> & { poster?: string | null }; uri?: string; active?: boolean; thumb?: boolean }) {
   const tp = topicOf(clip.topic);
   const source = uri ?? (clip.video ? mediaUrl(clip.video) : null);
-  if (source && !thumb) return <View style={StyleSheet.absoluteFill}><FileVideo uri={source} active={active} /></View>;
+  if (source && !thumb) return <View style={StyleSheet.absoluteFill}><FileVideo uri={source} poster={clip.poster} active={active} /></View>;
+  if (thumb && clip.poster) return <Image source={{ uri: mediaUrl(clip.poster) }} style={StyleSheet.absoluteFill} resizeMode="cover" />;
   return (
     <View style={[StyleSheet.absoluteFill, s.center]}>
       <LinearGradient colors={[tp.g[0], tp.g[1]]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
