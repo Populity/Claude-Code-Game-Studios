@@ -1,0 +1,31 @@
+import { chromium } from "playwright";
+const URL = "https://45-128-234-165.sslip.io/";
+const b = await chromium.launch({ channel: "chrome" });
+const p = await b.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, locale: "ru-RU" });
+const errs = []; p.on("console", m => m.type() === "error" && errs.push(m.text())); p.on("pageerror", e => errs.push("PAGEERR " + e.message));
+let token = null;
+p.on("response", async r => { if (!r.url().includes("/api/")) return; const u = r.url().replace(/^https:\/\/[^/]+/, ""); if (!u.startsWith("/api/battle")) console.log("API", r.request().method(), u.slice(0, 64), r.status());
+  if (u.endsWith("/api/auth/register") && r.status() === 201) token = (await r.json()).token; });
+const id = s => p.getByTestId(s);
+const shot = async n => { await p.waitForTimeout(1000); await p.screenshot({ path: `shots/${n}.png` }); console.log("SHOT", n, "|", (await p.innerText("body")).replace(/\s+/g, " ").slice(0, 140)); };
+try {
+  await p.goto(URL, { waitUntil: "networkidle" });
+  await p.getByText("Русский").click(); await id("next").click(); await p.waitForTimeout(600); await id("next").click();
+  await id("handle").fill("qa_ft_" + Date.now().toString().slice(-7)); await id("login").click(); await id("allow").click();
+  for (const t of ["humor", "food", "gaming"]) await id(`topic-${t}`).click();
+  await id("start").click(); await p.waitForTimeout(6500);
+  await id("vote-0").first().click(); await p.waitForTimeout(2500); await shot("20-streak");
+  await id("tab-create").click(); await p.waitForTimeout(800);
+  const [fc] = await Promise.all([p.waitForEvent("filechooser"), id("opt-gallery").click()]);
+  await fc.setFiles("test.webm"); await p.waitForTimeout(800);
+  await id("caption").fill("Постер QA"); await id("rights").click(); await id("publish").click(); await p.waitForTimeout(7000);
+  await id("tab-me").click(); await p.waitForTimeout(2500); await shot("21-profile-poster");
+  console.log("profile imgs:", await p.evaluate(() => [...document.querySelectorAll("img")].map(i => i.src).filter(s => s.includes("/poster"))));
+  await id("my-clip").first().click(); await shot("22-clip-sheet");
+  await id("clip-delete").click(); await shot("23-confirm");
+  await id("clip-delete-confirm").click(); await p.waitForTimeout(2000); await shot("24-deleted");
+  await id("settings").click(); await p.waitForTimeout(800); await p.getByText(/Выйти/).first().click(); await p.waitForTimeout(2500); await shot("25-logged-out");
+  if (token) console.log("me after logout:", (await fetch(URL + "api/me", { headers: { Authorization: "Bearer " + token } })).status);
+} catch (e) { console.log("FLOW ERROR", e.message.split("\n")[0]); await p.screenshot({ path: "shots/99-error.png" }); }
+console.log("ERRORS:", errs);
+await b.close();

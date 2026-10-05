@@ -13,10 +13,10 @@ Desktop.ini
 .claude/settings.local.json
 CLAUDE.local.md
 project.local.yaml
-production/session-logs/
+**/production/session-logs/
 # Ephemeral per-session checkpoint. directory-structure.md documents this as
 # gitignored; the rule was missing, so active.md would have been committed.
-production/session-state/
+**/production/session-state/
 .scratch/
 # Per-agent working memory written at runtime — not release material
 .claude/agent-memory/
@@ -172,3 +172,6 @@ $RECYCLE.BIN/
 /reports/
 /test-results/
 deploy/.env
+
+# Operator-only task file (server access steps) — kept local
+deploy/LOCAL_AGENT_TASK.md

@@ -8,9 +8,9 @@ _Updated 2026-10-05. Read this first after any new session, `/clear` or compacti
   `ufw` 22/80/443 only, `fail2ban`, unattended upgrades, swap, `vsv-update.timer`.
 - **Auto-deploy:** the server pulls branch `claude/exciting-darwin-vvv3fd` every 5 min and rebuilds.
   Push to that branch = deploy. Nobody needs SSH for normal releases.
-- **Access:** SSH by key from the founder's PC. ⚠ **Password login is still ENABLED** (probe on 2026-10-05:
-  `Permission denied (publickey,password)`); hardening + root password rotation are pending — the founder does
-  them by hand (auto-mode blocked the agent). Never put credentials in chat, commits or docs.
+- **Access:** SSH by key from the founder's PC only. Operational security state (SSH config, passwords,
+  open findings) is kept OFF this public repo — see the local checkpoint `production/session-state/active.md`.
+  Never put credentials or security status in chat, commits or docs.
 - **App URL:** https://45-128-234-165.sslip.io (free sslip.io name → Let's Encrypt HTTPS; http redirects).
   Set in `/opt/vsv/deploy/.env` (`SITE_ADDRESS`, `PUBLIC_URL`; gitignored, survives auto-updates).
   Own domain later: replace both values and `docker compose up -d`.

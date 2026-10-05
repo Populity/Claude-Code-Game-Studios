@@ -8,5 +8,6 @@ npm i playwright@1            # in a scratch folder; uses the installed Chrome (
 node flow.mjs                 # onboarding → battle → vote → explore / ranking / profile
 node upload.mjs               # records a 2 s webm in the browser, uploads it via the Create sheet
 node play.mjs                 # another user sees that clip in a battle and the <video> plays
+node features.mjs             # streak, poster after upload, delete own clip, logout
 ```
 Screenshots go to `shots/`; copy the ones a story needs into `production/qa/evidence/`.
