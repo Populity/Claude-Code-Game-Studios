@@ -8,7 +8,7 @@ import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { GRID, HEROES, ENEMIES, LEVELS, difficulty, ULT, COMBO, EARLY_WAVE_BONUS, SELL_RATIO } from './data.js';
-import { buildHero, setHeroLevel, animateHero, buildEnemy, animateEnemy } from './models.js';
+import { buildHero, setHeroLevel, animateHero, buildEnemy, animateEnemy, preloadModels } from './models.js';
 import { Sfx } from './audio.js';
 import { buildWorld, cellToWorld } from './world.js';
 
@@ -448,7 +448,8 @@ $('btnNext').onclick = () => { $('end').classList.remove('active'); const won = 
 $('btnEndMenu').onclick = () => { $('end').classList.remove('active'); quit(); };
 const G_idx = () => G.idx;
 function clearRun() { for (const b of beamPool.values()) world.remove(b); beamPool.clear(); labels.innerHTML = ''; }
-function quit() { clearRun(); G = null; Sfx.music(false); setupMenuScene(); show('menu'); }
+function quit() { clearRun(); G = null; Sfx.music(false); await preloadModels(HEROES);
+setupMenuScene(); show('menu'); }
 setInterval(updateHud, 250);
 
 addEventListener('keydown', e => {
@@ -493,6 +494,7 @@ function menuScene(t) {
 }
 document.addEventListener('click', () => Sfx.unlock(), { once: true });
 
+await preloadModels(HEROES);
 setupMenuScene(); show('menu');
 requestAnimationFrame(frame);
 // debug hook for automated QA

@@ -1,5 +1,21 @@
 // Procedural 3D models for heroes and enemies, with animation rigs.
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+// AI-generated character meshes (GLB). Heroes with a `model` path in data.js use them;
+// the procedural rig is the fallback when a file is missing or fails to load.
+const GLB = {};
+export async function preloadModels(defs) {
+  const loader = new GLTFLoader();
+  await Promise.all(defs.filter(d => d.model).map(d => loader.loadAsync(d.model).then(g => { GLB[d.id] = g.scene; }).catch(e => console.warn('model fallback', d.id, e.message))));
+}
+function glbBody(id, height) {
+  const src = GLB[id].clone(true); const wrap = new THREE.Group(); wrap.add(src);
+  const box = new THREE.Box3().setFromObject(src), size = box.getSize(new THREE.Vector3()), c = box.getCenter(new THREE.Vector3());
+  const k = height / size.y; src.scale.setScalar(k); src.position.set(-c.x * k, -box.min.y * k + 0.3, -c.z * k);
+  src.traverse(o => { if (o.isMesh) { o.castShadow = o.receiveShadow = true; if (o.material) o.material.envMapIntensity = 1.2; } });
+  return wrap;
+}
 
 const mat = (color, opts = {}) => new THREE.MeshPhysicalMaterial({ color, roughness: 0.5, metalness: 0.05, clearcoat: 0.4, clearcoatRoughness: 0.35, sheen: 0.3, ...opts });
 const glow = (color, i = 2) => new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: i });
@@ -53,7 +69,8 @@ export function buildHero(def) {
   ring.rotation.x = Math.PI / 2; ring.position.y = 0.32; root.add(ring);
 
   let h;
-  switch (def.id) {
+  if (GLB[def.id]) h = { g: glbBody(def.id, 2.8), rig: null };
+  else switch (def.id) {
     case 'sigma': {
       h = humanoid(0xd8b48c, 0x15151c, 0x22222a);
       const jaw = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.3, 0.5), mat(0xd8b48c)); jaw.position.set(0, -0.25, 0.08); h.rig.head.add(jaw);
@@ -137,6 +154,7 @@ export function animateHero(m, def, t, attackT) {
   const r = m.rig; const a = Math.max(0, attackT); // 1 → just attacked
   m.body.position.y = Math.sin(t * 3) * 0.05;
   m.stars.rotation.y = t * 2;
+  if (!r) { m.body.scale.y = m.body.scale.x * (1 + a * 0.06); return; }
   if (def.id === 'cat') {
     r.head.rotation.z = Math.sin(t * 8) * 0.2; r.head.position.y = 2.15 + Math.abs(Math.sin(t * 8)) * 0.12;
     r.discs.forEach(d => d.rotation.y = t * 12); r.tail.rotation.z = Math.sin(t * 5) * 0.4;

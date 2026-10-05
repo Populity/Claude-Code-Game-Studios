@@ -4,12 +4,12 @@
 export const GRID = { w: 30, h: 20, tile: 2 };
 
 export const HEROES = [
-  { id: 'sigma', name: 'Сигма Мьюер', emoji: '🗿', color: 0x9aa7ff, accent: 0x22e6ff,
+  { id: 'sigma', name: 'Сигма Мьюер', emoji: '🗿', model: 'assets/models/sigma.glb', color: 0x9aa7ff, accent: 0x22e6ff,
     desc: 'Снайпер. Молча мьюинг — и цель исчезает. Дальность огромная.',
     cost: 100, kind: 'sniper',
     levels: [ { dmg: 42, range: 11, rate: 1.1 }, { dmg: 85, range: 12.5, rate: 1.0 }, { dmg: 170, range: 14, rate: 0.85 } ],
     upg: [0, 120, 220] },
-  { id: 'rizz', name: 'Королева Ризза', emoji: '💅', color: 0xff5fb0, accent: 0xff2e88,
+  { id: 'rizz', name: 'Королева Ризза', emoji: '💅', model: 'assets/models/rizz.glb', color: 0xff5fb0, accent: 0xff2e88,
     desc: 'Луч обаяния: замедляет и плавит врагов. Маги теряют щиты.',
     cost: 120, kind: 'beam',
     levels: [ { dmg: 22, range: 7, rate: 0.1, slow: 0.45 }, { dmg: 38, range: 8, rate: 0.1, slow: 0.55 }, { dmg: 66, range: 9, rate: 0.1, slow: 0.65 } ],
