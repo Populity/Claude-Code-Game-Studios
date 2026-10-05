@@ -1,12 +1,25 @@
 # VSV production stack. Started and kept up to date by deploy/bootstrap.sh.
+# Every service: read-only root FS, no privilege escalation, all capabilities dropped (caddy keeps only
+# NET_BIND_SERVICE for 80/443), memory/PID caps so one runaway container can't take the 2 GB box down,
+# and rotated logs so they can't fill the disk.
+x-logging: &logging
+  driver: json-file
+  options: { max-size: "10m", max-file: "3" }
+
 services:
   web:
     build: { context: .., dockerfile: deploy/Dockerfile }
     restart: always
-    expose: ["80"]
+    expose: ["8080"]
+    # nginx-unprivileged runs as uid 101 on :8080; pid and temp paths live in /tmp.
+    user: "101:101"
     read_only: true
-    tmpfs: ["/var/cache/nginx", "/var/run", "/tmp"]
+    tmpfs: ["/tmp"]
     security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    mem_limit: 128m
+    pids_limit: 64
+    logging: *logging
   api:
     build: { context: .., dockerfile: deploy/Dockerfile.api }
     restart: always
@@ -18,20 +31,33 @@ services:
       - vsv_data:/data
     read_only: true
     tmpfs: ["/tmp"]
-    mem_limit: 512m
     security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    mem_limit: 512m
+    pids_limit: 128
+    logging: *logging
   caddy:
     image: caddy:2-alpine
     restart: always
     ports: ["80:80", "443:443"]
     environment:
       SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+      REJECT_ADDRESS: ${REJECT_ADDRESS:-http://}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
     depends_on: [web, api]
+    # Stays root inside the container: caddy_data (certificates) is already root-owned. With every other
+    # capability dropped, root here cannot bypass file permissions, load modules or touch the network stack.
+    read_only: true
+    tmpfs: ["/tmp"]
     security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    mem_limit: 256m
+    pids_limit: 128
+    logging: *logging
 volumes:
   vsv_data:
   caddy_data:

@@ -26,8 +26,11 @@ const register = async (handle: string, device = `dev-${handle}`) =>
 
 test.after(() => srv.close());
 
-test("health and unknown routes", async () => {
+test("health and unknown routes; API responses are locked down", async () => {
   assert.equal((await call("GET", "/api/healthz")).status, 200);
+  const h = (await fetch(base + "/api/healthz", { headers: { "x-forwarded-for": "198.51.100.250" } })).headers;
+  assert.match(h.get("content-security-policy") ?? "", /default-src 'none'.*sandbox/);
+  assert.equal(h.get("x-frame-options"), "DENY");
   assert.equal((await call("GET", "/api/nope")).status, 404);
 });
 
@@ -84,10 +87,17 @@ test("own clips are never served to their owner; report hides and copyright repo
   const tok = await register("owner1");
   const mine = (await call("POST", "/api/clips/link", { url: "https://instagram.com/reel/OWNclip01", topic: "cars" }, tok)).body;
   for (let i = 0; i < 10; i++) { const b = (await call("GET", "/api/battle?topic=cars", undefined, tok)).body; assert.ok(b.a.id !== mine.id && b.b.id !== mine.id); }
-  const rep = await register("reporter");
-  assert.equal((await call("POST", "/api/reports", { clip: mine.id, reason: "rCopy" }, rep)).status, 201);
-  const rank = (await call("GET", "/api/ranking?topic=cars")).body as { id: string }[];
-  assert.ok(!rank.some(c => c.id === mine.id));
+  const ranked = async () => ((await call("GET", "/api/ranking?topic=cars")).body as { id: string }[]).some(c => c.id === mine.id);
+  const veteran = await register("veteran");
+  // A batch of brand-new accounts from different networks: each hides the clip for itself only.
+  for (let i = 0; i < 6; i++) {
+    const sybil = await register(`sybil${i}`);
+    assert.equal((await call("POST", "/api/reports", { clip: mine.id, reason: i ? "rSpam" : "rCopy" }, sybil, {}, `192.0.${i}.7`)).status, 201);
+  }
+  assert.ok(await ranked(), "fresh-account reports do not take a clip down");
+  now += 25 * 3_600_000;
+  assert.equal((await call("POST", "/api/reports", { clip: mine.id, reason: "rCopy" }, veteran)).status, 201);
+  assert.ok(!(await ranked()), "an established account's copyright report pauses it");
 });
 
 test("logout revokes only this session", async () => {
@@ -171,6 +181,53 @@ test("device farm: votes from the 4th+ account on one device are shadowed (accep
   assert.equal((app.db.prepare("SELECT shadow FROM votes WHERE battle = ?").get(bid) as { shadow: number }).shadow, 1);
   assert.equal((app.db.prepare("SELECT wins FROM clips WHERE id = ?").get(winner) as { wins: number }).wins, before, "rating untouched");
   ipN = 2;
+});
+
+test("battle fetching is rate limited per account", async () => {
+  const tok = await register("hoarder"); let got429 = false;
+  for (let i = 0; i < 45; i++) if ((await call("GET", "/api/battle?topic=sport", undefined, tok, {}, `198.18.1.${i}`)).status === 429) got429 = true;
+  assert.ok(got429);
+});
+
+test("account deletion erases device, IP, vote and report rows", async () => {
+  ipN = 120; const tok = await register("gdpr_user");
+  const id = (await call("GET", "/api/me", undefined, tok)).body.id as string;
+  const b = (await call("GET", "/api/battle?topic=dance", undefined, tok)).body; now += 5000;
+  assert.equal((await call("POST", "/api/vote", { bid: b.bid, ticket: b.ticket, choice: b.a.id }, tok)).status, 200);
+  assert.equal((await call("POST", "/api/reports", { clip: b.b.id, reason: "rSpam" }, tok)).status, 201);
+  assert.equal((await call("DELETE", "/api/me", undefined, tok)).status, 200);
+  for (const [t, col] of [["devices", "user_id"], ["ip_accounts", "user_id"], ["votes", "voter"], ["battles", "viewer"], ["reports", "reporter"], ["hidden", "user_id"], ["sessions", "user_id"]])
+    assert.equal(Number((app.db.prepare(`SELECT COUNT(*) n FROM ${t} WHERE ${col} = ?`).get(id) as { n: number }).n), 0, t);
+  ipN = 2;
+});
+
+test("storage: per-account quota and a free-disk floor stop uploads before the disk fills", async () => {
+  const boot = async (env: Record<string, string>) => {
+    const a = createApp(loadConfig({ DATA_DIR: mkdtempSync(join(tmpdir(), "vsv-q-")), DEMO_SEED: "0", ...env } as NodeJS.ProcessEnv), () => now);
+    const s = createServer((q, r) => void a.handle(q, r)); await new Promise<void>(r => s.listen(0, r));
+    const url = `http://127.0.0.1:${(s.address() as { port: number }).port}`;
+    const tok = (await (await fetch(url + "/api/auth/register", { method: "POST", headers: { "content-type": "application/json", "x-forwarded-for": "203.0.113.200" }, body: JSON.stringify({ handle: "filler", device: "dev-filler" }) })).json()).token as string;
+    const up = async (seed: number) => {
+      const mp4 = new Uint8Array(20_000); mp4.set([0, 0, 0, 0x20, ...new TextEncoder().encode("ftypisom"), seed]);
+      const r = await fetch(url + "/api/clips/upload?topic=music", { method: "POST", body: mp4, headers: { authorization: `Bearer ${tok}`, "content-type": "video/mp4", "x-rights-confirmed": "1", "x-forwarded-for": `203.0.113.${seed}` } });
+      return { status: r.status, error: (await r.json()).error };
+    };
+    return { up, close: () => s.close() };
+  };
+  const q = await boot({ USER_QUOTA_BYTES: "30000" });
+  assert.equal((await q.up(1)).status, 201);
+  assert.deepEqual(await q.up(2), { status: 413, error: "quota_exceeded" });
+  q.close();
+  const full = await boot({ MIN_FREE_BYTES: String(Number.MAX_SAFE_INTEGER) });
+  assert.deepEqual(await full.up(3), { status: 507, error: "storage_full" });
+  full.close();
+});
+
+test("config: empty SECRET_KEYS falls back to the persisted key file", () => {
+  const d = mkdtempSync(join(tmpdir(), "vsv-k-"));
+  const a = loadConfig({ DATA_DIR: d } as NodeJS.ProcessEnv), b = loadConfig({ DATA_DIR: d, SECRET_KEYS: "" } as NodeJS.ProcessEnv);
+  assert.equal(a.keys.length, 1); assert.deepEqual(b.keys, a.keys, "same key across restarts");
+  assert.throws(() => loadConfig({ DATA_DIR: d, SECRET_KEYS: "short" } as NodeJS.ProcessEnv));
 });
 
 test("audit chain is intact after all of the above", async () => {

@@ -175,3 +175,6 @@ deploy/.env
 
 # Operator-only task file (server access steps) — kept local
 deploy/LOCAL_AGENT_TASK.md
+
+# Server-side backups (never commit)
+backups/

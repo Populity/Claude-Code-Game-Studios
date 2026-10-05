@@ -69,6 +69,26 @@ WantedBy=timers.target
 UNIT
 systemctl daemon-reload && systemctl enable --now vsv-update.timer >/dev/null
 
+echo "==> Nightly backups (7 days, $DIR/backups)"
+cat > /etc/systemd/system/vsv-backup.service <<UNIT
+[Unit]
+Description=VSV nightly backup
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/env bash $DIR/deploy/backup.sh
+UNIT
+cat > /etc/systemd/system/vsv-backup.timer <<'UNIT'
+[Unit]
+Description=VSV backup every night
+[Timer]
+OnCalendar=*-*-* 03:30:00
+RandomizedDelaySec=15min
+Persistent=true
+[Install]
+WantedBy=timers.target
+UNIT
+systemctl daemon-reload && systemctl enable --now vsv-backup.timer >/dev/null
+
 IP=$(curl -fsS https://api.ipify.org || hostname -I | awk '{print $1}')
 echo
 echo "VSV is up: ${DOMAIN:+https://$DOMAIN}${DOMAIN:-http://$IP}"

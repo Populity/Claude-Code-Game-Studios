@@ -5,9 +5,13 @@ export class HttpError extends Error {
   constructor(status: number, code: string) { super(code); this.status = status; this.code = code; }
 }
 
+/** For every API response: nothing it returns may run script, be framed or be embedded cross-origin. */
+export const API_LOCKDOWN: Record<string, string> = {
+  "X-Content-Type-Options": "nosniff", "Cross-Origin-Resource-Policy": "same-origin",
+  "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'; sandbox",
+};
 const SEC_HEADERS: Record<string, string> = {
-  "X-Content-Type-Options": "nosniff", "X-Frame-Options": "DENY", "Referrer-Policy": "no-referrer",
-  "Cache-Control": "no-store", "Cross-Origin-Resource-Policy": "same-origin",
+  ...API_LOCKDOWN, "X-Frame-Options": "DENY", "Referrer-Policy": "no-referrer", "Cache-Control": "no-store",
 };
 export function send(res: ServerResponse, status: number, body: unknown, extra: Record<string, string> = {}) {
   const data = JSON.stringify(body);

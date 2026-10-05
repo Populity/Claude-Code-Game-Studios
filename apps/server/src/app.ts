@@ -1,16 +1,16 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createHash, randomUUID } from "node:crypto";
-import { createReadStream, createWriteStream, renameSync, statSync, unlinkSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+import { createReadStream, createWriteStream, renameSync, statSync, statfsSync, readdirSync, unlinkSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import * as Sec from "../../../packages/security/src/index.ts";
 import { applyVote, newClip, pickPair, statusOf, instagramShortcode, type ClipRecord, type ClipStatus } from "../../../packages/core/src/index.ts";
 import { openDb, tx, SqlNonceStore, SqlWindowStore, type Db } from "./db.ts";
-import { HttpError, clientIp, readJson, send } from "./http.ts";
+import { API_LOCKDOWN, HttpError, clientIp, readJson, send } from "./http.ts";
 import { isTopic, REPORT_REASONS, TOPIC_IDS } from "./topics.ts";
 import type { Config } from "./config.ts";
 
 interface ClipRow { id: string; owner: string; topic: string; caption: string; src: string; code: string | null; sha256: string | null; file: string | null; mime: string | null;
-  wins: number; losses: number; rating: number; status: ClipStatus; hist: string; removed: number; created_at: number; poster: string | null; handle?: string }
+  wins: number; losses: number; rating: number; status: ClipStatus; hist: string; removed: number; created_at: number; poster: string | null; size: number; handle?: string }
 interface User { id: string; handle: string; lang: string; topics: string; created_at: number }
 const SESSION_TTL = 60 * 86_400_000;
 const MIME: Record<string, string> = { mp4: "video/mp4", mov: "video/quicktime", webm: "video/webm", "3gp": "video/3gpp" };
@@ -51,6 +51,8 @@ export function createApp(cfg: Config, clock: () => number = Date.now) {
 
   if (cfg.demoSeed && !db.prepare("SELECT 1 FROM users LIMIT 1").get()) seedDemo(db, clock());
 
+  let reserved = 0; const inflight = new Map<string, number>();
+
   const toApi = (c: ClipRow) => ({ id: c.id, handle: c.handle ?? "", topic: c.topic, caption: c.caption, src: c.src, code: c.code,
     video: c.file ? `/api/clips/${c.id}/video` : null, poster: c.poster ? `/api/clips/${c.id}/poster` : null, wins: c.wins, losses: c.losses, rating: c.rating, status: c.status, hist: JSON.parse(c.hist) as number[], ts: c.created_at });
   const getClip = (id: string) => db.prepare("SELECT c.*, u.handle FROM clips c JOIN users u ON u.id = c.owner WHERE c.id = ?").get(id) as ClipRow | undefined;
@@ -72,7 +74,7 @@ export function createApp(cfg: Config, clock: () => number = Date.now) {
     ["GET", /^\/api\/healthz$/, async (_q, res) => send(res, 200, { ok: true })],
 
     ["POST", /^\/api\/auth\/register$/, async (req, res, _m, ip) => {
-      await limit(`ip:${ip}`, Sec.LOGIN_RULES);
+      await limit(`ip:${Sec.ipBucket(ip)}`, Sec.LOGIN_RULES);
       const b = await readJson<{ handle?: string; device?: string; lang?: string; topics?: unknown }>(req);
       const handle = Sec.cleanHandle(b.handle);
       if (!handle) throw new HttpError(400, "bad_handle");
@@ -113,12 +115,15 @@ export function createApp(cfg: Config, clock: () => number = Date.now) {
     ["DELETE", /^\/api\/me$/, async (req, res) => {
       const { user } = await auth(req);
       for (const c of db.prepare("SELECT file, poster FROM clips WHERE owner = ?").all(user.id) as { file: string | null; poster: string | null }[]) removeFiles(c);
-      db.prepare("DELETE FROM users WHERE id = ?").run(user.id); audit(user.id, "delete_account", {});
+      // Erase everything keyed to the person (device ids, IPs, votes, reports), not just the users row.
+      tx(db, () => { for (const t of ["devices WHERE user_id", "ip_accounts WHERE user_id", "votes WHERE voter", "battles WHERE viewer", "reports WHERE reporter", "blocks WHERE user_id", "hidden WHERE user_id", "users WHERE id"])
+        db.prepare(`DELETE FROM ${t} = ?`).run(user.id); });
+      audit(user.id, "delete_account", {});
       send(res, 200, { ok: true });
     }],
 
     ["GET", /^\/api\/battle$/, async (req, res) => {
-      const { user, device } = await auth(req);
+      const { user, device } = await auth(req); await limit(`battle:${user.id}`, Sec.BATTLE_RULES);
       const url = new URL(req.url!, "http://x"); const want = url.searchParams.get("topic");
       const mine: string[] = JSON.parse(user.topics);
       const hidden = new Set((db.prepare("SELECT clip FROM hidden WHERE user_id = ?").all(user.id) as { clip: string }[]).map(r => r.clip));
@@ -141,7 +146,7 @@ export function createApp(cfg: Config, clock: () => number = Date.now) {
     ["POST", /^\/api\/vote$/, async (req, res, _m, ip) => {
       const { user, device } = await auth(req);
       const subnet = Sec.subnetOf(ip);
-      for (const [dim, key] of [["account", user.id], ["device", device], ["ip", ip], ["subnet", subnet]] as const) await limit(`${dim}:${key}`, Sec.VOTE_RULES[dim]);
+      for (const [dim, key] of [["account", user.id], ["device", device], ["ip", Sec.ipBucket(ip)], ["subnet", subnet]] as const) await limit(`${dim}:${key}`, Sec.VOTE_RULES[dim]);
       const b = await readJson<{ bid?: string; ticket?: string; choice?: string }>(req);
       if (!Sec.isSafeId(b.bid, 64) || !Sec.isSafeId(b.choice, 64) || typeof b.ticket !== "string") throw new HttpError(400, "bad_vote");
       const r = await Sec.redeemTicket({ token: b.ticket, bid: b.bid, choice: b.choice, viewer: user.id, device }, ring, nonces, clock);
@@ -202,13 +207,20 @@ export function createApp(cfg: Config, clock: () => number = Date.now) {
     }],
 
     ["POST", /^\/api\/clips\/upload$/, async (req, res, _m, ip) => {
-      const { user } = await auth(req); await limit(`upload:${user.id}`, Sec.UPLOAD_RULES);
+      const { user } = await auth(req); await limit(`upload:${user.id}`, Sec.UPLOAD_RULES); await limit(`upload-ip:${Sec.ipBucket(ip)}`, Sec.UPLOAD_IP_RULES);
       const url = new URL(req.url!, "http://x"); const topic = url.searchParams.get("topic");
       if (!isTopic(topic)) throw new HttpError(400, "bad_topic");
       if (req.headers["x-rights-confirmed"] !== "1") throw new HttpError(400, "rights_not_confirmed");
       const declared = Number(req.headers["content-length"]);
       const pre = Sec.validateUpload(new Uint8Array(), declared);
       if (!pre.ok && pre.reason !== "unknown_format") throw new HttpError(pre.reason === "too_large" ? 413 : 400, pre.reason);
+      // Storage budget: per-account quota, and a free-space floor so a flood of uploads can't fill the disk
+      // under SQLite. Bytes of uploads still in flight are reserved up front (the declared length is enforced below).
+      const stored = Number((db.prepare("SELECT COALESCE(SUM(size), 0) n FROM clips WHERE owner = ?").get(user.id) as { n: number }).n);
+      if (stored + (inflight.get(user.id) ?? 0) + declared > cfg.userQuotaBytes) throw new HttpError(413, "quota_exceeded");
+      const disk = statfsSync(cfg.dataDir);
+      if (disk.bavail * disk.bsize - reserved - declared < cfg.minFreeBytes) { console.error(new Date(clock()).toISOString(), "upload refused: free space below MIN_FREE_BYTES"); throw new HttpError(507, "storage_full"); }
+      reserved += declared; inflight.set(user.id, (inflight.get(user.id) ?? 0) + declared);
       const tmp = join(cfg.dataDir, "videos", `tmp-${randomUUID()}`), hash = createHash("sha256"), out = createWriteStream(tmp, { mode: 0o600 });
       let head = Buffer.alloc(0), size = 0;
       try {
@@ -226,17 +238,18 @@ export function createApp(cfg: Config, clock: () => number = Date.now) {
         if (dup) { unlinkSync(tmp); return send(res, 409, { error: "duplicate", handle: dup.handle }); }
         const id = randomUUID(), file = `${id}.${v.container}`;
         renameSync(tmp, join(cfg.dataDir, "videos", file));
-        insertClip(db, user.id, topic, Sec.cleanText(url.searchParams.get("caption") ?? ""), "file", { sha256: sha, file, mime: MIME[v.container] }, clock(), id);
+        insertClip(db, user.id, topic, Sec.cleanText(url.searchParams.get("caption") ?? ""), "file", { sha256: sha, file, mime: MIME[v.container], size }, clock(), id);
         audit(user.id, "clip_upload", { id, sha, size, ip });
         send(res, 201, toApi(getClip(id)!));
       } catch (e) { out.destroy(); if (existsSync(tmp)) unlinkSync(tmp); throw e; }
+      finally { reserved -= declared; const left = (inflight.get(user.id) ?? 0) - declared; if (left > 0) inflight.set(user.id, left); else inflight.delete(user.id); }
     }],
 
     ["GET", /^\/api\/clips\/([\w-]{1,64})\/video$/, async (req, res, m) => {
       const c = getClip(m[1]); if (!c || !c.file || c.removed) throw new HttpError(404, "not_found");
       const path = join(cfg.dataDir, "videos", c.file), total = statSync(path).size;
       const range = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range ?? "");
-      const headers = { "Content-Type": c.mime ?? "video/mp4", "Accept-Ranges": "bytes", "X-Content-Type-Options": "nosniff", "Cache-Control": "public, max-age=31536000, immutable", "Content-Disposition": "inline" };
+      const headers = { ...API_LOCKDOWN, "Content-Type": c.mime ?? "video/mp4", "Accept-Ranges": "bytes", "Cache-Control": "public, max-age=31536000, immutable", "Content-Disposition": "inline" };
       if (range && (range[1] || range[2])) {
         const start = range[1] ? Number(range[1]) : Math.max(0, total - Number(range[2])), end = range[1] && range[2] ? Math.min(Number(range[2]), total - 1) : total - 1;
         if (start > end || start >= total) { res.writeHead(416, { "Content-Range": `bytes */${total}` }); return void res.end(); }
@@ -274,7 +287,7 @@ export function createApp(cfg: Config, clock: () => number = Date.now) {
       const c = getClip(m[1]); if (!c || !c.poster || c.removed) throw new HttpError(404, "not_found");
       const kind = c.poster.slice(c.poster.lastIndexOf(".") + 1) as keyof typeof IMAGE_MIME;
       const body = readFileSync(join(cfg.dataDir, "videos", c.poster));
-      res.writeHead(200, { "Content-Type": IMAGE_MIME[kind], "Content-Length": body.length, "X-Content-Type-Options": "nosniff", "Cache-Control": "public, max-age=3600", "Content-Disposition": "inline" });
+      res.writeHead(200, { ...API_LOCKDOWN, "Content-Type": IMAGE_MIME[kind], "Content-Length": body.length, "Cache-Control": "public, max-age=3600", "Content-Disposition": "inline" });
       res.end(body);
     }],
 
@@ -293,16 +306,18 @@ export function createApp(cfg: Config, clock: () => number = Date.now) {
       send(res, 200, Object.fromEntries(rows.map(r => [r.topic, Number(r.n)])));
     }],
 
-    ["POST", /^\/api\/reports$/, async (req, res) => {
-      const { user } = await auth(req); await limit(`report:${user.id}`, Sec.REPORT_RULES);
+    ["POST", /^\/api\/reports$/, async (req, res, _m, ip) => {
+      const { user } = await auth(req); await limit(`report:${user.id}`, Sec.REPORT_RULES); await limit(`report-ip:${Sec.ipBucket(ip)}`, Sec.REPORT_RULES);
       const b = await readJson<{ clip?: string; reason?: string }>(req);
       if (!Sec.isSafeId(b.clip) || !(REPORT_REASONS as readonly string[]).includes(b.reason ?? "")) throw new HttpError(400, "bad_report");
       if (!getClip(b.clip)) throw new HttpError(404, "not_found");
-      db.prepare("INSERT OR IGNORE INTO reports (clip, reporter, reason, created_at) VALUES (?, ?, ?, ?)").run(b.clip, user.id, b.reason!, clock());
+      db.prepare("INSERT OR IGNORE INTO reports (clip, reporter, reason, created_at, subnet) VALUES (?, ?, ?, ?, ?)").run(b.clip, user.id, b.reason!, clock(), Sec.subnetOf(ip));
       db.prepare("INSERT OR IGNORE INTO hidden (user_id, clip) VALUES (?, ?)").run(user.id, b.clip);
-      // Auto-remove after 5 distinct reporters (copyright: 1 report pauses the clip pending review).
-      const n = Number((db.prepare("SELECT COUNT(*) n FROM reports WHERE clip = ?").get(b.clip) as { n: number }).n);
-      if (n >= 5 || b.reason === "rCopy") db.prepare("UPDATE clips SET removed = 1 WHERE id = ?").run(b.clip);
+      // Auto-remove after 5 established reporters from 3+ subnets (copyright: 1 established report pauses the clip
+      // pending review). Fresh accounts only hide the clip for themselves, so a batch of sybils can't take clips down.
+      const agedBefore = clock() - cfg.reporterMinAgeMs;
+      const r = db.prepare("SELECT COUNT(*) n, COUNT(DISTINCT r.subnet) nets FROM reports r JOIN users u ON u.id = r.reporter WHERE r.clip = ? AND u.created_at <= ?").get(b.clip, agedBefore) as { n: number; nets: number };
+      if ((Number(r.n) >= 5 && Number(r.nets) >= 3) || (b.reason === "rCopy" && user.created_at <= agedBefore)) db.prepare("UPDATE clips SET removed = 1 WHERE id = ?").run(b.clip);
       audit(user.id, "report", { clip: b.clip, reason: b.reason });
       send(res, 201, { ok: true });
     }],
@@ -333,7 +348,7 @@ export function createApp(cfg: Config, clock: () => number = Date.now) {
     const path = (req.url ?? "/").split("?")[0];
     try {
       if ((req.url ?? "").length > 2048) throw new HttpError(414, "uri_too_long");
-      await limit(`global-ip:${ip}`, [{ name: "ip/sec", limit: 30, windowMs: 1000 }]);
+      await limit(`global-ip:${Sec.ipBucket(ip)}`, [{ name: "ip/sec", limit: 30, windowMs: 1000 }]);
       for (const [method, re, fn] of routes) { const m = path.match(re); if (m && req.method === method) return await fn(req, res, m, ip); }
       throw new HttpError(404, "not_found");
     } catch (e) {
@@ -343,16 +358,21 @@ export function createApp(cfg: Config, clock: () => number = Date.now) {
       send(res, 500, { error: "internal" });
     }
   }
-  const housekeeping = () => { windows.prune(clock()); db.prepare("DELETE FROM sessions WHERE expires_at < ?").run(clock()); };
+  const housekeeping = () => {
+    windows.prune(clock()); db.prepare("DELETE FROM sessions WHERE expires_at < ?").run(clock());
+    db.prepare("DELETE FROM battles WHERE created_at < ?").run(clock() - DAY); // tickets live 15 min; only the last few are read
+    const dir = join(cfg.dataDir, "videos"); // partial uploads orphaned by a crash or restart
+    for (const f of readdirSync(dir)) if (f.startsWith("tmp-")) try { if (statSync(join(dir, f)).mtimeMs < Date.now() - 3 * 3_600_000) unlinkSync(join(dir, f)); } catch {}
+  };
   return { handle, db, housekeeping, flushAudit: () => auditQueue };
 }
 
 const pick = (c: ClipRecord) => ({ wins: c.wins, losses: c.losses, rating: c.rating, status: c.status });
 
-function insertClip(db: Db, owner: string, topic: string, caption: string, src: "link" | "file" | "demo", f: { code?: string; sha256?: string; file?: string; mime?: string }, now: number, id = randomUUID()) {
+function insertClip(db: Db, owner: string, topic: string, caption: string, src: "link" | "file" | "demo", f: { code?: string; sha256?: string; file?: string; mime?: string; size?: number }, now: number, id = randomUUID()) {
   const base = newClip(id, topic, owner);
-  db.prepare("INSERT INTO clips (id, owner, topic, caption, src, code, sha256, file, mime, wins, losses, rating, status, hist, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, 'qual', '[]', ?)")
-    .run(id, owner, topic, caption, src, f.code ?? null, f.sha256 ?? null, f.file ?? null, f.mime ?? null, base.rating, now);
+  db.prepare("INSERT INTO clips (id, owner, topic, caption, src, code, sha256, file, mime, size, wins, losses, rating, status, hist, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, 'qual', '[]', ?)")
+    .run(id, owner, topic, caption, src, f.code ?? null, f.sha256 ?? null, f.file ?? null, f.mime ?? null, f.size ?? 0, base.rating, now);
   return id;
 }
 

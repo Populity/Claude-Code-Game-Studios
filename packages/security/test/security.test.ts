@@ -71,6 +71,15 @@ test("rejected requests do not extend the lockout; keys are independent", async 
 test("subnet buckets", () => {
   assert.equal(S.subnetOf("203.0.113.77"), "203.0.113.0/24");
   assert.equal(S.subnetOf("2001:db8:abcd:12::1"), "2001:db8:abcd::/48");
+  assert.equal(S.subnetOf("2001:db8::1"), "2001:db8:0::/48", "compressed address expanded, not split naively");
+  assert.equal(S.subnetOf("::ffff:203.0.113.77"), "203.0.113.0/24", "IPv4-mapped treated as IPv4");
+});
+test("per-IP limits bucket IPv6 to /64 so address rotation does not evade them", () => {
+  assert.equal(S.ipBucket("203.0.113.77"), "203.0.113.77");
+  assert.equal(S.ipBucket("::ffff:203.0.113.77"), "203.0.113.77");
+  assert.equal(S.ipBucket("2001:db8:1:2:aaaa::1"), S.ipBucket("2001:0db8:1:2:ffff:ffff:ffff:ffff"));
+  assert.notEqual(S.ipBucket("2001:db8:1:2::1"), S.ipBucket("2001:db8:1:3::1"));
+  assert.equal(S.ipBucket("not-an-ip"), "not-an-ip");
 });
 
 // ---------- fraud ----------
@@ -147,6 +156,8 @@ test("Meta data-deletion signed_request is verified", async () => {
   assert.deepEqual(await S.verifyMetaSignedRequest(ok, "another-secret-0123456789abcdef01234", 1100), { ok: false, reason: "bad_signature" });
   assert.deepEqual(await S.verifyMetaSignedRequest(ok, sec, 99999), { ok: false, reason: "stale" });
   assert.deepEqual(await S.verifyMetaSignedRequest(await signed({ algorithm: "none", user_id: "1" }, sec), sec), { ok: false, reason: "bad_algorithm" });
+  const undated = await signed({ algorithm: "HMAC-SHA256", user_id: "42" }, sec);
+  assert.deepEqual(await S.verifyMetaSignedRequest(undated, sec, 1100), { ok: false, reason: "stale" }, "no issued_at = replayable, rejected");
 });
 
 // ---------- OAuth ----------

@@ -30,7 +30,8 @@ export function openDb(file: string) {
     CREATE TABLE IF NOT EXISTS audit (seq INTEGER PRIMARY KEY, ts INTEGER NOT NULL, actor TEXT NOT NULL, action TEXT NOT NULL, data TEXT NOT NULL, prev TEXT NOT NULL, hash TEXT NOT NULL);
   `);
   // Additive migrations for databases created by earlier versions.
-  for (const sql of ["ALTER TABLE clips ADD COLUMN poster TEXT"]) try { db.exec(sql); } catch { /* column exists */ }
+  for (const sql of ["ALTER TABLE clips ADD COLUMN poster TEXT", "ALTER TABLE clips ADD COLUMN size INTEGER NOT NULL DEFAULT 0", "ALTER TABLE reports ADD COLUMN subnet TEXT"]) try { db.exec(sql); } catch { /* column exists */ }
+  db.exec("CREATE INDEX IF NOT EXISTS battles_viewer ON battles(viewer, created_at); CREATE INDEX IF NOT EXISTS battles_created ON battles(created_at)");
   return db;
 }
 export type Db = ReturnType<typeof openDb>;

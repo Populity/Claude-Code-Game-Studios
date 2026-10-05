@@ -14,6 +14,7 @@ export async function verifyMetaSignedRequest<T = { user_id: string; algorithm: 
   let payload: { algorithm?: string; issued_at?: number };
   try { payload = JSON.parse(fromUtf8(fromB64url(parts[1]))); } catch { return { ok: false, reason: "malformed" }; }
   if (payload.algorithm?.toUpperCase() !== "HMAC-SHA256") return { ok: false, reason: "bad_algorithm" };
-  if (typeof payload.issued_at === "number" && nowSec - payload.issued_at > maxAgeSec) return { ok: false, reason: "stale" };
+  // issued_at is mandatory: without it a captured request could be replayed forever.
+  if (typeof payload.issued_at !== "number" || nowSec - payload.issued_at > maxAgeSec) return { ok: false, reason: "stale" };
   return { ok: true, payload: payload as T };
 }
