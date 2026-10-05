@@ -23,5 +23,6 @@ Requires the `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` environment variable.
 
 ## Current status
 
-Opt-in via `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`. Document first usage here
-when adopted.
+Enabled in `.claude/settings.json` (`env.CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`) on
+2026-10-05 at the founder's request, for the Reels War team — see
+`production/reels-war/org-chart.md` and `production/reels-war/team-channel.md`.
