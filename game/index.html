@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reels Wars: Meme Defense</title>
+<link rel="stylesheet" href="style.css">
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.min.js", "three/addons/": "./vendor/addons/" } }
+</script>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="labels"></div>
+
+<!-- MAIN MENU -->
+<section id="menu" class="screen active">
+  <div class="logo"><span class="l1">REELS</span><span class="l2">WARS</span><small>MEME DEFENSE</small></div>
+  <div class="menu-buttons">
+    <button class="btn big" data-go="levels">▶ ИГРАТЬ</button>
+    <button class="btn" data-go="heroes">🧬 ГЕРОИ</button>
+    <button class="btn" data-go="howto">❔ КАК ИГРАТЬ</button>
+  </div>
+  <div class="footer">v0.1 · прототип · 3 уровня</div>
+</section>
+
+<!-- LEVEL SELECT -->
+<section id="levels" class="screen">
+  <h1>ВЫБОР УРОВНЯ</h1>
+  <div id="levelCards" class="cards"></div>
+  <div class="diff">
+    <label>СЛОЖНОСТЬ: <b id="diffName">Норм</b> <span id="diffVal">4</span>/10</label>
+    <input type="range" id="diff" min="1" max="10" value="4">
+    <div id="diffInfo" class="muted"></div>
+  </div>
+  <button class="btn" data-go="menu">← НАЗАД</button>
+</section>
+
+<!-- HEROES -->
+<section id="heroes" class="screen">
+  <h1>ГЕРОИ РИЛСОВ</h1>
+  <div id="heroCards" class="cards"></div>
+  <button class="btn" data-go="menu">← НАЗАД</button>
+</section>
+
+<!-- HOW TO -->
+<section id="howto" class="screen">
+  <h1>КАК ИГРАТЬ</h1>
+  <ul class="howto">
+    <li>Враги (солдаты, танки, маги) идут по дороге к твоей базе. Каждый прорыв — минус подписчики ❤.</li>
+    <li>Выбери героя внизу и кликни по траве — он встанет на позицию. Платишь лайками 👍.</li>
+    <li>Кликни по герою — прокачка до 3 уровня или продажа.</li>
+    <li>Убивай сериями — КОМБО множит награду.</li>
+    <li>Шкала <b>ВИРУСНЫЙ МОМЕНТ</b> заполняется от убийств — жми <b>Q</b> и сноси всех.</li>
+    <li>Пробел — следующая волна раньше (бонус лайков). <b>F</b> — ускорение x2. ПКМ/колесо — камера.</li>
+    <li>Маги ставят щиты союзникам, танки игнорируют часть урона. Хардкор 10/10 — для легенд.</li>
+  </ul>
+  <button class="btn" data-go="menu">← НАЗАД</button>
+</section>
+
+<!-- HUD -->
+<section id="hud" class="screen">
+  <div class="top">
+    <div class="stat">❤ <b id="lives">20</b></div>
+    <div class="stat">👍 <b id="gold">0</b></div>
+    <div class="stat">🌊 <b id="wave">0</b>/<span id="waveMax">0</span></div>
+    <div class="stat combo" id="comboBox">КОМБО x<b id="combo">1</b></div>
+    <div class="spacer"></div>
+    <button class="btn sm" id="btnSpeed">x1</button>
+    <button class="btn sm" id="btnWave">СЛЕД. ВОЛНА ⏭</button>
+    <button class="btn sm" id="btnPause">❚❚</button>
+  </div>
+  <div class="ult"><div class="ultbar"><i id="ultFill"></i></div><button class="btn sm" id="btnUlt">ВИРУСНЫЙ МОМЕНТ [Q]</button></div>
+  <div id="shop" class="shop"></div>
+  <div id="sel" class="selpanel hidden"></div>
+  <div id="banner" class="banner"></div>
+</section>
+
+<section id="pause" class="screen overlay">
+  <h1>ПАУЗА</h1>
+  <button class="btn big" id="btnResume">ПРОДОЛЖИТЬ</button>
+  <button class="btn" id="btnRestart">ЗАНОВО</button>
+  <button class="btn" id="btnQuit">В МЕНЮ</button>
+</section>
+
+<section id="end" class="screen overlay">
+  <h1 id="endTitle">ПОБЕДА</h1>
+  <div id="endStars" class="stars"></div>
+  <div id="endText" class="muted"></div>
+  <button class="btn big" id="btnNext">ДАЛЕЕ</button>
+  <button class="btn" id="btnEndMenu">В МЕНЮ</button>
+</section>
+
+<script type="module" src="src/main.js"></script>
+</body>
+</html>
