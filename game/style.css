@@ -57,3 +57,7 @@ h1{margin:0;font-size:clamp(26px,4vw,44px);letter-spacing:4px;background:linear-
 .hpb i{display:block;height:100%;background:#4f4}
 .hpb.sh{border-color:var(--cyan);box-shadow:0 0 6px var(--cyan)}
 @media (max-width:640px){.shop .hero{width:72px}.ultbar{width:120px}}
+.allies{position:fixed;right:14px;top:130px;display:flex;flex-direction:column;gap:8px}
+.ally{position:relative;width:150px;padding:8px 10px;border-radius:12px;border:2px solid #3b2470;background:var(--panel);cursor:pointer;font-size:12px;overflow:hidden;display:flex;gap:8px;align-items:center}
+.ally .em{font-size:26px}.ally.on{border-color:var(--cyan);box-shadow:0 0 14px var(--cyan)}
+.ally.cd{opacity:.55;pointer-events:none}.ally i{position:absolute;left:0;bottom:0;height:3px;background:var(--cyan)}

@@ -182,6 +182,10 @@ export function buildEnemy(type) {
     const h = humanoid(0xc9a07a, type === 'runner' ? 0xcc3333 : 0x4a5a2a, 0x2a3018); rig = h.rig;
     const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.47, 16, 10, 0, Math.PI * 2, 0, 1.5), mat(type === 'runner' ? 0x881111 : 0x3a4a1a)); helmet.position.y = 0.08; rig.head.add(helmet);
     addEyes(rig.head, { y: -0.02, z: 0.34, iris: type === 'runner' ? 0xd02020 : 0x556b2f, angry: true, size: 0.1 });
+    const pack = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.7, 0.3), mat(type === 'runner' ? 0x661111 : 0x3a4a1a)); pack.position.set(0, 0.05, -0.45); rig.body.add(pack);
+    const roll = new THREE.Mesh(new THREE.CapsuleGeometry(0.1, 0.45, 4, 10), mat(0x8a7a5a)); roll.rotation.z = Math.PI / 2; roll.position.set(0, 0.45, -0.45); rig.body.add(roll);
+    const belt = new THREE.Mesh(new THREE.TorusGeometry(0.46, 0.06, 8, 24), mat(0x2a1a0a)); belt.rotation.x = Math.PI / 2; belt.position.y = -0.3; rig.body.add(belt);
+    for (const leg of [rig.legL, rig.legR]) { const boot = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.2, 0.42), mat(0x1a1a1a)); boot.position.set(0, -0.95, 0.06); leg.add(boot); }
     const gun = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.14, 0.9), mat(0x111111)); gun.position.set(0, -0.6, 0.3); rig.armR.add(gun);
     root.add(h.g);
   } else if (type === 'tank' || type === 'boss') {
@@ -193,6 +197,10 @@ export function buildEnemy(type) {
     const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.12, 1.6), mat(0x222222, { metalness: 0.9 })); barrel.rotation.x = Math.PI / 2; barrel.position.set(0, 0.05, 1.0); turret.add(barrel);
     const light = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 6), glow(boss ? 0xff00ff : 0xff3020, 4)); light.position.set(0, 0.3, 0.4); turret.add(light);
     if (boss) { for (const s of [-1, 1]) { const horn = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.9, 8), glow(0xff00aa, 2)); horn.position.set(0.5 * s, 0.6, 0); horn.rotation.z = -0.5 * s; turret.add(horn); } }
+    const hatch = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 0.1, 16), mat(0x333833, { metalness: 0.6 })); hatch.position.y = 0.3; turret.add(hatch);
+    const ant = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 1.4), mat(0x111111)); ant.position.set(-0.45, 0.9, -0.3); turret.add(ant);
+    for (const s of [-1, 1]) for (let i = 0; i < 4; i++) { const w = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.5, 14), mat(0x2a2a2a, { metalness: 0.5 })); w.rotation.z = Math.PI / 2; w.position.set(0.95 * s, 0.32, -0.9 + i * 0.6); root.add(w); }
+    for (const s of [-1, 1]) { const ex = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 0.4, 10), mat(0x555555, { metalness: 0.9 })); ex.rotation.x = Math.PI / 2; ex.position.set(0.5 * s, 0.9, -1.3); root.add(ex); }
     rig = { turret, hull };
   } else if (type === 'mage') {
     const robe = new THREE.Mesh(new THREE.ConeGeometry(0.75, 2.0, 20), mat(0x3a1a8a)); robe.position.y = 1.0; root.add(robe);

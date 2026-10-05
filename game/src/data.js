@@ -115,3 +115,14 @@ export const ULT = { killsNeeded: 40, dmg: 600, stun: 2.5 };
 export const COMBO = { window: 1.6, step: 5, max: 5 };
 export const EARLY_WAVE_BONUS = 25;
 export const SELL_RATIO = 0.7;
+
+// Sky allies: called in from the sky onto a clicked point, each on its own cooldown.
+// Cooldowns scale with power: cheap support ~25s, area control ~35s, nuke ~50s.
+export const ALLIES = [
+  { id: 'drone', name: 'Дрон-Оператор', emoji: '🚁', key: 'Z', cd: 25, life: 14, dmg: 30, rate: 0.35, range: 9,
+    desc: 'Зависает над точкой 14с и поливает всех рядом очередями.' },
+  { id: 'llama', name: 'Десант-Лама', emoji: '🦙', key: 'X', cd: 35, life: 12, dmg: 140, stun: 2.5, radius: 6, spit: 45, rate: 0.8, range: 7,
+    desc: 'Падает на парашюте: удар при приземлении оглушает всех вокруг, потом плюётся.' },
+  { id: 'meteor', name: 'Метеор Хайпа', emoji: '☄️', key: 'C', cd: 50, dmg: 900, radius: 7, burn: 60,
+    desc: 'Огромный метеор: взрыв по площади и поджог. Сносит даже танки.' },
+];

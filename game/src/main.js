@@ -7,8 +7,8 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { GRID, HEROES, ENEMIES, LEVELS, difficulty, ULT, COMBO, EARLY_WAVE_BONUS, SELL_RATIO } from './data.js';
-import { buildHero, setHeroLevel, animateHero, buildEnemy, animateEnemy, preloadModels } from './models.js';
+import { ALLIES, GRID, HEROES, ENEMIES, LEVELS, difficulty, ULT, COMBO, EARLY_WAVE_BONUS, SELL_RATIO } from './data.js';
+import { buildHero, setHeroLevel, animateHero, buildEnemy, animateEnemy, preloadModels, addEyes } from './models.js';
 import { Sfx } from './audio.js';
 import { buildWorld, cellToWorld } from './world.js';
 
@@ -125,10 +125,10 @@ function startLevel(idx) {
   const w = buildLevelWorld(lvl);
   G = { idx, lvl, D, ...w, gold: lvl.startGold, lives: Math.max(1, Math.round(lvl.lives * D.lives)), maxLives: 0,
     wave: 0, spawnQ: [], enemies: [], heroes: [], shots: [], beams: [], occupied: new Set(w.blocked), time: 0, waveTimer: 6, between: true,
-    combo: 1, comboT: 0, comboKills: 0, ult: 0, speed: 1, paused: false, over: false, selectedShop: null, selectedHero: null, kills: 0, leaks: 0 };
+    allyCd: {}, allies: [], selectedAlly: null, combo: 1, comboT: 0, comboKills: 0, ult: 0, speed: 1, paused: false, over: false, selectedShop: null, selectedHero: null, kills: 0, leaks: 0 };
   G.maxLives = G.lives;
   cam.target.set(0, 0, 2); cam.pitch = 1.0; cam.dist = 66; cam.yaw = 0;
-  buildShop(); hideSel(); show('hud'); updateHud();
+  buildShop(); buildAllyBar(); hideSel(); show('hud'); updateHud();
   $('waveMax').textContent = lvl.waves.length;
   banner(`УРОВЕНЬ ${lvl.id}: ${lvl.name}`, 2.5);
   Sfx.music(true);
@@ -270,6 +270,81 @@ function useUlt() {
   updateHud();
 }
 
+
+// ---------- Sky allies ----------
+function buildAlly(id) {
+  const g = new THREE.Group(); const M = (c, o = {}) => new THREE.MeshPhysicalMaterial({ color: c, roughness: 0.4, clearcoat: 0.5, ...o });
+  if (id === 'drone') {
+    const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.5, 0.8, 8, 16), M(0xffd23f)); body.rotation.z = Math.PI / 2; g.add(body);
+    const cam = new THREE.Mesh(new THREE.SphereGeometry(0.3, 16, 12), M(0x111111, { metalness: 0.8 })); cam.position.set(0, -0.3, 0.4); g.add(cam);
+    g.userData.rotors = [];
+    for (const [x, z] of [[1, 1], [-1, 1], [1, -1], [-1, -1]]) { const arm = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 1.2), M(0x333333)); arm.position.set(x * 0.6, 0.1, z * 0.6); arm.rotation.y = Math.atan2(x, z); g.add(arm);
+      const r = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.03, 0.15), M(0xffffff)); r.position.set(x * 1.0, 0.3, z * 1.0); g.add(r); g.userData.rotors.push(r); }
+    const led = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 6), new THREE.MeshStandardMaterial({ color: 0xff2020, emissive: 0xff2020, emissiveIntensity: 3 })); led.position.set(0, 0.4, 0); g.add(led);
+  } else if (id === 'llama') {
+    const wool = M(0xfff4e0, { roughness: 0.9, sheen: 1, sheenColor: new THREE.Color(0xffffff) });
+    const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.6, 1.0, 8, 16), wool); body.rotation.x = Math.PI / 2; body.position.y = 1.4; g.add(body);
+    const neck = new THREE.Mesh(new THREE.CapsuleGeometry(0.28, 0.9, 8, 12), wool); neck.position.set(0, 2.3, 0.7); g.add(neck);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.38, 20, 16), wool); head.position.set(0, 2.95, 0.85); head.scale.z = 1.3; g.add(head);
+    addEyes(head, { y: 0.1, z: 0.3, spread: 0.17, size: 0.1, iris: 0x6b3fa0 });
+    for (const s of [-1, 1]) { const ear = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.35, 8), wool); ear.position.set(0.18 * s, 0.42, -0.05); head.add(ear); }
+    const shades = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.1, 0.05), M(0xff2e88)); shades.position.set(0, 0.12, 0.42); head.add(shades);
+    for (const [x, z] of [[1, 1], [-1, 1], [1, -1], [-1, -1]]) { const leg = new THREE.Mesh(new THREE.CapsuleGeometry(0.14, 0.8, 6, 10), wool); leg.position.set(x * 0.35, 0.55, z * 0.55); g.add(leg); }
+    const chute = new THREE.Group(); chute.position.y = 6;
+    const canopy = new THREE.Mesh(new THREE.SphereGeometry(2.4, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2.4), M(0xff5fb0, { side: THREE.DoubleSide })); chute.add(canopy);
+    for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2; const line = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 4.2), M(0xffffff)); line.position.set(Math.cos(a) * 1.1, -2.2, Math.sin(a) * 1.1); line.rotation.set(Math.sin(a) * 0.45, 0, -Math.cos(a) * 0.45); chute.add(line); }
+    g.add(chute); g.userData.chute = chute;
+  } else {
+    const rock = new THREE.Mesh(new THREE.IcosahedronGeometry(1.6, 1), new THREE.MeshStandardMaterial({ color: 0x5a2a1a, emissive: 0xff5a00, emissiveIntensity: 1.2, flatShading: true, roughness: 0.9 })); g.add(rock);
+    const fire = new THREE.Mesh(new THREE.ConeGeometry(1.6, 5, 16, 1, true), new THREE.MeshBasicMaterial({ color: 0xffa040, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false })); fire.position.y = 3; g.add(fire);
+  }
+  g.traverse(o => { if (o.isMesh) o.castShadow = true; });
+  return g;
+}
+function callAlly(id, point) {
+  const def = ALLIES.find(a => a.id === id); if ((G.allyCd[id] || 0) > 0) return;
+  G.allyCd[id] = def.cd; G.selectedAlly = null; ghost.visible = ghostRange.visible = false;
+  const m = buildAlly(id); m.position.set(point.x, 45, point.z); world.add(m);
+  G.allies.push({ def, m, target: point.clone(), phase: 'fall', t: 0, cd: 0 });
+  banner(def.emoji + ' ' + def.name.toUpperCase(), 1.1); Sfx.wave(); buildAllyBar();
+}
+function enemiesNear(p, r) { return G.enemies.filter(e => !e.dead && e.m.root.position.distanceTo(p) <= r); }
+function allyUpdate(a, dt) {
+  const d = a.def, p = a.m.position; a.t += dt;
+  if (a.phase === 'fall') {
+    const speed = d.id === 'meteor' ? 55 : d.id === 'llama' ? 14 : 30; const floor = d.id === 'drone' ? 7 : 0;
+    p.y = Math.max(floor, p.y - speed * dt); if (d.id === 'meteor') { a.m.rotation.x += dt * 4; burst(p, 0xff8020, 3, 2, 0.5, 1); }
+    if (d.id === 'llama') a.m.rotation.z = Math.sin(a.t * 3) * 0.15;
+    if (p.y > floor) return;
+    a.phase = 'active'; a.t = 0;
+    if (d.id === 'meteor') {
+      for (const e of enemiesNear(a.target, d.radius)) { damage(e, d.dmg * G.D.hp * 0.6, 'ult'); e.burn = d.burn; e.burnT = 4; }
+      burst(a.target.clone().setY(1), 0xff6a00, 160, 22, 1.4, 16); ringFx(a.target, d.radius, 0xff3b1f); ringFx(a.target, d.radius * 1.4, 0xffd23f); cam.shake = 2.4; Sfx.boom(); Sfx.ult(); a.done = true; world.remove(a.m); return;
+    }
+    if (d.id === 'llama') {
+      a.m.rotation.z = 0; a.m.remove(a.m.userData.chute);
+      for (const e of enemiesNear(a.target, d.radius)) { damage(e, d.dmg * G.D.hp * 0.6, 'slam'); e.stun = Math.max(e.stun, d.stun); }
+      burst(a.target.clone().setY(0.3), 0xfff4e0, 70, 14, 0.8, 5); ringFx(a.target, d.radius, 0xff5fb0); cam.shake = 1.2; Sfx.slam();
+    }
+    return;
+  }
+  if (a.t >= d.life) { a.done = true; burst(p.clone().setY(p.y + 1), 0xffffff, 30, 6, 0.6, 6); world.remove(a.m); return; }
+  if (d.id === 'drone') { a.m.userData.rotors.forEach((r, i) => r.rotation.y += dt * 40 * (i % 2 ? 1 : -1)); p.x = a.target.x + Math.cos(a.t * 0.8) * 3; p.z = a.target.z + Math.sin(a.t * 0.8) * 3; p.y = 7 + Math.sin(a.t * 3) * 0.3; }
+  a.cd -= dt; if (a.cd > 0) return;
+  const tgt = enemiesNear(d.id === 'drone' ? a.target : p, d.range).sort((x, y) => y.dist - x.dist)[0]; if (!tgt) return;
+  a.cd = d.rate; const from = p.clone().setY(d.id === 'drone' ? p.y - 0.4 : 3); const to = tgt.m.root.position.clone().setY(1.2);
+  if (d.id === 'llama') a.m.rotation.y = Math.atan2(to.x - p.x, to.z - p.z);
+  damage(tgt, (d.id === 'drone' ? d.dmg : d.spit) * G.D.hp * 0.6, 'ally'); tracer(from, to, d.id === 'drone' ? 0xffd23f : 0xb8ff6a); burst(to, d.id === 'drone' ? 0xffd23f : 0xb8ff6a, 6, 4, 0.4, 2); Sfx.snipe();
+}
+function buildAllyBar() {
+  const bar = $('allies'); bar.innerHTML = '';
+  for (const a of ALLIES) { const cd = G.allyCd[a.id] || 0; const el = document.createElement('div');
+    el.className = 'ally' + (cd > 0 ? ' cd' : '') + (G.selectedAlly === a.id ? ' on' : ''); el.title = a.desc; el.dataset.id = a.id;
+    el.innerHTML = `<span class="em">${a.emoji}</span><span><b>${a.name}</b><br><small>${cd > 0 ? Math.ceil(cd) + 'с' : 'ГОТОВ [' + a.key + ']'}</small></span><i style="width:${cd > 0 ? (1 - cd / a.cd) * 100 : 100}%"></i>`;
+    el.onclick = () => selectAlly(a.id); bar.appendChild(el); }
+}
+function selectAlly(id) { if (!G || (G.allyCd[id] || 0) > 0) return; Sfx.click(); G.selectedAlly = G.selectedAlly === id ? null : id; G.selectedShop = null; buildShop(); buildAllyBar(); }
+
 // ---------- Update loop ----------
 let last = performance.now();
 function frame(now) {
@@ -315,6 +390,9 @@ function step(dt) {
   for (const h of G.heroes) h.buff = 0;
   for (const c of G.heroes) if (c.def.kind === 'pulse') for (const h of G.heroes) if (h !== c && h.m.root.position.distanceTo(c.m.root.position) <= stat(c).range) h.buff = Math.max(h.buff, stat(c).buff);
   for (const h of G.heroes) { heroUpdate(h, dt); animateHero(h.m, h.def, G.time + h.cell[0], h.atk); }
+  for (const a of G.allies) allyUpdate(a, dt);
+  G.allies = G.allies.filter(a => !a.done);
+  for (const k in G.allyCd) if (G.allyCd[k] > 0) G.allyCd[k] -= dt;
   updateBeams();
   // mortar shots
   for (const s of G.shots) {
@@ -379,6 +457,9 @@ function pickCell(e) {
   if (c < 0 || r < 0 || c >= GRID.w || r >= GRID.h) return null; return [c, r];
 }
 canvas.addEventListener('pointermove', e => {
+  if (G && G.selectedAlly) { const cell = pickCell(e); if (!cell) return; const p = cellToWorld(...cell); const a = ALLIES.find(x => x.id === G.selectedAlly);
+    ghostRange.position.set(p.x, 0.1, p.z); ghostRange.scale.setScalar(a.radius || a.range); ghostRange.material.color.set(0x22e6ff); ghostRange.visible = true; ghost.visible = false; return; }
+  if (G) ghostRange.material.color.set(0x22ffb0);
   if (!G || !G.selectedShop) { ghost.visible = ghostRange.visible = false; return; }
   const cell = pickCell(e); if (!cell) { ghost.visible = ghostRange.visible = false; return; }
   const ok = !G.pathSet.has(cell.join(',')) && !G.occupied.has(cell.join(','));
@@ -388,6 +469,7 @@ canvas.addEventListener('pointermove', e => {
 canvas.addEventListener('pointerdown', e => {
   if (!G || e.button !== 0 || G.over) return;
   const cell = pickCell(e); if (!cell) return; const key = cell.join(',');
+  if (G.selectedAlly) { callAlly(G.selectedAlly, cellToWorld(...cell)); return; }
   if (G.selectedShop) {
     if (!G.pathSet.has(key) && !G.occupied.has(key)) { placeHero(G.selectedShop, cell); if (G.gold < heroDef(G.selectedShop).cost) { G.selectedShop = null; ghost.visible = ghostRange.visible = false; buildShop(); } }
     return;
@@ -449,15 +531,16 @@ $('btnEndMenu').onclick = () => { $('end').classList.remove('active'); quit(); }
 const G_idx = () => G.idx;
 function clearRun() { for (const b of beamPool.values()) world.remove(b); beamPool.clear(); labels.innerHTML = ''; }
 function quit() { clearRun(); G = null; Sfx.music(false); setupMenuScene(); show('menu'); }
-setInterval(updateHud, 250);
+setInterval(() => { updateHud(); if (G) buildAllyBar(); }, 250);
 
 addEventListener('keydown', e => {
   if (!G) return;
   if (e.key >= '1' && e.key <= '5') selectShop(HEROES[+e.key - 1].id);
+  const ak = ALLIES.find(a => a.key.toLowerCase() === e.key.toLowerCase() || ({ z: 'я', x: 'ч', c: 'с' })[a.key.toLowerCase()] === e.key); if (ak) selectAlly(ak.id);
   if (e.key === 'q' || e.key === 'Q' || e.key === 'й') useUlt();
   if (e.key === ' ') { e.preventDefault(); $('btnWave').click(); }
   if (e.key === 'f' || e.key === 'а') $('btnSpeed').click();
-  if (e.key === 'Escape') { if (G.selectedShop) { G.selectedShop = null; buildShop(); ghost.visible = ghostRange.visible = false; } else if (G.paused) $('btnResume').click(); else $('btnPause').click(); }
+  if (e.key === 'Escape') { if (G.selectedAlly) { G.selectedAlly = null; buildAllyBar(); ghostRange.visible = false; } else if (G.selectedShop) { G.selectedShop = null; buildShop(); ghost.visible = ghostRange.visible = false; } else if (G.paused) $('btnResume').click(); else $('btnPause').click(); }
 });
 
 function renderLevels() {
@@ -497,4 +580,4 @@ await preloadModels(HEROES);
 setupMenuScene(); show('menu');
 requestAnimationFrame(frame);
 // debug hook for automated QA
-window.__game = { cam, get G() { return G; }, startLevel, spawnWave: () => spawnWave(), placeHero: (id, c) => placeHero(id, c), useUlt, show };
+window.__game = { cam, get G() { return G; }, startLevel, spawnWave: () => spawnWave(), placeHero: (id, c) => placeHero(id, c), callAlly: (id, c) => callAlly(id, cellToWorld(...c)), useUlt, show };
