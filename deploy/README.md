@@ -1,7 +1,7 @@
 # VSV — deployment and server sizing
 
 ## Install on your server (one command)
-Buy a VPS with **Ubuntu 24.04** (minimum now: 2 vCPU / 4 GB RAM / 40 GB SSD; for real users: 4 vCPU / 8 GB / 80 GB NVMe).
+Buy a VPS with **Ubuntu 24.04** (current server: 1 vCPU / 2 GB RAM / 60 GB — enough for the trial, the app is prebuilt in deploy/web; for real users: 4 vCPU / 8 GB / 80 GB NVMe).
 Open its console (SSH or the provider's web console), become root and run:
 
 ```
