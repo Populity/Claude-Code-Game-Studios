@@ -145,7 +145,9 @@ export function createApp(cfg: Config, clock: () => number = Date.now) {
       });
       audit(user.id, shadow ? "vote_shadow" : "vote", { bid: t.bid, winner: w.id, loser: l.id, delta: out.delta, score: verdict.score });
       // Shadowed votes get the same response as real ones, so abusers can't probe the detector.
-      send(res, 200, { delta: out.delta, winner: { ...toApi(w), ...pick(out.winner) }, loser: { ...toApi(l), ...pick(out.loser) }, milestones: out.milestones.map(m => m.id) });
+      // hist is rebuilt here (not re-read) so shadowed votes still look applied.
+      const after = (c: ClipRow, won: number) => ({ ...toApi(c), hist: [...(JSON.parse(c.hist) as number[]), won] });
+      send(res, 200, { delta: out.delta, winner: { ...after(w, 1), ...pick(out.winner) }, loser: { ...after(l, 0), ...pick(out.loser) }, milestones: out.milestones.map(m => m.id) });
     }],
 
     ["POST", /^\/api\/clips\/link$/, async (req, res, _m, ip) => {

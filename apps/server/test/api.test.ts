@@ -52,6 +52,8 @@ test("full vote flow: too fast rejected, valid vote applied once, replay and for
   const ok = await call("POST", "/api/vote", vote, tok);
   assert.equal(ok.status, 200); assert.ok(ok.body.delta >= 1);
   assert.equal(ok.body.winner.wins, b.a.wins + 1);
+  assert.deepEqual(ok.body.winner.hist, [...b.a.hist, 1], "winner hist includes this vote");
+  assert.deepEqual(ok.body.loser.hist, [...b.b.hist, 0], "loser hist includes this vote");
   assert.equal((await call("POST", "/api/vote", vote, tok)).status, 403, "replay");
 });
 
