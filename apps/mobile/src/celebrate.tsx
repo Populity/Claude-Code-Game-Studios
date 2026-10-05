@@ -1,7 +1,8 @@
 import React, { createContext, useCallback, useContext, useRef, useState } from "react";
 import { Celebrate } from "./ui/Celebrate";
 import { useApp } from "./store";
-import { topicOf, type Clip } from "./data";
+import { topicOf } from "./data";
+import type { Clip } from "./api";
 
 type Fn = (clips: Clip[], after?: () => void) => void;
 const Ctx = createContext<Fn>(() => {});

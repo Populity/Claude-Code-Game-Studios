@@ -1,21 +1,30 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { useApp } from "../store";
 import { TOPICS, topicOf } from "../data";
+import { api, type Clip } from "../api";
+import { errMsg } from "../errors";
 import { C } from "../theme";
 import { Avatar, Badge, Btn, Chip, Mut, Rise, Sheet, T, Tap } from "../ui/kit";
 import { ClipMedia, useToast } from "../ui/media";
 import { Icon } from "../ui/Icon";
-import { useCelebrate } from "../celebrate";
 
 export function Profile() {
-  const { s, t, update, simulateMine, resetDemo, logout } = useApp();
-  const toast = useToast(); const celebrate = useCelebrate();
-  const [open, setOpen] = useState(false);
-  const mine = s.clips.filter(c => c.owner === s.handle).sort((a, b) => b.ts - a.ts);
+  const { s, t, setLang, setTopics, logout, deleteAccount } = useApp();
+  const toast = useToast();
+  const [open, setOpen] = useState(false); const [confirmDel, setConfirmDel] = useState(false); const [busy, setBusy] = useState(false);
+  const [mine, setMine] = useState<Clip[]>([]);
+  useEffect(() => { api.myClips().then(setMine).catch(e => toast("⚠️ " + errMsg(e, t))); }, []);
   const wins = mine.reduce((n, c) => n + c.wins, 0), kings = mine.filter(c => c.status === "king").length;
-  const toggleTopic = (id: string) => { if (s.topics.includes(id) && s.topics.length <= 3) return toast(t("min3"));
-    update(x => ({ ...x, topics: x.topics.includes(id) ? x.topics.filter(y => y !== id) : [...x.topics, id] })); };
+  const toggleTopic = async (id: string) => {
+    const next = s.topics.includes(id) ? s.topics.filter(y => y !== id) : [...s.topics, id];
+    if (next.length < 3) return toast(t("min3"));
+    try { await setTopics(next); } catch (e) { toast("⚠️ " + errMsg(e, t)); }
+  };
+  const del = async () => {
+    if (busy) return; setBusy(true);
+    try { await deleteAccount(); } catch (e) { setBusy(false); setConfirmDel(false); toast("⚠️ " + errMsg(e, t)); }
+  };
   return <View style={{ flex: 1 }}>
     <View style={st.top}><T style={{ flex: 1, fontSize: 22, fontWeight: "800" }} numberOfLines={1}>@{s.handle}</T><Tap testID="settings" onPress={() => setOpen(true)}><Icon name="menu" /></Tap></View>
     <ScrollView contentContainerStyle={{ paddingBottom: 30 }}>
@@ -34,14 +43,17 @@ export function Profile() {
     <Sheet open={open} onClose={() => setOpen(false)} title={t("settings")}>
       <ScrollView>
         <Mut style={st.lbl}>{t("language")}</Mut>
-        <View style={{ flexDirection: "row", gap: 10 }}>{(["ru", "en"] as const).map(l => <View key={l} style={{ flex: 1 }}><Chip testID={`set-${l}`} label={l === "ru" ? "🇷🇺 Русский" : "🇬🇧 English"} on={s.lang === l} onPress={() => update(x => ({ ...x, lang: l }))} /></View>)}</View>
+        <View style={{ flexDirection: "row", gap: 10 }}>{(["ru", "en"] as const).map(l => <View key={l} style={{ flex: 1 }}><Chip testID={`set-${l}`} label={l === "ru" ? "🇷🇺 Русский" : "🇬🇧 English"} on={s.lang === l} onPress={() => setLang(l)} /></View>)}</View>
         <Mut style={st.lbl}>{t("myTopics")}</Mut>
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>{TOPICS.map(x => <Chip key={x.id} small label={`${x.e} ${x[s.lang]}`} on={s.topics.includes(x.id)} onPress={() => toggleTopic(x.id)} />)}</View>
         <View style={{ gap: 8, marginTop: 18 }}>
-          <Btn testID="simulate" kind="sec" title={t("simulate")} onPress={() => { setOpen(false); const m = simulateMine(); if (!mine.length) toast(t("noClipsD")); else if (m.length) setTimeout(() => celebrate(m), 350); }} />
-          <Btn kind="sec" title={t("reset")} onPress={() => { resetDemo(); setOpen(false); }} />
-          <Btn kind="danger" title={t("logout")} onPress={() => { setOpen(false); logout(); }} /></View>
+          <Btn kind="sec" title={t("logout")} onPress={() => { setOpen(false); void logout(); }} />
+          <Btn testID="delete-account" kind="danger" title={t("deleteAcc")} onPress={() => { setOpen(false); setConfirmDel(true); }} /></View>
       </ScrollView>
+    </Sheet>
+    <Sheet open={confirmDel} onClose={() => !busy && setConfirmDel(false)} title={t("deleteT")}>
+      <Mut style={{ textAlign: "center", marginBottom: 16 }}>{t("deleteD")}</Mut>
+      <View style={{ gap: 8 }}><Btn testID="delete-confirm" kind="danger" title={t("deleteYes")} disabled={busy} onPress={del} /><Btn kind="sec" title={t("cancel")} disabled={busy} onPress={() => setConfirmDel(false)} /></View>
     </Sheet>
   </View>;
 }

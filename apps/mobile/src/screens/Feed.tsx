@@ -1,29 +1,32 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Animated, Easing, FlatList, Pressable, ScrollView, StyleSheet, Text, View, type GestureResponderEvent, type ViewToken } from "react-native";
+import { ActivityIndicator, Animated, Easing, FlatList, Pressable, ScrollView, StyleSheet, Text, View, type GestureResponderEvent, type ViewToken } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useApp } from "../store";
-import { CAPS, TOPICS, topicOf, type Clip } from "../data";
+import { TOPICS, topicOf } from "../data";
+import { ApiError, api, type BattleTicket, type Clip } from "../api";
+import { errMsg } from "../errors";
 import { BRAND, C } from "../theme";
 import { Avatar, Badge, Chip, Mut, T, Tap, Sheet, Btn, haptic, useNative } from "../ui/kit";
 import { ClipMedia, Progress, useToast } from "../ui/media";
 import { Icon } from "../ui/Icon";
 import { useCelebrate } from "../celebrate";
 
-interface Battle { key: string; pair: [Clip, Clip]; topic: string }
+type Battle = BattleTicket & { key: string };
+const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
 
 function Half({ clip, side, active, seen, faded, grow, onTap, onMore, lang, t }: {
   clip: Clip; side: 0 | 1; active: boolean; seen: boolean; faded: Animated.Value; grow: Animated.Value;
   onTap: (e: GestureResponderEvent) => void; onMore: () => void; lang: "ru" | "en"; t: ReturnType<typeof useApp>["t"] }) {
-  const cap = typeof clip.caption === "number" ? CAPS[lang][clip.caption] : clip.caption;
+  const cap = clip.caption;
   return <Animated.View style={[st.half, { flex: grow, opacity: faded }]}>
     <Pressable style={StyleSheet.absoluteFill} onPress={onTap} testID={`half-${side}`}>
       <ClipMedia clip={clip} active={active} />
-      {clip.src === "demo" ? <Progress active={active} /> : null}
+      {!clip.video && clip.src === "demo" ? <Progress active={active} /> : null}
       <View style={st.sideTag}><Text style={st.sideTxt}>{side ? "B" : "A"}</Text></View>
       {seen ? <View style={st.seen}><Icon name="check" size={14} color="#fff" /></View> : null}
       <View style={st.meta} pointerEvents="none">
         <LinearGradient colors={["transparent", "rgba(0,0,0,0.85)"]} style={StyleSheet.absoluteFill} />
-        <View style={st.who}><Avatar size={26} label={clip.handle[0].toUpperCase()} /><Text style={st.handle} numberOfLines={1}>@{clip.handle}</Text></View>
+        <View style={st.who}><Avatar size={26} label={(clip.handle[0] ?? "?").toUpperCase()} /><Text style={st.handle} numberOfLines={1}>@{clip.handle}</Text></View>
         <Badge status={clip.status} label={t(clip.status)} />
         {cap ? <Text style={st.cap} numberOfLines={2}>{cap}</Text> : null}
         <Mut style={{ fontSize: 11 }}>{t("rating")} {clip.rating} · {clip.wins + clip.losses} {t("battles")}</Mut>
@@ -34,38 +37,64 @@ function Half({ clip, side, active, seen, faded, grow, onTap, onMore, lang, t }:
 }
 
 function BattleCard({ b, height, active, onDone, onReport }: { b: Battle; height: number; active: boolean; onDone: () => void; onReport: (c: Clip) => void }) {
-  const { s, t, vote, update } = useApp();
+  const { s, t, update } = useApp();
+  const toast = useToast();
   const celebrate = useCelebrate();
   const [mode, setMode] = useState(s.mode);
   const [show, setShow] = useState<0 | 1>(0);
   const [seen, setSeen] = useState<[boolean, boolean]>([s.mode === "seq", false]);
-  const [result, setResult] = useState<{ side: 0 | 1; delta: number } | null>(null);
+  const [result, setResult] = useState<{ side: 0 | 1; delta: number; clips: [Clip, Clip] } | null>(null);
+  const [left, setLeft] = useState(b.minWatchMs);
+  const sending = useRef(false);
   const vs = useRef(new Animated.Value(0)).current, slide = useRef(new Animated.Value(0)).current, res = useRef(new Animated.Value(0)).current, bolt = useRef(new Animated.Value(0)).current;
   const grow = useRef([new Animated.Value(1), new Animated.Value(1)]).current, fade = useRef([new Animated.Value(1), new Animated.Value(1)]).current;
   const lastTap = useRef([0, 0]);
-  const live = b.pair.map(p => s.clips.find(c => c.id === p.id) ?? p) as [Clip, Clip];
+  const live: [Clip, Clip] = result ? result.clips : [b.a, b.b];
 
   useEffect(() => { if (active) { vs.setValue(0); Animated.spring(vs, { toValue: 1, useNativeDriver: useNative, damping: 8, stiffness: 120 }).start(); } }, [active]);
-  const canVote = mode === "both" || (seen[0] && seen[1]);
+  // The server rejects votes sent before minWatchMs, so the clock starts when the battle is on screen.
+  useEffect(() => {
+    if (!active || result) return;
+    const end = Date.now() + b.minWatchMs; setLeft(b.minWatchMs);
+    const id = setInterval(() => { const l = Math.max(0, end - Date.now()); setLeft(l); if (l === 0) clearInterval(id); }, 250);
+    return () => clearInterval(id);
+  }, [active, b.bid]);
+  const watched = left <= 0;
+  const canVote = watched && (mode === "both" || (seen[0] && seen[1]));
 
   const showSide = (i: 0 | 1) => { if (result) return; setShow(i); setSeen(x => (i ? [x[0], true] : [true, x[1]])); haptic();
     Animated.spring(slide, { toValue: i, useNativeDriver: useNative, damping: 18, stiffness: 160 }).start(); };
   const setM = (m: "both" | "seq") => { if (result || m === mode) return; setMode(m); update(x => ({ ...x, mode: m })); if (m === "seq") { setShow(0); slide.setValue(0); setSeen([true, false]); } };
 
-  const doVote = useCallback((i: 0 | 1) => {
-    if (result) return;
+  const doVote = useCallback(async (i: 0 | 1) => {
+    if (result || sending.current) return;
     if (!canVote) { haptic("error"); return; }
-    haptic("medium");
-    const r = vote(live[i].id, live[1 - i].id);
-    setResult({ side: i, delta: r.delta }); setMode("both");
+    sending.current = true; haptic("medium");
+    let r;
+    try {
+      for (let attempt = 0; ; attempt++) {
+        try { r = await api.vote({ bid: b.bid, ticket: b.ticket, choice: live[i].id }); break; }
+        catch (e) { if (e instanceof ApiError && e.status === 425 && attempt < 3) { await sleep(800); continue; } throw e; }
+      }
+    } catch (e) {
+      sending.current = false; haptic("error");
+      const stale = e instanceof ApiError && [403, 409, 425].includes(e.status);
+      toast("⚠️ " + errMsg(e, t));
+      if (stale) setTimeout(onDone, 900);
+      return;
+    }
+    update(x => ({ ...x, votes: x.votes + 1 }));
+    const clips: [Clip, Clip] = live.map(c => (c.id === r.winner.id ? r.winner : c.id === r.loser.id ? r.loser : c)) as [Clip, Clip];
+    setResult({ side: i, delta: r.delta, clips }); setMode("both");
     Animated.parallel([
       Animated.spring(grow[i], { toValue: 1.9, useNativeDriver: false, damping: 16, stiffness: 140 }),
       Animated.timing(fade[1 - i], { toValue: 0.35, duration: 450, useNativeDriver: false }),
       Animated.sequence([Animated.spring(bolt, { toValue: 1, useNativeDriver: false, damping: 6, stiffness: 180 }), Animated.timing(bolt, { toValue: 2, duration: 450, delay: 250, useNativeDriver: false })]),
       Animated.spring(res, { toValue: 1, delay: 200, useNativeDriver: false, damping: 10, stiffness: 120 }),
     ]).start();
-    if (r.milestones.length) setTimeout(() => celebrate(r.milestones, onDone), 700); else setTimeout(onDone, 1500);
-  }, [result, canVote, live]);
+    const moments = [r.winner, r.loser].filter(c => r.milestones.includes(c.id));
+    if (moments.length) setTimeout(() => celebrate(moments, onDone), 700); else setTimeout(onDone, 1500);
+  }, [result, canVote, b.bid]);
 
   const tap = (i: 0 | 1) => () => {
     const now = Date.now();
@@ -103,58 +132,106 @@ function BattleCard({ b, height, active, onDone, onReport }: { b: Battle; height
         style={[st.vbtn, result?.side === i && { backgroundColor: C.volt }]}>
         <Icon name="bolt" size={18} color={result?.side === i ? C.ink : C.fg} fill={result?.side === i ? C.ink : "none"} />
         <Text style={[st.vtxt, result?.side === i && { color: C.ink }]}>{t("vote")} {i ? "B" : "A"}</Text></Tap></View>)}</View>
-    <Mut style={{ textAlign: "center", marginTop: 8, minHeight: 18 }}>{result ? " " : canVote ? t("dblTap") : t("watchBoth")}</Mut>
+    <Mut style={{ textAlign: "center", marginTop: 8, minHeight: 18 }}>{result ? " " : !watched ? t("watchWait", { s: Math.ceil(left / 1000) }) : canVote ? t("dblTap") : t("watchBoth")}</Mut>
   </View>;
 }
 
-export function Feed() {
-  const { s, t, nextPair, update, report, block } = useApp();
+export function Feed({ initialTopic = "foryou", onCreate }: { initialTopic?: string; onCreate: () => void }) {
+  const { s, t, update } = useApp();
   const toast = useToast();
   const [h, setH] = useState(0);
   const [battles, setBattles] = useState<Battle[]>([]);
   const [active, setActive] = useState(0);
   const [rep, setRep] = useState<Clip | null>(null);
-  const recent = useRef(new Set<string>());
+  const [topic, setTopic] = useState(initialTopic);
+  const [phase, setPhase] = useState<"loading" | "ready" | "empty" | "error">("loading");
+  const [errText, setErrText] = useState("");
   const list = useRef<FlatList<Battle>>(null);
-  const [topic, setTopic] = useState("foryou");
+  const run = useRef({ gen: 0, fetching: false, exhausted: false, count: 0, waiting: -1 });
 
-  const make = useCallback((n: number): Battle[] => {
-    const out: Battle[] = [];
-    for (let k = 0; k < n; k++) for (let tries = 0; tries < 8; tries++) {
-      const tp = topic !== "foryou" ? topic : s.topics[Math.floor(Math.random() * s.topics.length)] ?? "humor";
-      const p = nextPair(tp, recent.current);
-      if (p) { p.forEach(c => recent.current.add(c.id)); if (recent.current.size > 14) recent.current = new Set([...recent.current].slice(-14)); out.push({ key: `${Date.now()}-${Math.random()}`, pair: p, topic: tp }); break; }
-    }
-    return out;
-  }, [topic, s.topics, s.hidden.length, s.blocked.length]);
+  /** Fetches up to `n` more battles (one at a time) so the next ones are ready before the user swipes. */
+  const fill = useCallback(async (n: number) => {
+    const r = run.current; if (r.fetching || r.exhausted) return;
+    const gen = r.gen; r.fetching = true;
+    try {
+      for (let k = 0; k < n; k++) {
+        const b = await api.battle(topic === "foryou" ? undefined : topic);
+        if (gen !== r.gen) return;
+        r.count++; setBattles(x => [...x, { ...b, key: b.bid }]); setPhase("ready");
+      }
+    } catch (e) {
+      if (gen !== r.gen) return;
+      if (e instanceof ApiError && e.code === "no_battle") { r.exhausted = true; if (r.count === 0) setPhase("empty"); }
+      else if (r.count === 0) { setErrText(errMsg(e, t)); setPhase("error"); }
+      else if (!(e instanceof ApiError && e.status === 401)) toast("⚠️ " + errMsg(e, t));
+    } finally { if (gen === r.gen) r.fetching = false; }
+  }, [topic, t]);
 
-  useEffect(() => { setBattles(make(3)); setActive(0); list.current?.scrollToOffset({ offset: 0, animated: false }); }, [topic, s.hidden.length, s.blocked.length]);
+  const reload = useCallback((keepTopic = topic) => {
+    const r = run.current; r.gen++; r.fetching = false; r.exhausted = false; r.count = 0; r.waiting = -1;
+    setBattles([]); setActive(0); setPhase("loading"); setTopic(keepTopic);
+    list.current?.scrollToOffset({ offset: 0, animated: false });
+  }, [topic]);
+
+  useEffect(() => { fill(2); }, [topic, run.current.gen]);
+  // Keep two battles prefetched ahead of the active one; resolve a swipe that was waiting for the network.
+  useEffect(() => {
+    if (battles.length - active <= 2) fill(1);
+    const w = run.current.waiting;
+    if (w >= 0 && w < battles.length) { run.current.waiting = -1; list.current?.scrollToIndex({ index: w, animated: true }); }
+  }, [active, battles.length]);
+
   const onView = useRef(({ viewableItems }: { viewableItems: ViewToken[] }) => { const v = viewableItems[0]; if (v?.index != null) setActive(v.index); }).current;
-  const advance = (i: number) => () => { if (i + 1 < battles.length) list.current?.scrollToIndex({ index: i + 1, animated: true }); };
+  const advance = (i: number) => () => {
+    const r = run.current;
+    if (i + 1 < r.count) list.current?.scrollToIndex({ index: i + 1, animated: true });
+    else if (r.exhausted) { setBattles([]); setPhase("empty"); r.count = 0; }
+    else { r.waiting = i + 1; fill(1); }
+  };
   const topics = ["foryou", ...s.topics, ...TOPICS.map(x => x.id).filter(x => !s.topics.includes(x))];
 
+  /** After a report or block the prefetched battles may contain that clip or author, so refetch ahead. */
+  const dropAhead = () => {
+    const r = run.current, i = active;
+    r.gen++; r.fetching = false; r.exhausted = false; r.count = i + 1; r.waiting = i + 1;
+    setBattles(x => x.slice(0, i + 1)); fill(2);
+  };
+  const doReport = async (reason: string) => {
+    const c = rep; if (!c) return; setRep(null);
+    try { await api.report(c.id, reason); haptic("success"); toast("✅ " + t("reported")); dropAhead(); } catch (e) { toast("⚠️ " + errMsg(e, t)); }
+  };
+  const doBlock = async () => {
+    const c = rep; if (!c) return; setRep(null);
+    try { await api.block(c.id); toast("✅ " + t("hidden")); dropAhead(); } catch (e) { toast("⚠️ " + errMsg(e, t)); }
+  };
+
   return <View style={{ flex: 1 }}>
-    <View style={st.top}><Text style={st.logo}>VSV</Text><T style={{ fontWeight: "700" }}>🔥 {s.streak}</T>
-      <Tap testID="lang-toggle" onPress={() => update(x => ({ ...x, lang: x.lang === "ru" ? "en" : "ru" }))} style={st.lang}><Text style={{ color: C.fg, fontWeight: "800", fontSize: 13 }}>{s.lang.toUpperCase()}</Text></Tap></View>
+    <View style={st.top}><Text style={st.logo}>VSV</Text><T style={{ fontWeight: "700" }}>🔥 {s.votes}</T>
+      <Tap testID="lang-toggle" onPress={() => { const l = s.lang === "ru" ? "en" : "ru"; update(x => ({ ...x, lang: l })); api.updateMe({ lang: l }).catch(() => {}); }} style={st.lang}><Text style={{ color: C.fg, fontWeight: "800", fontSize: 13 }}>{s.lang.toUpperCase()}</Text></Tap></View>
     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12, paddingHorizontal: 14, paddingBottom: 10, paddingTop: 4 }} style={{ flexGrow: 0, flexShrink: 0 }}>
       {topics.map(id => { const tp = id === "foryou" ? null : topicOf(id); const on = id === topic;
-        return <Tap key={id} testID={`story-${id}`} onPress={() => setTopic(id)} style={{ alignItems: "center", width: 68, gap: 5 }}>
+        return <Tap key={id} testID={`story-${id}`} onPress={() => { if (id !== topic) reload(id); }} style={{ alignItems: "center", width: 68, gap: 5 }}>
           <View style={[st.story, on && st.storyOn, !on && !s.topics.includes(id) && id !== "foryou" && { borderColor: "#444" }]}>
             <Avatar size={58} ring={false} rounded={18} label={tp ? tp.e : "✨"} colors={tp ? tp.g : [C.bg3, C.bg3]} /></View>
           <Text numberOfLines={1} style={{ color: C.fg, fontSize: 12 }}>{tp ? tp[s.lang] : t("forYou")}</Text></Tap>; })}
     </ScrollView>
     <View style={{ flex: 1 }} onLayout={e => setH(e.nativeEvent.layout.height)}>
-      {h > 0 && battles.length === 0 ? <View style={{ flex: 1, alignItems: "center", justifyContent: "center", gap: 10 }}><Text style={{ fontSize: 48 }}>🥲</Text><T>{t("noPair")}</T></View> : null}
-      {h > 0 ? <FlatList ref={list} data={battles} keyExtractor={b => b.key} pagingEnabled showsVerticalScrollIndicator={false} decelerationRate="fast"
+      {phase === "loading" ? <View style={st.center}><ActivityIndicator color={C.volt} /></View> : null}
+      {phase === "empty" ? <View style={st.center} testID="empty"><Text style={{ fontSize: 48 }}>🥲</Text><T style={{ fontSize: 20, fontWeight: "800" }}>{t("noBattleT")}</T>
+        <Mut style={{ textAlign: "center" }}>{t("noBattleD")}</Mut>
+        <View style={{ width: 240, gap: 8, marginTop: 8 }}><Btn kind="brand" title={t("addClip")} onPress={onCreate} /><Btn kind="sec" title={t("tryAgain")} onPress={() => reload()} /></View></View> : null}
+      {phase === "error" ? <View style={st.center}><Text style={{ fontSize: 48 }}>📡</Text><T style={{ textAlign: "center" }}>{errText}</T>
+        <View style={{ width: 240, marginTop: 8 }}><Btn kind="sec" title={t("retry")} onPress={() => reload()} /></View></View> : null}
+      {h > 0 && battles.length > 0 ? <FlatList ref={list} data={battles} keyExtractor={b => b.key} pagingEnabled showsVerticalScrollIndicator={false} decelerationRate="fast"
         snapToInterval={h} getItemLayout={(_, i) => ({ length: h, offset: h * i, index: i })} onViewableItemsChanged={onView} viewabilityConfig={{ itemVisiblePercentThreshold: 60 }}
-        onEndReached={() => setBattles(b => [...b, ...make(3)])} onEndReachedThreshold={1.5} windowSize={3}
+        windowSize={3}
         renderItem={({ item, index }) => <BattleCard b={item} height={h} active={index === active} onDone={advance(index)} onReport={setRep} />} /> : null}
     </View>
     <Sheet open={!!rep} onClose={() => setRep(null)} title={t("reportT")}>
       {rep ? <Mut style={{ textAlign: "center", marginTop: -8, marginBottom: 8 }}>@{rep.handle}</Mut> : null}
-      {(["rCopy", "rSpam", "rAbuse", "rAdult"] as const).map(k => <Tap key={k} testID={`report-${k}`} onPress={() => { report(rep!.id, k); setRep(null); haptic("success"); toast("✅ " + t("reported")); }} style={st.opt}>
+      {(["rCopy", "rSpam", "rAbuse", "rAdult", "rOther"] as const).map(k => <Tap key={k} testID={`report-${k}`} onPress={() => doReport(k)} style={st.opt}>
         <View style={st.optIco}><Icon name="flag" size={20} /></View><T style={{ fontWeight: "600" }}>{t(k)}</T></Tap>)}
-      <View style={{ marginTop: 8 }}><Btn kind="sec" title={t("hideAuthor")} onPress={() => { block(rep!.owner); setRep(null); toast("✅ " + t("hidden")); }} /></View>
+      <View style={{ marginTop: 8 }}><Btn kind="sec" title={t("hideAuthor")} onPress={doBlock} /></View>
     </Sheet>
   </View>;
 }
@@ -165,6 +242,7 @@ const st = StyleSheet.create({
   lang: { borderWidth: 1.5, borderColor: "#fff", borderRadius: 8, paddingHorizontal: 6, paddingVertical: 3 },
   story: { padding: 2, borderRadius: 22, borderWidth: 2, borderColor: C.mint },
   storyOn: { borderColor: C.volt, shadowColor: C.volt, shadowOpacity: 0.8, shadowRadius: 10, transform: [{ scale: 1.04 }] },
+  center: { flex: 1, alignItems: "center", justifyContent: "center", gap: 10, padding: 30 },
   arena: { flex: 1, position: "relative" },
   half: { overflow: "hidden", borderRadius: 4, backgroundColor: "#111", flex: 1 },
   sideTag: { position: "absolute", top: 18, left: 10, width: 26, height: 26, borderRadius: 13, backgroundColor: "rgba(0,0,0,0.6)", alignItems: "center", justifyContent: "center", zIndex: 3 },

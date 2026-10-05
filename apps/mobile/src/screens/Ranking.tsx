@@ -1,7 +1,9 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Animated, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Animated, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useApp } from "../store";
-import { TOPICS, topicOf, type Clip } from "../data";
+import { TOPICS, topicOf } from "../data";
+import { api, type Clip } from "../api";
+import { errMsg } from "../errors";
 import { C } from "../theme";
 import { Avatar, Badge, Chip, Mut, Rise, T, useNative } from "../ui/kit";
 
@@ -21,19 +23,26 @@ function Pod({ c, place, lang }: { c?: Clip; place: 1 | 2 | 3; lang: "ru" | "en"
 export function Ranking() {
   const { s, t } = useApp();
   const [topic, setTopic] = useState("all");
-  const list = s.clips.filter(c => c.status !== "out" && (topic === "all" || c.topic === topic)).sort((a, b) => b.rating - a.rating);
+  const [list, setList] = useState<Clip[] | null>(null); const [err, setErr] = useState("");
+  useEffect(() => {
+    let alive = true; setList(null); setErr("");
+    api.ranking(topic === "all" ? undefined : topic).then(r => alive && setList(r)).catch(e => { if (alive) { setErr(errMsg(e, t)); setList([]); } });
+    return () => { alive = false; };
+  }, [topic]);
   return <View style={{ flex: 1 }}>
     <View style={{ paddingHorizontal: 16, paddingVertical: 10 }}><T style={{ fontSize: 22, fontWeight: "800" }}>{t("ranking")}</T></View>
     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0, flexShrink: 0 }} contentContainerStyle={{ gap: 8, paddingHorizontal: 16, paddingBottom: 10 }}>
       {[{ id: "all", n: t("all") }, ...TOPICS.map(x => ({ id: x.id, n: `${x.e} ${x[s.lang]}` }))].map(x => <Chip key={x.id} testID={`rank-${x.id}`} label={x.n} on={topic === x.id} onPress={() => setTopic(x.id)} />)}
     </ScrollView>
-    <ScrollView contentContainerStyle={{ paddingBottom: 30 }}>
+    {list === null ? <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}><ActivityIndicator color={C.volt} /></View>
+    : <ScrollView contentContainerStyle={{ paddingBottom: 30 }}>
+      {err ? <Mut style={{ textAlign: "center", padding: 16 }}>{err}</Mut> : null}
       <View style={st.podium}><Pod c={list[1]} place={2} lang={s.lang} /><Pod c={list[0]} place={1} lang={s.lang} /><Pod c={list[2]} place={3} lang={s.lang} /></View>
       {list.slice(3, 40).map((c, i) => <Rise key={c.id} i={Math.min(i, 8)} style={st.row}>
         <Text style={st.rk}>{i + 4}</Text><Avatar size={44} label={topicOf(c.topic).e} colors={topicOf(c.topic).g} />
-        <View style={{ flex: 1, minWidth: 0 }}><T numberOfLines={1} style={{ fontWeight: "700" }}>@{c.handle}{c.owner === s.handle ? " ⭐" : ""}</T><Mut numberOfLines={1}>{topicOf(c.topic)[s.lang]} · {c.wins}–{c.losses}</Mut></View>
+        <View style={{ flex: 1, minWidth: 0 }}><T numberOfLines={1} style={{ fontWeight: "700" }}>@{c.handle}{c.handle === s.handle ? " ⭐" : ""}</T><Mut numberOfLines={1}>{topicOf(c.topic)[s.lang]} · {c.wins}–{c.losses}</Mut></View>
         <View><Badge status={c.status} label={c.status === "king" ? "" : t(c.status)} /></View><Text style={st.score}>{c.rating}</Text></Rise>)}
-    </ScrollView>
+    </ScrollView>}
   </View>;
 }
 const st = StyleSheet.create({

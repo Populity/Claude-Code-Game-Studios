@@ -22,14 +22,15 @@ function Main() {
   const ins = useSafeAreaInsets();
   const [tab, setTab] = useState<Tab>("home");
   const [feedKey, setFeedKey] = useState(0);
+  const [feedTopic, setFeedTopic] = useState("foryou");
   const [creating, setCreating] = useState(false);
   const fade = useRef(new Animated.Value(1)).current;
   const go = (t: Tab) => { if (t === tab) return; fade.setValue(0); setTab(t); Animated.timing(fade, { toValue: 1, duration: 260, useNativeDriver: useNative }).start(); };
-  const screen = { home: <Feed key={feedKey} />, explore: <Explore openTopic={() => { setFeedKey(k => k + 1); go("home"); }} />, rank: <Ranking />, me: <Profile /> }[tab];
+  const screen = { home: <Feed key={feedKey} initialTopic={feedTopic} onCreate={() => setCreating(true)} />, explore: <Explore openTopic={id => { setFeedTopic(id); setFeedKey(k => k + 1); go("home"); }} />, rank: <Ranking />, me: <Profile /> }[tab];
   return <View style={{ flex: 1, paddingTop: ins.top }}>
     <Animated.View style={{ flex: 1, opacity: fade, transform: [{ translateY: fade.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) }] }}>{screen}</Animated.View>
     <View style={[st.bar, { paddingBottom: ins.bottom, height: 56 + ins.bottom }]}>
-      {(["home", "explore", "create", "rank", "me"] as const).map(k => <View key={k} style={st.tab}><Tap testID={`tab-${k}`} onPress={() => (k === "create" ? setCreating(true) : go(k))} scale={0.8} style={st.tabBtn}>
+      {(["home", "explore", "create", "rank", "me"] as const).map(k => <View key={k} style={st.tab}><Tap testID={`tab-${k}`} onPress={() => { if (k === "home") setFeedTopic("foryou"); if (k === "create") setCreating(true); else go(k); }} scale={0.8} style={st.tabBtn}>
         {k === "me" ? <View style={[st.me, tab === "me" && st.meOn]}><Text style={{ fontWeight: "800", color: C.ink, fontSize: 12 }}>{s.handle[0]?.toUpperCase()}</Text></View>
           : <Icon name={{ home: "home", explore: "search", create: "plus", rank: "trophy" }[k] as "home"} color={k === "create" ? C.volt : C.fg} width={tab === k ? 2.7 : 2} />}
       </Tap></View>)}

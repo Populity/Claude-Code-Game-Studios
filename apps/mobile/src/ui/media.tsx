@@ -2,7 +2,8 @@ import React, { createContext, useCallback, useContext, useEffect, useRef, useSt
 import { Animated, Easing, Linking, StyleSheet, Text, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useVideoPlayer, VideoView } from "expo-video";
-import { topicOf, type Clip } from "../data";
+import { topicOf } from "../data";
+import { mediaUrl, type Clip } from "../api";
 import { C } from "../theme";
 import { useNative, haptic } from "./kit";
 
@@ -27,17 +28,18 @@ function FileVideo({ uri, active }: { uri: string; active: boolean }) {
   return <VideoView player={player} style={StyleSheet.absoluteFill} contentFit="cover" nativeControls={false} />;
 }
 
-/** Renders a clip: demo gradient, user video file, or an Instagram link card. */
-export function ClipMedia({ clip, active = true, thumb = false }: { clip: Pick<Clip, "topic" | "src" | "uri" | "code">; active?: boolean; thumb?: boolean }) {
+/** Renders a clip: server video (or a local preview uri), demo gradient, or an Instagram link card. */
+export function ClipMedia({ clip, uri, active = true, thumb = false }: { clip: Pick<Clip, "topic" | "src" | "video" | "code">; uri?: string; active?: boolean; thumb?: boolean }) {
   const tp = topicOf(clip.topic);
-  if (clip.src === "file" && clip.uri) return <View style={StyleSheet.absoluteFill}><FileVideo uri={clip.uri} active={active && !thumb} /></View>;
+  const source = uri ?? (clip.video ? mediaUrl(clip.video) : null);
+  if (source && !thumb) return <View style={StyleSheet.absoluteFill}><FileVideo uri={source} active={active} /></View>;
   return (
     <View style={[StyleSheet.absoluteFill, s.center]}>
       <LinearGradient colors={[tp.g[0], tp.g[1]]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
       {!thumb && clip.src === "demo" ? <View style={[StyleSheet.absoluteFill, { opacity: 0.6 }]} pointerEvents="none">
         <View style={{ position: "absolute", left: "12%", bottom: "22%" }}><Bob size={22} delay={300}>{tp.e}</Bob></View>
         <View style={{ position: "absolute", right: "14%", top: "28%" }}><Bob size={20} delay={700}>{tp.e}</Bob></View></View> : null}
-      {thumb ? <Text style={{ fontSize: 34 }}>{clip.src === "link" ? "🔗" : tp.e}</Text> : <Bob size={64}>{clip.src === "link" ? "🔗" : tp.e}</Bob>}
+      {thumb ? <Text style={{ fontSize: 34 }}>{clip.src === "link" ? "🔗" : source ? "🎬" : tp.e}</Text> : <Bob size={64}>{clip.src === "link" ? "🔗" : tp.e}</Bob>}
       {clip.src === "link" && !thumb && clip.code ? <Text onPress={() => { haptic(); Linking.openURL(`https://www.instagram.com/reel/${clip.code}/`); }} style={s.open}>Instagram ↗</Text> : null}
     </View>
   );

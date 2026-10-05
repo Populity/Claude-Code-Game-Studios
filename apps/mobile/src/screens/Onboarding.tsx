@@ -3,6 +3,8 @@ import { Animated, Easing, KeyboardAvoidingView, Platform, ScrollView, StyleShee
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useApp, type Step } from "../store";
+import { errMsg } from "../errors";
+import { ApiError } from "../api";
 import { TOPICS } from "../data";
 import { BRAND, C } from "../theme";
 import { Btn, Chip, Mut, Rise, T, useNative } from "../ui/kit";
@@ -31,9 +33,16 @@ function Shell({ hero, children }: { hero: React.ReactNode; children: React.Reac
 const Dots = ({ i }: { i: number }) => <View style={{ flexDirection: "row", gap: 6 }}>{[0, 1].map(k => <View key={k} style={{ height: 4, borderRadius: 2, width: k === i ? 22 : 8, backgroundColor: k === i ? "#fff" : "#555" }} />)}</View>;
 
 export function Onboarding() {
-  const { s, t, update } = useApp();
+  const { s, t, update, register } = useApp();
   const go = (step: Step) => update(x => ({ ...x, step }));
-  const [handle, setHandle] = useState("");
+  const [handle, setHandle] = useState(s.handle);
+  const [err, setErr] = useState<string | null>(null); const [busy, setBusy] = useState(false);
+  const start = async () => {
+    if (busy) return; setBusy(true); setErr(null);
+    try { await register(); }
+    catch (e) { setErr(errMsg(e, t)); if (e instanceof ApiError && (e.code === "handle_taken" || e.code === "bad_handle")) go("login"); }
+    finally { setBusy(false); }
+  };
 
   if (s.step === "lang") return <Shell hero={<><Orb color={C.mint} size={240} style={{ left: 0, top: 40 }} /><Orb color={C.cyan} size={200} style={{ right: 0, top: 160 }} delay={1500} /><AppMark /></>}>
     <Rise i={0}><T style={st.h}>VSV</T></Rise><Rise i={1}><Mut>{t("chooseLang")}</Mut></Rise>
@@ -59,8 +68,9 @@ export function Onboarding() {
   if (s.step === "login") return <Shell key="lg" hero={<><Orb color={C.mint} size={260} style={{ left: 40, top: 40 }} /><AppMark size={110} icon="link" /></>}>
     <Rise i={0}><T style={st.h}>{t("loginT")}</T></Rise><Rise i={1}><Mut style={{ fontSize: 15 }}>{t("loginD")}</Mut></Rise>
     <Rise i={2} style={st.mock}><Mut>{t("loginNote")}</Mut>
-      <TextInput testID="handle" value={handle} onChangeText={v => setHandle(v.replace(/[^\w.]/g, "").slice(0, 30))} placeholder={t("handlePh")} placeholderTextColor={C.mut} autoCapitalize="none" autoCorrect={false} style={st.input} />
-      <Btn testID="login" title={t("loginAs")} disabled={handle.length < 2} onPress={() => update(x => ({ ...x, handle, step: "consent" }))} /></Rise>
+      <TextInput testID="handle" value={handle} onChangeText={v => { setErr(null); setHandle(v.replace(/[^\w.]/g, "").slice(0, 30)); }} placeholder={t("handlePh")} placeholderTextColor={C.mut} autoCapitalize="none" autoCorrect={false} style={st.input} />
+      {err ? <Mut style={st.err}>{err}</Mut> : null}
+      <Btn testID="login" title={t("loginAs")} disabled={handle.length < 2} onPress={() => { setErr(null); update(x => ({ ...x, handle, step: "consent" })); }} /></Rise>
     <Rise i={3}><Mut style={{ fontSize: 11.5, textAlign: "center" }}>{t("terms")}</Mut></Rise></Shell>;
 
   if (s.step === "consent") {
@@ -79,7 +89,8 @@ export function Onboarding() {
   return <Shell key="tp" hero={<AppMark size={72} icon="grid" />}>
     <Rise i={0}><T style={st.h}>{t("topicsT")}</T></Rise><Rise i={1}><Mut>{t("topicsD")}</Mut></Rise>
     <Rise i={2} style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>{TOPICS.map(x => <Chip key={x.id} testID={`topic-${x.id}`} label={`${x.e} ${x[s.lang]}`} on={s.topics.includes(x.id)} onPress={() => toggle(x.id)} />)}</Rise>
-    <Rise i={3}><Btn testID="start" kind="brand" title={`${t("start")} · ${s.topics.length} ${t("picked")}`} disabled={s.topics.length < 3} onPress={() => go("main")} /></Rise></Shell>;
+    {err ? <Mut style={st.err}>{err}</Mut> : null}
+    <Rise i={3}><Btn testID="start" kind="brand" title={`${t("start")} · ${s.topics.length} ${t("picked")}`} disabled={s.topics.length < 3 || busy} onPress={start} /></Rise></Shell>;
 }
 
 const st = StyleSheet.create({
@@ -90,6 +101,7 @@ const st = StyleSheet.create({
   mock: { gap: 10, borderWidth: 1, borderStyle: "dashed", borderColor: "#555", borderRadius: 14, padding: 14, backgroundColor: C.bg2 },
   input: { backgroundColor: C.bg3, color: C.fg, borderRadius: 12, padding: 13, fontSize: 15 },
   perm: { flexDirection: "row", alignItems: "center", gap: 12, padding: 14, borderRadius: 14, backgroundColor: C.bg2 },
+  err: { color: C.red, fontSize: 13 },
   note: { borderWidth: 1, borderColor: C.line, borderRadius: 10, padding: 12 },
   ava: { width: 56, height: 56, borderRadius: 28, backgroundColor: C.bg3, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: C.mint },
 });
