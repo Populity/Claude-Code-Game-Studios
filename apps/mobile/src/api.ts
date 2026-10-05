@@ -23,6 +23,26 @@ export class ApiError extends Error {
   constructor(public status: number, public code: string, public data: Record<string, unknown> = {}) { super(`${status} ${code}`); }
 }
 
+/* ---- connectivity: any network failure marks us offline; a probe on /healthz (or any success) brings us back ---- */
+let offline = false;
+const netListeners = new Set<(off: boolean) => void>();
+let probe: ReturnType<typeof setInterval> | undefined;
+function setOffline(v: boolean) {
+  if (v === offline) return; offline = v; netListeners.forEach(f => f(v));
+  if (v && !probe) probe = setInterval(() => { fetch(`${API_BASE}/api/healthz`).then(r => { if (r.ok) setOffline(false); }).catch(() => {}); }, 4000);
+  if (!v && probe) { clearInterval(probe); probe = undefined; }
+}
+export const isOffline = () => offline;
+export function subscribeNet(fn: (off: boolean) => void) { netListeners.add(fn); return () => { netListeners.delete(fn); }; }
+/** Browser online/offline events (web only; native relies on request failures + the probe). */
+export function watchBrowserNet() {
+  if (typeof window === "undefined" || typeof window.addEventListener !== "function" || Platform.OS !== "web") return () => {};
+  const on = () => setOffline(false), off = () => setOffline(true);
+  window.addEventListener("online", on); window.addEventListener("offline", off);
+  if (typeof navigator !== "undefined" && navigator.onLine === false) setOffline(true);
+  return () => { window.removeEventListener("online", on); window.removeEventListener("offline", off); };
+}
+
 const TOKEN_KEY = "vsv.token", DEVICE_KEY = "vsv.device";
 let token: string | null = null;
 let onUnauthorized: (() => void) | null = null;
@@ -58,8 +78,10 @@ async function request<T>(method: string, path: string, opts: { body?: unknown; 
   try {
     res = await fetch(`${API_BASE}${path}`, { method, headers, body: opts.rawBody ?? (opts.body === undefined ? undefined : JSON.stringify(opts.body)), signal: ctl.signal });
   } catch {
+    if (!ctl.signal.aborted) setOffline(true);
     throw new ApiError(0, ctl.signal.aborted ? "timeout" : "network");
   } finally { clearTimeout(timer); }
+  setOffline(false);
   let data: Record<string, unknown> | unknown[] = {};
   try { data = await res.json(); } catch { /* empty or non-JSON body */ }
   if (!res.ok) {
@@ -119,7 +141,7 @@ export async function uploadClip(file: { uri: string; mime?: string }, p: { topi
       if (x.status === 401) onUnauthorized?.();
       reject(new ApiError(x.status, typeof d.error === "string" ? d.error : "http_error", d));
     };
-    x.onerror = () => reject(new ApiError(0, "network"));
+    x.onerror = () => { setOffline(true); reject(new ApiError(0, "network")); };
     x.ontimeout = () => reject(new ApiError(0, "timeout"));
     x.send(blob);
   });

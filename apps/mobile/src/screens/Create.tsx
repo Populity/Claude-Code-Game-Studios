@@ -57,7 +57,7 @@ export function Create({ open, onClose, onPublished }: { open: boolean; onClose:
   }
 
   const opt = (icon: IconName, title: string, desc: string, onPress: () => void, colors: readonly string[], id: string) =>
-    <Tap testID={id} onPress={onPress} style={st.opt}><LinearGradient colors={colors as [string, string]} style={st.optIco}><Icon name={icon} size={24} color={C.ink} /></LinearGradient>
+    <Tap testID={id} label={`${title}. ${desc}`} onPress={onPress} style={st.opt}><LinearGradient colors={colors as [string, string]} style={st.optIco}><Icon name={icon} size={24} color={C.ink} /></LinearGradient>
       <View style={{ flex: 1 }}><T style={{ fontWeight: "700" }}>{title}</T><Mut>{desc}</Mut></View></Tap>;
 
   return <Sheet open={open} onClose={onClose} title={t("create")}>

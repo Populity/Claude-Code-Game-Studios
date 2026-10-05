@@ -5,11 +5,11 @@ import { useVideoPlayer, VideoView } from "expo-video";
 import { topicOf } from "../data";
 import { mediaUrl, type Clip } from "../api";
 import { C } from "../theme";
-import { Avatar, useNative, haptic } from "./kit";
+import { Avatar, reduceMotion, useNative, haptic } from "./kit";
 
 function Bob({ children, size, delay = 0 }: { children: string; size: number; delay?: number }) {
   const v = useRef(new Animated.Value(0)).current;
-  useEffect(() => { const a = Animated.loop(Animated.sequence([
+  useEffect(() => { if (reduceMotion()) return; const a = Animated.loop(Animated.sequence([
     Animated.timing(v, { toValue: 1, duration: 1100, delay, easing: Easing.inOut(Easing.sin), useNativeDriver: useNative }),
     Animated.timing(v, { toValue: 0, duration: 1100, easing: Easing.inOut(Easing.sin), useNativeDriver: useNative })])); a.start(); return () => a.stop(); }, []);
   return <Animated.Text style={{ fontSize: size, transform: [{ translateY: v.interpolate({ inputRange: [0, 1], outputRange: [0, -14] }) }, { rotate: v.interpolate({ inputRange: [0, 1], outputRange: ["0deg", "6deg"] }) }, { scale: v.interpolate({ inputRange: [0, 1], outputRange: [1, 1.06] }) }] }}>{children}</Animated.Text>;
@@ -18,16 +18,23 @@ function Bob({ children, size, delay = 0 }: { children: string; size: number; de
 /** Story-style progress bar on top of a playing clip. */
 export function Progress({ active }: { active: boolean }) {
   const v = useRef(new Animated.Value(0)).current;
-  useEffect(() => { if (!active) return; const a = Animated.loop(Animated.timing(v, { toValue: 1, duration: 8000, easing: Easing.linear, useNativeDriver: false })); v.setValue(0); a.start(); return () => a.stop(); }, [active]);
+  useEffect(() => { if (!active || reduceMotion()) return; const a = Animated.loop(Animated.timing(v, { toValue: 1, duration: 8000, easing: Easing.linear, useNativeDriver: false })); v.setValue(0); a.start(); return () => a.stop(); }, [active]);
   return <View style={s.prog}><Animated.View style={[s.progFill, { width: v.interpolate({ inputRange: [0, 1], outputRange: ["0%", "100%"] }) }]} /></View>;
 }
 
 /** Plays a video; the poster stays visible until the first frame is ready. */
-function FileVideo({ uri, poster, active }: { uri: string; poster?: string | null; active: boolean }) {
-  const player = useVideoPlayer(uri, p => { p.loop = true; p.muted = true; });
+function FileVideo({ uri, poster, active, muted, onEnd }: { uri: string; poster?: string | null; active: boolean; muted: boolean; onEnd?: () => void }) {
+  const player = useVideoPlayer(uri, p => { p.loop = !onEnd; p.muted = true; });
+  const endRef = useRef(onEnd); endRef.current = onEnd;
+  useEffect(() => { player.muted = muted; }, [muted, player]);
+  useEffect(() => { const sub = player.addListener("playToEnd", () => endRef.current?.()); return () => sub.remove(); }, [player]);
   const [ready, setReady] = useState(player.status === "readyToPlay");
   useEffect(() => { const sub = player.addListener("statusChange", ({ status }) => { if (status === "readyToPlay") setReady(true); }); return () => sub.remove(); }, [player]);
-  useEffect(() => { active ? player.play() : player.pause(); }, [active, player]);
+  useEffect(() => { player.loop = !onEnd; }, [onEnd, player]);
+  useEffect(() => {
+    if (!active) { player.pause(); return; }
+    if (player.duration > 0 && player.currentTime >= player.duration - 0.1) player.replay(); else player.play();
+  }, [active, player]);
   return <>
     {poster ? <Image source={{ uri: mediaUrl(poster) }} style={StyleSheet.absoluteFill} resizeMode="cover" /> : null}
     <VideoView player={player} style={[StyleSheet.absoluteFill, poster && !ready ? { opacity: 0 } : null]} contentFit="cover" nativeControls={false} />
@@ -42,10 +49,10 @@ export function PosterThumb({ clip, size }: { clip: Pick<Clip, "topic" | "poster
 }
 
 /** Renders a clip: server video (or a local preview uri), demo gradient, or an Instagram link card. */
-export function ClipMedia({ clip, uri, active = true, thumb = false }: { clip: Pick<Clip, "topic" | "src" | "video" | "code"> & { poster?: string | null }; uri?: string; active?: boolean; thumb?: boolean }) {
+export function ClipMedia({ clip, uri, active = true, thumb = false, muted = true, onEnd }: { clip: Pick<Clip, "topic" | "src" | "video" | "code"> & { poster?: string | null }; uri?: string; active?: boolean; thumb?: boolean; muted?: boolean; onEnd?: () => void }) {
   const tp = topicOf(clip.topic);
   const source = uri ?? (clip.video ? mediaUrl(clip.video) : null);
-  if (source && !thumb) return <View style={StyleSheet.absoluteFill}><FileVideo uri={source} poster={clip.poster} active={active} /></View>;
+  if (source && !thumb) return <View style={StyleSheet.absoluteFill}><FileVideo uri={source} poster={clip.poster} active={active} muted={muted} onEnd={onEnd} /></View>;
   if (thumb && clip.poster) return <Image source={{ uri: mediaUrl(clip.poster) }} style={StyleSheet.absoluteFill} resizeMode="cover" />;
   return (
     <View style={[StyleSheet.absoluteFill, s.center]}>

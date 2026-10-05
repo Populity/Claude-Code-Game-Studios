@@ -37,6 +37,9 @@ const ru = {
   errTooSmall: "Файл слишком маленький.", errBadFile: "Этот формат не поддерживается. Нужен MP4, MOV, WebM или 3GP.", errReadFile: "Не удалось прочитать файл.",
   errSession: "Сессия истекла. Войдите снова.", errMin3: "Нужно минимум 3 темы", errUnauthorized: "Нужно войти заново.", saved: "Сохранено", fileReady: "Видео выбрано",
   clipDelT: "Удалить клип?", clipDelD: "Клип и его результаты в битвах будут удалены безвозвратно.", clipDel: "Удалить клип", clipDeleted: "Клип удалён", errNotOwner: "Это не ваш клип.", clipActions: "Клип", streakDays: "Серия: {n} дн.",
+  offline: "Нет сети — подключаемся…", loadFailed: "Не удалось загрузить. Проверьте сеть.", unmuteHint: "Нажмите 🔊, чтобы включить звук",
+  aMute: "Включить звук", aUnmute: "Выключить звук", aHome: "Главная", aExplore: "Поиск", aCreate: "Новый клип", aRank: "Рейтинг", aProfile: "Профиль", aMore: "Ещё: пожаловаться или скрыть автора",
+  aLang: "Сменить язык", aSettings: "Настройки", aVote: "Голос за клип {s}", aClose: "Закрыть", clipDetail: "Клип", blockAuthor: "Скрыть автора", form: "Форма",
   errBadTopic: "Выберите тему.", errRights: "Подтвердите права на видео.",
 };
 const en: typeof ru = {
@@ -77,6 +80,9 @@ const en: typeof ru = {
   errTooSmall: "File is too small.", errBadFile: "Unsupported format. Use MP4, MOV, WebM or 3GP.", errReadFile: "Couldn't read the file.",
   errSession: "Session expired. Please log in again.", errMin3: "At least 3 topics required", errUnauthorized: "Please log in again.", saved: "Saved", fileReady: "Video selected",
   clipDelT: "Delete clip?", clipDelD: "The clip and its battle results will be permanently deleted.", clipDel: "Delete clip", clipDeleted: "Clip deleted", errNotOwner: "This is not your clip.", clipActions: "Clip", streakDays: "Streak: {n} days",
+  offline: "No connection — reconnecting…", loadFailed: "Couldn't load. Check your connection.", unmuteHint: "Tap 🔊 to turn the sound on",
+  aMute: "Unmute", aUnmute: "Mute", aHome: "Home", aExplore: "Explore", aCreate: "New clip", aRank: "Ranking", aProfile: "Profile", aMore: "More: report or hide author",
+  aLang: "Change language", aSettings: "Settings", aVote: "Vote for clip {s}", aClose: "Close", clipDetail: "Clip", blockAuthor: "Hide author", form: "Form",
   errBadTopic: "Pick a topic.", errRights: "Confirm you have the rights.",
 };
 export const STRINGS = { ru, en };

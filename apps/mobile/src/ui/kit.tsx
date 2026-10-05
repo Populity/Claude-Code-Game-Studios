@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from "react";
-import { Animated, Easing, Modal, Platform, Pressable, StyleSheet, Text, View, type StyleProp, type TextStyle, type ViewStyle } from "react-native";
+import { AccessibilityInfo, Animated, Easing, Modal, Platform, Pressable, StyleSheet, Text, View, type StyleProp, type TextStyle, type ViewStyle } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import { BRAND, C, R } from "../theme";
@@ -12,12 +12,20 @@ export const haptic = (k: "light" | "medium" | "success" | "error" = "light") =>
 };
 export const useNative = Platform.OS !== "web";
 
+/** Reduced-motion preference (read at mount by animated components; updates live). */
+const motion = { reduce: false };
+AccessibilityInfo.isReduceMotionEnabled().then(v => { motion.reduce = v; }).catch(() => {});
+AccessibilityInfo.addEventListener("reduceMotionChanged", v => { motion.reduce = v; });
+export const reduceMotion = () => motion.reduce;
+/** Animation duration that collapses to ~0 under reduced motion. */
+export const dur = (ms: number) => (motion.reduce ? 1 : ms);
+
 /** Spring-press wrapper used by every tappable element. */
-export function Tap({ onPress, children, style, disabled, scale = 0.94, testID, onLongPress }: { onPress?: () => void; onLongPress?: () => void; children: React.ReactNode; style?: StyleProp<ViewStyle>; disabled?: boolean; scale?: number; testID?: string }) {
+export function Tap({ onPress, children, style, disabled, scale = 0.94, testID, onLongPress, label, selected }: { onPress?: () => void; onLongPress?: () => void; children: React.ReactNode; style?: StyleProp<ViewStyle>; disabled?: boolean; scale?: number; testID?: string; label?: string; selected?: boolean }) {
   const v = useRef(new Animated.Value(1)).current;
-  const to = (x: number) => Animated.spring(v, { toValue: x, useNativeDriver: useNative, speed: 40, bounciness: x === 1 ? 12 : 0 }).start();
+  const to = (x: number) => { if (motion.reduce) return; Animated.spring(v, { toValue: x, useNativeDriver: useNative, speed: 40, bounciness: x === 1 ? 12 : 0 }).start(); };
   return (
-    <Pressable testID={testID} disabled={disabled} onPressIn={() => to(scale)} onPressOut={() => to(1)} onLongPress={onLongPress}
+    <Pressable testID={testID} disabled={disabled} hitSlop={10} accessibilityLabel={label} accessibilityState={{ disabled: !!disabled, selected }} onPressIn={() => to(scale)} onPressOut={() => to(1)} onLongPress={onLongPress}
       onPress={() => { haptic(); onPress?.(); }} accessibilityRole="button">
       <Animated.View style={[style, { transform: [{ scale: v }], opacity: disabled ? 0.35 : 1 }]}>{children}</Animated.View>
     </Pressable>
@@ -29,7 +37,7 @@ export function Btn({ title, onPress, kind = "primary", disabled, icon, testID }
   const fg = kind === "sec" ? C.fg : kind === "danger" ? C.red : C.ink;
   const inner = <View style={st.btnRow}>{icon}<Text style={[st.btnTxt, { color: fg }]}>{title}</Text></View>;
   return (
-    <Tap testID={testID} onPress={onPress} disabled={disabled} style={[st.btn, { backgroundColor: bg }]} scale={0.96}>
+    <Tap testID={testID} label={title} onPress={onPress} disabled={disabled} style={[st.btn, { backgroundColor: bg }]} scale={0.96}>
       {kind === "brand" ? <LinearGradient colors={[...BRAND]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[StyleSheet.absoluteFill, { borderRadius: 12 }]} /> : null}
       {inner}
     </Tap>
@@ -37,7 +45,7 @@ export function Btn({ title, onPress, kind = "primary", disabled, icon, testID }
 }
 
 export function Chip({ label, on, onPress, small, testID }: { label: string; on?: boolean; onPress?: () => void; small?: boolean; testID?: string }) {
-  return <Tap testID={testID} onPress={onPress} scale={0.9} style={[st.chip, small && st.chipSm, on && { backgroundColor: C.fg }]}>
+  return <Tap testID={testID} label={label} selected={on} onPress={onPress} scale={0.9} style={[st.chip, small && st.chipSm, on && { backgroundColor: C.fg }]}>
     <Text style={[st.chipTxt, small && { fontSize: 12.5 }, on && { color: "#000" }]}>{label}</Text></Tap>;
 }
 
@@ -58,7 +66,7 @@ export function Badge({ status, label }: { status: ClipStatus; label: string }) 
 /** Fade + rise entrance with a stagger index. */
 export function Rise({ i = 0, children, style }: { i?: number; children: React.ReactNode; style?: StyleProp<ViewStyle> }) {
   const v = useRef(new Animated.Value(0)).current;
-  useEffect(() => { Animated.timing(v, { toValue: 1, duration: 520, delay: 40 + i * 55, easing: Easing.out(Easing.cubic), useNativeDriver: useNative }).start(); }, []);
+  useEffect(() => { Animated.timing(v, { toValue: 1, duration: dur(520), delay: motion.reduce ? 0 : 40 + i * 55, easing: Easing.out(Easing.cubic), useNativeDriver: useNative }).start(); }, []);
   return <Animated.View style={[style, { opacity: v, transform: [{ translateY: v.interpolate({ inputRange: [0, 1], outputRange: [18, 0] }) }] }]}>{children}</Animated.View>;
 }
 
@@ -69,13 +77,32 @@ export function Sheet({ open, onClose, title, children }: { open: boolean; onClo
   return (
     <Modal visible={open} transparent animationType="fade" onRequestClose={onClose}>
       <Pressable style={st.scrim} onPress={onClose} testID="scrim" />
-      <Animated.View style={[st.sheet, { transform: [{ translateY: y }] }]}>
+      <Animated.View accessibilityViewIsModal style={[st.sheet, { transform: [{ translateY: y }] }]}>
         <View style={st.grab} />
         {title ? <Text style={st.sheetTitle}>{title}</Text> : null}
         {children}
       </Animated.View>
     </Modal>
   );
+}
+
+/** Pulsing placeholder block shown while data loads. */
+export function Skeleton({ style }: { style?: StyleProp<ViewStyle> }) {
+  const v = useRef(new Animated.Value(0.35)).current;
+  useEffect(() => {
+    if (motion.reduce) { v.setValue(0.5); return; }
+    const a = Animated.loop(Animated.sequence([Animated.timing(v, { toValue: 0.7, duration: 800, easing: Easing.inOut(Easing.sin), useNativeDriver: useNative }), Animated.timing(v, { toValue: 0.35, duration: 800, easing: Easing.inOut(Easing.sin), useNativeDriver: useNative })]));
+    a.start(); return () => a.stop();
+  }, []);
+  return <Animated.View accessibilityElementsHidden importantForAccessibility="no" style={[{ backgroundColor: "#2a2a2a", borderRadius: 8, opacity: v }, style]} />;
+}
+
+/** Error with a Retry button (used by every screen that loads data). */
+export function ErrorState({ text, retryLabel, onRetry, emoji = "📡" }: { text: string; retryLabel: string; onRetry: () => void; emoji?: string }) {
+  return <View style={{ alignItems: "center", justifyContent: "center", gap: 10, padding: 30 }} accessibilityRole="alert">
+    <Text style={{ fontSize: 44 }}>{emoji}</Text><Text style={{ color: C.fg, fontSize: 15, textAlign: "center" }}>{text}</Text>
+    <View style={{ width: 220, marginTop: 6 }}><Btn kind="sec" title={retryLabel} onPress={onRetry} /></View>
+  </View>;
 }
 
 export const T = ({ style, children, ...p }: { style?: StyleProp<TextStyle>; children: React.ReactNode; numberOfLines?: number }) => <Text style={[{ color: C.fg, fontSize: 15 }, style]} {...p}>{children}</Text>;
@@ -85,7 +112,7 @@ const st = StyleSheet.create({
   btn: { borderRadius: 12, paddingVertical: 14, paddingHorizontal: 16, overflow: "hidden" },
   btnRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },
   btnTxt: { fontWeight: "700", fontSize: 15 },
-  chip: { paddingVertical: 8, paddingHorizontal: 14, borderRadius: 999, backgroundColor: C.bg3 },
+  chip: { minHeight: 36, justifyContent: "center", paddingVertical: 8, paddingHorizontal: 14, borderRadius: 999, backgroundColor: C.bg3 },
   chipSm: { paddingVertical: 5, paddingHorizontal: 10 },
   chipTxt: { color: C.fg, fontWeight: "500", fontSize: 14 },
   badge: { paddingVertical: 3, paddingHorizontal: 7, borderRadius: 999, alignSelf: "flex-start" },

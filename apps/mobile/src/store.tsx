@@ -9,10 +9,12 @@ export interface Consent { media: boolean; notif: boolean; analytics: boolean }
 export interface State {
   v: 2; step: Step; lang: Lang; handle: string; consent: Consent; topics: string[];
   mode: "both" | "seq"; stats: Stats;
+  /** Sound preference; clips start muted (browsers block unmuted autoplay). */
+  muted: boolean; unmuteHintShown: boolean;
 }
 export const NO_STATS: Stats = { clips: 0, wins: 0, kings: 0, votes: 0, streak: 0, bestStreak: 0 };
 const KEY = "vsv.app.v2";
-const fresh = (): State => ({ v: 2, step: "lang", lang: "ru", handle: "", consent: { media: true, notif: true, analytics: true }, topics: [], mode: "both", stats: NO_STATS });
+const fresh = (): State => ({ v: 2, step: "lang", lang: "ru", handle: "", consent: { media: true, notif: true, analytics: true }, topics: [], mode: "both", stats: NO_STATS, muted: true, unmuteHintShown: false });
 
 function useStoreImpl() {
   const [s, setS] = useState<State | null>(null);

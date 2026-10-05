@@ -16,6 +16,8 @@ const P: Record<string, React.ReactNode> = {
   swords: <Path d="M14.5 17.5 3 6V3h3l11.5 11.5M13 19l6-6M16 16l4 4M19 21l2-2M9.5 17.5 21 6V3h-3L6.5 14.5M11 19l-6-6M8 16l-4 4M5 21l-2-2" />,
   grid: <><Rect x="3" y="3" width="7" height="7" /><Rect x="14" y="3" width="7" height="7" /><Rect x="3" y="14" width="7" height="7" /><Rect x="14" y="14" width="7" height="7" /></>,
   close: <Path d="M6 6l12 12M18 6 6 18" />,
+  volume: <><Path d="M4 9h4l5-4v14l-5-4H4z" /><Path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12" /></>,
+  mute: <><Path d="M4 9h4l5-4v14l-5-4H4z" /><Path d="m17 9 5 6M22 9l-5 6" /></>,
   check: <Path d="M5 12.5 10 17 19 7" />,
 };
 export type IconName = keyof typeof P;

@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useApp } from "../store";
 import { TOPICS, topicOf } from "../data";
 import { api, type Clip } from "../api";
 import { errMsg } from "../errors";
 import { C } from "../theme";
-import { Avatar, Badge, Btn, Chip, Mut, Rise, Sheet, T, Tap } from "../ui/kit";
+import { Avatar, Badge, Btn, Chip, ErrorState, Mut, Rise, Sheet, Skeleton, T, Tap } from "../ui/kit";
 import { ClipMedia, useToast } from "../ui/media";
 import { Icon } from "../ui/Icon";
 
@@ -13,9 +13,11 @@ export function Profile() {
   const { s, t, setLang, setTopics, logout, deleteAccount, refreshStats } = useApp();
   const toast = useToast();
   const [open, setOpen] = useState(false); const [confirmDel, setConfirmDel] = useState(false); const [busy, setBusy] = useState(false);
-  const [mine, setMine] = useState<Clip[]>([]);
+  const [mine, setMine] = useState<Clip[] | null>(null); const [loadErr, setLoadErr] = useState(false); const [refreshing, setRefreshing] = useState(false);
   const [sel, setSel] = useState<Clip | null>(null); const [confirmClip, setConfirmClip] = useState(false);
-  useEffect(() => { refreshStats(); api.myClips().then(setMine).catch(e => toast("⚠️ " + errMsg(e, t))); }, []);
+  const load = async () => { setLoadErr(false); refreshStats(); try { setMine(await api.myClips()); } catch { setLoadErr(true); setMine(x => x ?? []); } };
+  useEffect(() => { load(); }, []);
+  const refresh = async () => { setRefreshing(true); await load(); setRefreshing(false); };
   const { clips: nClips, wins, kings } = s.stats;
   const toggleTopic = async (id: string) => {
     const next = s.topics.includes(id) ? s.topics.filter(y => y !== id) : [...s.topics, id];
@@ -24,7 +26,7 @@ export function Profile() {
   };
   const delClip = async () => {
     const c = sel; if (!c || busy) return; setBusy(true);
-    try { await api.deleteClip(c.id); setMine(m => m.filter(x => x.id !== c.id)); toast("✅ " + t("clipDeleted")); refreshStats(); }
+    try { await api.deleteClip(c.id); setMine(m => (m ?? []).filter(x => x.id !== c.id)); toast("✅ " + t("clipDeleted")); refreshStats(); }
     catch (e) { toast("⚠️ " + errMsg(e, t)); }
     setBusy(false); setConfirmClip(false); setSel(null);
   };
@@ -33,15 +35,17 @@ export function Profile() {
     try { await deleteAccount(); } catch (e) { setBusy(false); setConfirmDel(false); toast("⚠️ " + errMsg(e, t)); }
   };
   return <View style={{ flex: 1 }}>
-    <View style={st.top}><T style={{ flex: 1, fontSize: 22, fontWeight: "800" }} numberOfLines={1}>@{s.handle}</T><Tap testID="settings" onPress={() => setOpen(true)}><Icon name="menu" /></Tap></View>
-    <ScrollView contentContainerStyle={{ paddingBottom: 30 }}>
+    <View style={st.top}><T style={{ flex: 1, fontSize: 22, fontWeight: "800" }} numberOfLines={1}>@{s.handle}</T><Tap testID="settings" label={t("aSettings")} onPress={() => setOpen(true)} style={{ minWidth: 44, minHeight: 44, alignItems: "center", justifyContent: "center" }}><Icon name="menu" /></Tap></View>
+    <ScrollView contentContainerStyle={{ paddingBottom: 30 }} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={C.volt} />}>
       <View style={st.head}><Avatar size={88} label={s.handle[0]?.toUpperCase() ?? "?"} />
-        <View style={st.stats}>{[[nClips || mine.length, t("clips")], [wins, t("wins")], [kings, t("kings")]].map(([n, l]) => <View key={String(l)} style={{ alignItems: "center" }}><T style={{ fontSize: 18, fontWeight: "800" }}>{n}</T><Mut>{l}</Mut></View>)}</View></View>
+        <View style={st.stats}>{[[nClips || (mine?.length ?? 0), t("clips")], [wins, t("wins")], [kings, t("kings")]].map(([n, l]) => <View key={String(l)} style={{ alignItems: "center" }}><T style={{ fontSize: 18, fontWeight: "800" }}>{n}</T><Mut>{l}</Mut></View>)}</View></View>
       <View style={{ paddingHorizontal: 16, gap: 8 }}><T style={{ fontWeight: "700" }}>{s.handle}</T>
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>{s.topics.map(id => <Chip key={id} small label={`${topicOf(id).e} ${topicOf(id)[s.lang]}`} />)}</View>
         <Btn kind="sec" title={t("settings")} onPress={() => setOpen(true)} /></View>
       <View style={st.tabs}><Icon name="grid" /></View>
-      {mine.length ? <View style={st.grid}>{mine.map((c, i) => <Rise key={c.id} i={i} style={{ width: "33.33%", padding: 1 }}><Tap onPress={() => setSel(c)} scale={0.97} style={st.cell} testID="my-clip">
+      {mine === null ? <View style={st.grid} testID="profile-skeleton">{[0, 1, 2].map(i => <View key={i} style={{ width: "33.33%", padding: 1 }}><Skeleton style={{ aspectRatio: 9 / 16, borderRadius: 0 }} /></View>)}</View>
+        : loadErr && mine.length === 0 ? <ErrorState text={t("loadFailed")} retryLabel={t("retry")} onRetry={load} />
+        : mine.length ? <View style={st.grid}>{mine.map((c, i) => <Rise key={c.id} i={i} style={{ width: "33.33%", padding: 1 }}><Tap onPress={() => setSel(c)} label={`${topicOf(c.topic)[s.lang]}, ${c.rating}`} scale={0.97} style={st.cell} testID="my-clip">
         <ClipMedia clip={c} thumb /><View style={{ position: "absolute", top: 6, left: 6 }}><Badge status={c.status} label={t(c.status)} /></View>
         <View style={st.ov}><View style={{ flexDirection: "row", gap: 2 }}>{Array.from({ length: 10 }, (_, k) => <View key={k} style={{ flex: 1, height: 3, borderRadius: 2, backgroundColor: c.hist[k] === 1 ? C.ok : c.hist[k] === 0 ? C.red : "rgba(255,255,255,0.25)" }} />)}</View>
           <Text style={{ color: "#fff", fontSize: 11 }}>{topicOf(c.topic)[s.lang]} · {c.rating}</Text></View></Tap></Rise>)}</View>

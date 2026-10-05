@@ -7,12 +7,12 @@ import { errMsg } from "../errors";
 import { ApiError } from "../api";
 import { TOPICS } from "../data";
 import { BRAND, C } from "../theme";
-import { Btn, Chip, Mut, Rise, T, useNative } from "../ui/kit";
+import { Btn, Chip, Mut, Rise, T, reduceMotion, useNative } from "../ui/kit";
 import { Icon, type IconName } from "../ui/Icon";
 
 function Orb({ color, size, style, delay = 0 }: { color: string; size: number; style: object; delay?: number }) {
   const v = useRef(new Animated.Value(0)).current;
-  useEffect(() => { const a = Animated.loop(Animated.sequence([Animated.timing(v, { toValue: 1, duration: 4500, delay, easing: Easing.inOut(Easing.sin), useNativeDriver: useNative }), Animated.timing(v, { toValue: 0, duration: 4500, easing: Easing.inOut(Easing.sin), useNativeDriver: useNative })])); a.start(); return () => a.stop(); }, []);
+  useEffect(() => { if (reduceMotion()) return; const a = Animated.loop(Animated.sequence([Animated.timing(v, { toValue: 1, duration: 4500, delay, easing: Easing.inOut(Easing.sin), useNativeDriver: useNative }), Animated.timing(v, { toValue: 0, duration: 4500, easing: Easing.inOut(Easing.sin), useNativeDriver: useNative })])); a.start(); return () => a.stop(); }, []);
   return <Animated.View style={[{ position: "absolute", width: size, height: size, borderRadius: size, backgroundColor: color, opacity: 0.22 }, style,
     { transform: [{ translateX: v.interpolate({ inputRange: [0, 1], outputRange: [0, 24] }) }, { translateY: v.interpolate({ inputRange: [0, 1], outputRange: [0, -30] }) }, { scale: v.interpolate({ inputRange: [0, 1], outputRange: [1, 1.15] }) }] }]} />;
 }
