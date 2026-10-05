@@ -11,6 +11,7 @@ import { ALLIES, GRID, HEROES, ENEMIES, LEVELS, difficulty, ULT, COMBO, EARLY_WA
 import { buildHero, setHeroLevel, animateHero, buildEnemy, animateEnemy, preloadModels, addEyes } from './models.js';
 import { Sfx } from './audio.js';
 import { buildWorld, cellToWorld } from './world.js';
+import { LANGS, initLang, setLang, getLang, t, heroName, heroDesc, levelName, allyName, allyDesc, diffName, applyStatic } from './i18n.js';
 
 const $ = id => document.getElementById(id);
 const T = GRID.tile;
@@ -130,7 +131,7 @@ function startLevel(idx) {
   cam.target.set(0, 0, 2); cam.pitch = 1.0; cam.dist = 66; cam.yaw = 0;
   buildShop(); buildAllyBar(); hideSel(); show('hud'); updateHud();
   $('waveMax').textContent = lvl.waves.length;
-  banner(`УРОВЕНЬ ${lvl.id}: ${lvl.name}`, 2.5);
+  banner(t('lvl.banner', { n: lvl.id, name: levelName(lvl) }), 2.5);
   Sfx.music(true);
 }
 
@@ -146,8 +147,8 @@ function spawnWave() {
     t += 0.5;
   }
   G.spawnQ.sort((a, b) => a.at - b.at);
-  banner(G.wave === G.lvl.waves.length ? 'ФИНАЛЬНАЯ ВОЛНА!' : `ВОЛНА ${G.wave}`, 1.5); Sfx.wave();
-  if (groups.some(g => g[0] === 'boss')) { setTimeout(() => banner('⚠ БОСС ⚠', 1.5), 1600); cam.shake = 1; }
+  banner(G.wave === G.lvl.waves.length ? t('wave.final') : t('wave.n', { n: G.wave }), 1.5); Sfx.wave();
+  if (groups.some(g => g[0] === 'boss')) { setTimeout(() => banner(t('boss'), 1.5), 1600); cam.shake = 1; }
   updateHud();
 }
 
@@ -180,7 +181,7 @@ function kill(e) {
   burst(p.clone().setY(1), big ? 0xff8020 : 0xff2e88, big ? 80 : 30, big ? 14 : 8, big ? 1.1 : 0.7, big ? 10 : 5);
   if (big) { cam.shake = Math.max(cam.shake, e.type === 'boss' ? 1.6 : 0.6); Sfx.boom(); } else Sfx.pop();
   world.remove(e.m.root); e.hpEl.remove();
-  if (G.combo >= 3 && G.comboKills % COMBO.step === 0) { floatText(p, `КОМБО x${G.combo}!`, '#22e6ff', 26); }
+  if (G.combo >= 3 && G.comboKills % COMBO.step === 0) { floatText(p, t('combo.pop', { n: G.combo }), '#22e6ff', 26); }
   updateHud();
 }
 
@@ -264,7 +265,7 @@ function updateBeams() {
 function useUlt() {
   if (!G || G.ult < 1 || G.paused || G.over) return;
   G.ult = 0; cam.shake = 2.2; Sfx.ult();
-  banner('🔥 ВИРУСНЫЙ МОМЕНТ 🔥', 1.4);
+  banner(t('ult.banner'), 1.4);
   for (const e of [...G.enemies]) { if (e.dead) continue; e.stun = ULT.stun; damage(e, ULT.dmg * G.D.hp * 0.7, 'ult'); burst(e.m.root.position.clone().setY(1), 0x22e6ff, 25, 10, 1, 8); }
   for (let i = 0; i < 6; i++) { const rw = G.routes[i % G.routes.length]; ringFx(rw[1 + Math.floor(Math.random() * (rw.length - 2))], 12, i % 2 ? 0xff2e88 : 0x22e6ff); }
   updateHud();
@@ -306,7 +307,7 @@ function callAlly(id, point) {
   G.allyCd[id] = def.cd; G.selectedAlly = null; ghost.visible = ghostRange.visible = false;
   const m = buildAlly(id); m.position.set(point.x, 45, point.z); world.add(m);
   G.allies.push({ def, m, target: point.clone(), phase: 'fall', t: 0, cd: 0 });
-  banner(def.emoji + ' ' + def.name.toUpperCase(), 1.1); Sfx.wave(); buildAllyBar();
+  banner(def.emoji + ' ' + allyName(def).toUpperCase(), 1.1); Sfx.wave(); buildAllyBar();
 }
 function enemiesNear(p, r) { return G.enemies.filter(e => !e.dead && e.m.root.position.distanceTo(p) <= r); }
 function allyUpdate(a, dt) {
@@ -339,8 +340,8 @@ function allyUpdate(a, dt) {
 function buildAllyBar() {
   const bar = $('allies'); bar.innerHTML = '';
   for (const a of ALLIES) { const cd = G.allyCd[a.id] || 0; const el = document.createElement('div');
-    el.className = 'ally' + (cd > 0 ? ' cd' : '') + (G.selectedAlly === a.id ? ' on' : ''); el.title = a.desc; el.dataset.id = a.id;
-    el.innerHTML = `<span class="em">${a.emoji}</span><span><b>${a.name}</b><br><small>${cd > 0 ? Math.ceil(cd) + 'с' : 'ГОТОВ [' + a.key + ']'}</small></span><i style="width:${cd > 0 ? (1 - cd / a.cd) * 100 : 100}%"></i>`;
+    el.className = 'ally' + (cd > 0 ? ' cd' : '') + (G.selectedAlly === a.id ? ' on' : ''); el.title = allyDesc(a); el.dataset.id = a.id;
+    el.innerHTML = `<span class="em">${a.emoji}</span><span><b>${allyName(a)}</b><br><small>${cd > 0 ? Math.ceil(cd) + t('sec') : t('ally.ready', { k: a.key })}</small></span><i style="width:${cd > 0 ? (1 - cd / a.cd) * 100 : 100}%"></i>`;
     el.onclick = () => selectAlly(a.id); bar.appendChild(el); }
 }
 function selectAlly(id) { if (!G || (G.allyCd[id] || 0) > 0) return; Sfx.click(); G.selectedAlly = G.selectedAlly === id ? null : id; G.selectedShop = null; buildShop(); buildAllyBar(); }
@@ -366,7 +367,7 @@ function step(dt) {
   while (G.spawnQ.length && G.spawnQ[0].at <= G.time) { const q = G.spawnQ.shift(); makeEnemy(q.type, q.route); };
   if (!G.between && !G.spawnQ.length && !G.enemies.length) {
     if (G.wave >= G.lvl.waves.length) return finish(true);
-    G.between = true; G.waveTimer = 9; G.gold += 40 + G.wave * 10; floatText(G.base.position.clone(), `ВОЛНА ПРОЙДЕНА +${40 + G.wave * 10}`, '#22e6ff', 18); updateHud();
+    G.between = true; G.waveTimer = 9; G.gold += 40 + G.wave * 10; floatText(G.base.position.clone(), t('wave.clear', { n: 40 + G.wave * 10 }), '#22e6ff', 18); updateHud();
   }
   // combo decay
   if (G.comboT > 0) { G.comboT -= dt; if (G.comboT <= 0) { G.comboKills = 0; G.combo = 1; updateHud(); } }
@@ -435,10 +436,10 @@ function finish(win) {
   G.over = true; Sfx.music(false);
   const ratio = G.lives / G.maxLives; const stars = win ? (ratio >= 0.9 ? 3 : ratio >= 0.5 ? 2 : 1) : 0;
   if (win) { const key = G.lvl.id; save.stars[key] = Math.max(save.stars[key] || 0, stars); persist(); Sfx.win(); } else Sfx.lose();
-  $('endTitle').textContent = win ? 'ВИРУСНАЯ ПОБЕДА!' : 'ТЕБЯ ОТПИСАЛИ...';
+  $('endTitle').textContent = win ? t('end.win') : t('end.lose');
   $('endStars').textContent = win ? '★'.repeat(stars) + '☆'.repeat(3 - stars) : '';
-  $('endText').textContent = `Сложность: ${G.D.name} (${save.diff}/10) · Убито: ${G.kills} · Прорвалось: ${G.leaks}`;
-  $('btnNext').textContent = win ? (G.idx < LEVELS.length - 1 ? 'СЛЕДУЮЩИЙ УРОВЕНЬ' : 'ЕЩЁ РАЗ') : 'РЕВАНШ';
+  $('endText').textContent = t('end.stats', { d: diffName(save.diff, G.D.name), v: save.diff, k: G.kills, l: G.leaks });
+  $('btnNext').textContent = win ? (G.idx < LEVELS.length - 1 ? t('end.nextLevel') : t('end.again')) : t('end.rematch');
   $('end').classList.add('active');
 }
 
@@ -483,11 +484,11 @@ function selectHero(h) {
   h.m.rangeRing.visible = true; h.m.rangeRing.scale.setScalar(stat(h).range);
   const s = stat(h); const nextCost = h.def.upg[h.lvl];
   const el = $('sel'); el.classList.remove('hidden');
-  el.innerHTML = `<h3>${h.def.emoji} ${h.def.name} <span class="stars">${'★'.repeat(h.lvl)}</span></h3>
-    <div class="muted">${h.def.desc}</div>
-    <div>Урон: <b>${s.dmg}</b>${h.def.kind === 'beam' ? '/с' : ''} · Дальность: <b>${s.range}</b>${h.buff ? ` · Бафф: +${Math.round(h.buff * 100)}%` : ''}</div>
-    <div class="row">${nextCost ? `<button class="btn sm" id="bUp" ${G.gold < nextCost ? 'disabled' : ''}>ПРОКАЧАТЬ ${nextCost}👍</button>` : '<b class="stars">МАКС</b>'}
-    <button class="btn sm" id="bSell">ПРОДАТЬ ${Math.round(h.spent * SELL_RATIO)}</button></div>`;
+  el.innerHTML = `<h3>${h.def.emoji} ${heroName(h.def)} <span class="stars">${'★'.repeat(h.lvl)}</span></h3>
+    <div class="muted">${heroDesc(h.def)}</div>
+    <div>${t('sel.dmg')}: <b>${s.dmg}</b>${h.def.kind === 'beam' ? t('sel.perSec') : ''} · ${t('sel.range')}: <b>${s.range}</b>${h.buff ? ` · ${t('sel.buff')}: +${Math.round(h.buff * 100)}%` : ''}</div>
+    <div class="row">${nextCost ? `<button class="btn sm" id="bUp" ${G.gold < nextCost ? 'disabled' : ''}>${t('sel.upgrade', { c: nextCost })}</button>` : `<b class="stars">${t('sel.max')}</b>`}
+    <button class="btn sm" id="bSell">${t('sel.sell', { c: Math.round(h.spent * SELL_RATIO) })}</button></div>`;
   $('bUp') && ($('bUp').onclick = () => { if (G.gold < nextCost) return; G.gold -= nextCost; h.spent += nextCost; h.lvl++; setHeroLevel(h.m, h.def, h.lvl); burst(h.m.root.position.clone().setY(1.5), 0xffd23f, 60, 8, 1, 10); Sfx.upgrade(); floatText(h.m.root.position, 'LEVEL UP!', '#ffd23f', 22); updateHud(); selectHero(h); });
   $('bSell').onclick = () => { G.gold += Math.round(h.spent * SELL_RATIO); world.remove(h.m.root); const b = beamPool.get(h); if (b) { world.remove(b); beamPool.delete(h); } G.heroes.splice(G.heroes.indexOf(h), 1); G.occupied.delete(h.cell.join(',')); G.selectedHero = null; hideSel(); updateHud(); Sfx.pop(); };
 }
@@ -496,7 +497,7 @@ function hideSel() { $('sel').classList.add('hidden'); }
 // ---------- UI ----------
 function show(id) { document.querySelectorAll('.screen').forEach(s => s.classList.toggle('active', s.id === id)); }
 const qBtn = $('btnQuality');
-const qLabel = () => qBtn.textContent = 'ГРАФИКА: ' + (save.quality === 'ultra' ? 'УЛЬТРА 1080p+' : 'ВЫСОКАЯ');
+const qLabel = () => qBtn.textContent = t('menu.gfx', { q: t(save.quality === 'ultra' ? 'gfx.ultra' : 'gfx.high') });
 qBtn.onclick = () => { save.quality = save.quality === 'ultra' ? 'high' : 'ultra'; persist(); qLabel(); resize(); }; qLabel();
 document.querySelectorAll('[data-go]').forEach(b => b.onclick = () => { Sfx.click(); if (b.dataset.go === 'levels') renderLevels(); if (b.dataset.go === 'heroes') renderHeroes(); show(b.dataset.go); });
 let bannerT;
@@ -506,7 +507,7 @@ function buildShop() {
   const shop = $('shop'); shop.innerHTML = '';
   HEROES.forEach((h, i) => {
     const d = document.createElement('div'); d.className = 'hero' + (G.selectedShop === h.id ? ' on' : '') + (G.gold < h.cost ? ' poor' : '');
-    d.innerHTML = `<span class="em">${h.emoji}</span>${h.name}<br><b>${h.cost}👍</b> <small class="muted">[${i + 1}]</small>`; d.title = h.desc;
+    d.innerHTML = `<span class="em">${h.emoji}</span>${heroName(h)}<br><b>${h.cost}👍</b> <small class="muted">[${i + 1}]</small>`; d.title = heroDesc(h);
     d.onclick = () => selectShop(h.id); shop.appendChild(d);
   });
 }
@@ -549,17 +550,17 @@ function renderLevels() {
     const unlocked = i === 0 || save.stars[LEVELS[i - 1].id];
     const st = save.stars[l.id] || 0;
     const c = document.createElement('div'); c.className = 'card' + (unlocked ? '' : ' locked');
-    c.innerHTML = `<div class="em">${l.emoji}</div><h3>${l.id}. ${l.name}</h3><p>${l.waves.length} волн · ${l.paths.length} входа · ${l.lives} ❤</p><div class="stars">${'★'.repeat(st)}${'☆'.repeat(3 - st)}</div>${unlocked ? '' : '<p>🔒 пройди предыдущий</p>'}`;
+    c.innerHTML = `<div class="em">${l.emoji}</div><h3>${l.id}. ${levelName(l)}</h3><p>${t('card.waves', { w: l.waves.length, p: l.paths.length, l: l.lives })}</p><div class="stars">${'★'.repeat(st)}${'☆'.repeat(3 - st)}</div>${unlocked ? '' : `<p>${t('card.locked')}</p>`}`;
     c.onclick = () => { Sfx.click(); startLevel(i); }; wrap.appendChild(c);
   });
   diffUi();
 }
-function diffUi() { const D = difficulty(save.diff); $('diff').value = save.diff; $('diffVal').textContent = save.diff; $('diffName').textContent = D.name; $('diffName').style.color = save.diff >= 9 ? '#ff3030' : save.diff >= 6 ? '#ffa040' : '#22ffb0';
-  $('diffInfo').textContent = `HP врагов x${D.hp.toFixed(2)} · скорость x${D.speed.toFixed(2)} · награда x${D.reward.toFixed(2)}${D.lives < 1 ? ' · жизни x0.5' : ''}`; }
+function diffUi() { const D = difficulty(save.diff); $('diff').value = save.diff; $('diffVal').textContent = save.diff; $('diffName').textContent = diffName(save.diff, D.name); $('diffName').style.color = save.diff >= 9 ? '#ff3030' : save.diff >= 6 ? '#ffa040' : '#22ffb0';
+  $('diffInfo').textContent = t('diff.info', { hp: D.hp.toFixed(2), sp: D.speed.toFixed(2), rw: D.reward.toFixed(2) }) + (D.lives < 1 ? t('diff.lives') : ''); }
 $('diff').oninput = e => { save.diff = +e.target.value; persist(); diffUi(); };
 function renderHeroes() {
   const wrap = $('heroCards'); wrap.innerHTML = '';
-  HEROES.forEach(h => { const c = document.createElement('div'); c.className = 'card'; c.innerHTML = `<div class="em">${h.emoji}</div><h3>${h.name}</h3><p>${h.desc}</p><p>Цена: <b>${h.cost}👍</b> · Урон ${h.levels[0].dmg}→${h.levels[2].dmg}</p>`; wrap.appendChild(c); });
+  HEROES.forEach(h => { const c = document.createElement('div'); c.className = 'card'; c.innerHTML = `<div class="em">${h.emoji}</div><h3>${heroName(h)}</h3><p>${heroDesc(h)}</p><p>${t('card.price')}: <b>${h.cost}👍</b> · ${t('card.dmg')} ${h.levels[0].dmg}→${h.levels[2].dmg}</p>`; wrap.appendChild(c); });
 }
 
 // ---------- Menu background scene ----------
@@ -576,6 +577,11 @@ function menuScene(t) {
 }
 document.addEventListener('click', () => Sfx.unlock(), { once: true });
 
+initLang(save.lang); applyStatic(); qLabel();
+const langBtn = $('btnLang');
+const langLabel = () => langBtn.textContent = t('menu.lang') + ': ' + LANGS[getLang()];
+langBtn.onclick = () => { const ks = Object.keys(LANGS); const next = ks[(ks.indexOf(getLang()) + 1) % ks.length]; setLang(next); save.lang = next; persist(); applyStatic(); qLabel(); langLabel(); Sfx.click(); };
+langLabel();
 await preloadModels(HEROES);
 setupMenuScene(); show('menu');
 requestAnimationFrame(frame);
