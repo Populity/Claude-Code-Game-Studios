@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Война рилсами</title>
+<style>
+:root{--bg:#0e0e12;--card:#1a1a22;--fg:#f2f2f5;--mut:#9a9aa8;--acc:#ff3d6e;--ok:#2ecc71;--bad:#e74c3c;--gold:#f5c542}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.4 system-ui,sans-serif;display:flex;justify-content:center}
+.phone{width:100%;max-width:430px;min-height:100vh;display:flex;flex-direction:column}
+header{padding:14px 16px;font-weight:700;font-size:18px}
+main{flex:1;padding:0 16px 90px}
+nav{position:fixed;bottom:0;width:100%;max-width:430px;display:flex;background:#15151c;border-top:1px solid #2a2a35}
+nav button{flex:1;padding:12px 4px;background:none;border:0;color:var(--mut);font-size:13px}
+nav button.on{color:var(--acc);font-weight:700}
+.card{background:var(--card);border-radius:14px;padding:14px;margin-bottom:12px}
+input,select{width:100%;padding:10px;border-radius:10px;border:1px solid #333;background:#111;color:var(--fg);margin:6px 0}
+.btn{width:100%;padding:12px;border:0;border-radius:12px;background:var(--acc);color:#fff;font-weight:700;font-size:15px}
+.btn:disabled{opacity:.4}
+.duel{display:grid;gap:10px}
+.duel.side{grid-template-columns:1fr 1fr}
+.reel{background:#000;border-radius:12px;aspect-ratio:9/16;overflow:hidden;position:relative;display:flex;align-items:center;justify-content:center;text-align:center;padding:8px}
+.reel iframe{width:100%;height:100%;border:0}
+.reel .t{font-weight:700}
+.reel .seen{position:absolute;top:6px;right:6px;font-size:11px;background:#0008;padding:2px 6px;border-radius:6px}
+.row{display:flex;gap:8px;margin-top:8px}
+.row .btn{flex:1}
+.ghost{background:#2a2a35}
+.tag{display:inline-block;padding:2px 8px;border-radius:8px;font-size:12px;margin-left:4px}
+.q{background:#2a2a35}.k{background:var(--gold);color:#000}.x{background:var(--bad)}.a{background:var(--ok);color:#000}
+.mut{color:var(--mut);font-size:13px}
+.toast{position:fixed;top:12px;left:50%;transform:translateX(-50%);background:#000c;padding:10px 14px;border-radius:10px;display:none;z-index:9}
+</style>
+</head>
+<body>
+<div class="phone">
+<header>⚔️ Война рилсами</header>
+<main id="view"></main>
+<nav>
+  <button data-tab="battle" class="on">Битва</button>
+  <button data-tab="post">Мой Reels</button>
+  <button data-tab="top">Рейтинг</button>
+</nav>
+</div>
+<div class="toast" id="toast"></div>
+<script>
+// Rules (data-driven): see README.md
+const RULES = { qualBattles: 10, maxQualLosses: 7, kingWinRate: 0.7, kingWeight: 3, eloK: 32, startRating: 1500 };
+const THEMES = ["Юмор", "Спорт", "Еда", "Танцы", "Путешествия"];
+
+const store = {
+  load() { try { return JSON.parse(localStorage.getItem("reelsWar")) } catch { return null } },
+  save(s) { try { localStorage.setItem("reelsWar", JSON.stringify(s)) } catch {} }
+};
+let state = store.load() || seed();
+
+function seed() {
+  const reels = [];
+  THEMES.forEach(t => { for (let i = 1; i <= 4; i++) reels.push(mkReel(`${t} #${i}`, t, "")); });
+  return { reels, theme: "Юмор" };
+}
+function mkReel(title, theme, url) {
+  return { id: Math.random().toString(36).slice(2), title, theme, url, w: 0, l: 0, rating: RULES.startRating, status: "qual" };
+}
+
+/** Pure status rule: qualification → eliminated / king / active. */
+function statusOf(r) {
+  const n = r.w + r.l;
+  if (r.l >= RULES.maxQualLosses && n <= RULES.qualBattles) return "out";
+  if (r.status === "out") return "out";
+  if (n < RULES.qualBattles) return "qual";
+  return r.w / n > RULES.kingWinRate ? "king" : "active";
+}
+
+/** Matchmaking: same theme, never eliminated; qualifiers and kings are weighted up. */
+function pickPair(theme) {
+  const pool = state.reels.filter(r => r.theme === theme && r.status !== "out");
+  if (pool.length < 2) return null;
+  const weight = r => r.status === "king" ? RULES.kingWeight : r.status === "qual" ? 2 : 1;
+  const pick = (list) => { let s = list.reduce((a, r) => a + weight(r), 0) * Math.random();
+    for (const r of list) { s -= weight(r); if (s <= 0) return r; } return list[list.length - 1]; };
+  const a = pick(pool);
+  const b = pick(pool.filter(r => r.id !== a.id));
+  return [a, b];
+}
+
+function vote(winner, loser) {
+  const exp = 1 / (1 + 10 ** ((loser.rating - winner.rating) / 400));
+  const d = Math.round(RULES.eloK * (1 - exp));
+  winner.rating += d; loser.rating -= d;
+  winner.w++; loser.l++;
+  for (const r of [winner, loser]) {
+    const before = r.status; r.status = statusOf(r);
+    if (before !== r.status && r.status === "out") toast(`«${r.title}» провалил проверку ❌`);
+    if (before !== r.status && r.status === "king") toast(`«${r.title}» — Царь горы 👑`);
+  }
+  store.save(state);
+}
+
+/** Shortcode identifies a reel regardless of URL form (reel/reels/p, query, trailing slash). */
+const reelCode = url => (url || "").match(/instagram\.com\/(?:reel|reels|p)\/([\w-]+)/)?.[1] || null;
+
+function embed(r) {
+  const m = r.url.match(/instagram\.com\/(?:reel|reels|p)\/([\w-]+)/);
+  if (m) return `<iframe src="https://www.instagram.com/reel/${m[1]}/embed" allowfullscreen loading="lazy"></iframe>`;
+  return `<div><div class="t">${esc(r.title)}</div><div class="mut">демо-рилс</div></div>`;
+}
+const esc = s => s.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const badge = s => ({ qual: '<span class="tag q">квалификация</span>', king: '<span class="tag k">👑 царь</span>', out: '<span class="tag x">выбыл</span>', active: '<span class="tag a">в игре</span>' }[s]);
+function toast(t) { const e = document.getElementById("toast"); e.textContent = t; e.style.display = "block"; clearTimeout(e._t); e._t = setTimeout(() => e.style.display = "none", 2500); }
+
+let pair = null, mode = "side", seen = {};
+const views = {
+  battle() {
+    if (!pair) { pair = pickPair(state.theme); seen = {}; }
+    const opts = THEMES.map(t => `<option ${t === state.theme ? "selected" : ""}>${t}</option>`).join("");
+    if (!pair) return `<div class="card"><select id="theme">${opts}</select><p>В этой теме мало рилсов для битвы.</p></div>`;
+    const [a, b] = pair;
+    const one = i => `<div class="reel" data-i="${i}">${embed(pair[i])}${seen[i] ? '<span class="seen">просмотрен ✓</span>' : ""}</div>`;
+    const body = mode === "side" ? `<div class="duel side">${one(0)}${one(1)}</div>`
+      : `<div class="duel">${one(mode === "a" ? 0 : 1)}</div><div class="row"><button class="btn ghost" id="sw">${mode === "a" ? "Смотреть рилс Б →" : "← Рилс А"}</button></div>`;
+    const ready = mode === "side" || (seen[0] && seen[1]);
+    return `<div class="card"><select id="theme">${opts}</select>
+      <div class="row"><button class="btn ${mode === "side" ? "" : "ghost"}" id="mSide">Оба сразу</button><button class="btn ${mode !== "side" ? "" : "ghost"}" id="mSeq">По очереди</button></div></div>
+      ${body}
+      <div class="row"><button class="btn" id="vA" ${ready ? "" : "disabled"}>👍 А: ${esc(a.title)}</button><button class="btn" id="vB" ${ready ? "" : "disabled"}>👍 Б: ${esc(b.title)}</button></div>
+      ${ready ? "" : '<p class="mut">Посмотрите оба рилса, чтобы проголосовать.</p>'}`;
+  },
+  post() {
+    const opts = THEMES.map(t => `<option>${t}</option>`).join("");
+    return `<div class="card"><b>Запостить свой Reels</b>
+      <input id="url" placeholder="https://www.instagram.com/reel/...">
+      <input id="ttl" placeholder="Название">
+      <select id="pt">${opts}</select>
+      <button class="btn" id="add">Отправить в битвы</button>
+      <p class="mut">Первые ${RULES.qualBattles} битв — квалификация. ${RULES.maxQualLosses}+ поражений → провал проверки. Больше ${RULES.kingWinRate * 100}% побед → Царь горы.</p>
+      <p class="mut">Можно залить любой Reels. Каждый рилс участвует только один раз — повторная ссылка отклоняется.</p></div>`;
+  },
+  top() {
+    const list = [...state.reels].sort((x, y) => y.rating - x.rating);
+    return list.map(r => `<div class="card"><b>${esc(r.title)}</b>${badge(r.status)}
+      <div class="mut">${r.theme} · рейтинг ${r.rating} · ${r.w}W/${r.l}L</div></div>`).join("")
+      + `<button class="btn ghost" id="reset">Сбросить демо-данные</button>`;
+  }
+};
+
+let tab = "battle";
+function render() {
+  document.getElementById("view").innerHTML = views[tab]();
+  const $ = id => document.getElementById(id);
+  $("theme")?.addEventListener("change", e => { state.theme = e.target.value; pair = null; store.save(state); render(); });
+  $("mSide")?.addEventListener("click", () => { mode = "side"; render(); });
+  $("mSeq")?.addEventListener("click", () => { mode = "a"; seen[0] = true; render(); });
+  $("sw")?.addEventListener("click", () => { mode = mode === "a" ? "b" : "a"; seen[mode === "a" ? 0 : 1] = true; render(); });
+  $("vA")?.addEventListener("click", () => { vote(pair[0], pair[1]); pair = null; mode = "side"; render(); });
+  $("vB")?.addEventListener("click", () => { vote(pair[1], pair[0]); pair = null; mode = "side"; render(); });
+  $("add")?.addEventListener("click", () => {
+    const url = $("url").value.trim();
+    const code = reelCode(url);
+    if (!code) return toast("Нужна ссылка на Instagram Reels");
+    const dup = state.reels.find(r => reelCode(r.url) === code);
+    if (dup) return toast(`Этот рилс уже постили: «${dup.title}» (${dup.theme})`);
+    state.reels.push(mkReel($("ttl").value.trim() || "Мой рилс", $("pt").value, url));
+    store.save(state); toast("Рилс отправлен на квалификацию"); tab = "battle"; state.theme = $("pt").value; pair = null; sync();
+  });
+  $("reset")?.addEventListener("click", () => { state = seed(); store.save(state); pair = null; render(); });
+}
+function sync() { document.querySelectorAll("nav button").forEach(b => b.classList.toggle("on", b.dataset.tab === tab)); render(); }
+document.querySelectorAll("nav button").forEach(b => b.onclick = () => { tab = b.dataset.tab; sync(); });
+render();
+</script>
+</body>
+</html>
