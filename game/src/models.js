@@ -11,6 +11,7 @@ export async function preloadModels(defs) {
 }
 function glbBody(id, height) {
   const src = GLB[id].clone(true); const wrap = new THREE.Group(); wrap.add(src);
+  src.rotation.y = -Math.PI / 2; // generated meshes face +X; game convention is +Z
   const box = new THREE.Box3().setFromObject(src), size = box.getSize(new THREE.Vector3()), c = box.getCenter(new THREE.Vector3());
   const k = height / size.y; src.scale.setScalar(k); src.position.set(-c.x * k, -box.min.y * k + 0.3, -c.z * k);
   src.traverse(o => { if (o.isMesh) { o.castShadow = o.receiveShadow = true; if (o.material) o.material.envMapIntensity = 1.2; } });

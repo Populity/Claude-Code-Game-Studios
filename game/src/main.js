@@ -448,8 +448,7 @@ $('btnNext').onclick = () => { $('end').classList.remove('active'); const won = 
 $('btnEndMenu').onclick = () => { $('end').classList.remove('active'); quit(); };
 const G_idx = () => G.idx;
 function clearRun() { for (const b of beamPool.values()) world.remove(b); beamPool.clear(); labels.innerHTML = ''; }
-function quit() { clearRun(); G = null; Sfx.music(false); await preloadModels(HEROES);
-setupMenuScene(); show('menu'); }
+function quit() { clearRun(); G = null; Sfx.music(false); setupMenuScene(); show('menu'); }
 setInterval(updateHud, 250);
 
 addEventListener('keydown', e => {
@@ -498,4 +497,4 @@ await preloadModels(HEROES);
 setupMenuScene(); show('menu');
 requestAnimationFrame(frame);
 // debug hook for automated QA
-window.__game = { get G() { return G; }, startLevel, spawnWave: () => spawnWave(), placeHero: (id, c) => placeHero(id, c), useUlt, show };
+window.__game = { cam, get G() { return G; }, startLevel, spawnWave: () => spawnWave(), placeHero: (id, c) => placeHero(id, c), useUlt, show };
