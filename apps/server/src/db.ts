@@ -29,6 +29,8 @@ export function openDb(file: string) {
     CREATE TABLE IF NOT EXISTS hidden (user_id TEXT NOT NULL, clip TEXT NOT NULL, PRIMARY KEY (user_id, clip));
     CREATE TABLE IF NOT EXISTS audit (seq INTEGER PRIMARY KEY, ts INTEGER NOT NULL, actor TEXT NOT NULL, action TEXT NOT NULL, data TEXT NOT NULL, prev TEXT NOT NULL, hash TEXT NOT NULL);
   `);
+  // Additive migrations for databases created by earlier versions.
+  for (const sql of ["ALTER TABLE clips ADD COLUMN poster TEXT"]) try { db.exec(sql); } catch { /* column exists */ }
   return db;
 }
 export type Db = ReturnType<typeof openDb>;

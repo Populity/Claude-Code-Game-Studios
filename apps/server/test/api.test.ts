@@ -4,7 +4,7 @@ import { createServer } from "node:http";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createApp } from "../src/app.ts";
+import { createApp, voteStreak } from "../src/app.ts";
 import { loadConfig } from "../src/config.ts";
 
 let now = 1_800_000_000_000;
@@ -88,6 +88,69 @@ test("own clips are never served to their owner; report hides and copyright repo
   assert.equal((await call("POST", "/api/reports", { clip: mine.id, reason: "rCopy" }, rep)).status, 201);
   const rank = (await call("GET", "/api/ranking?topic=cars")).body as { id: string }[];
   assert.ok(!rank.some(c => c.id === mine.id));
+});
+
+test("logout revokes only this session", async () => {
+  ipN = 40; const tok = await register("leaver");
+  assert.equal((await call("POST", "/api/auth/logout", undefined, tok)).status, 200);
+  assert.equal((await call("GET", "/api/me", undefined, tok)).status, 401);
+  assert.equal((await call("POST", "/api/auth/logout", undefined, tok)).status, 401);
+});
+
+test("voteStreak: consecutive days, gap breaks it, current run may end yesterday", () => {
+  assert.deepEqual(voteStreak([], 100), { streak: 0, bestStreak: 0 });
+  assert.deepEqual(voteStreak([100, 99, 98, 95, 94, 93, 92], 100), { streak: 3, bestStreak: 4 });
+  assert.deepEqual(voteStreak([99, 98], 100), { streak: 2, bestStreak: 2 }, "yesterday still counts");
+  assert.deepEqual(voteStreak([98, 97], 100), { streak: 0, bestStreak: 2 }, "two days ago breaks it");
+  assert.deepEqual(voteStreak([100, 100, 99], 100), { streak: 2, bestStreak: 2 }, "duplicates ignored");
+});
+
+test("/api/me stats: votes and day streak", async () => {
+  ipN = 41; const tok = await register("streaker");
+  for (let day = 0; day < 2; day++) {
+    const b = (await call("GET", "/api/battle?topic=food", undefined, tok)).body; now += 5000;
+    assert.equal((await call("POST", "/api/vote", { bid: b.bid, ticket: b.ticket, choice: b.b.id }, tok)).status, 200);
+    if (day === 0) now += 86_400_000;
+  }
+  const me = (await call("GET", "/api/me", undefined, tok)).body;
+  assert.deepEqual(me.stats, { clips: 0, wins: 0, kings: 0, votes: 2, streak: 2, bestStreak: 2 });
+});
+
+test("expired battle ticket is 410 ticket_expired", async () => {
+  ipN = 42; const tok = await register("sleeper");
+  const b = (await call("GET", "/api/battle?topic=travel", undefined, tok)).body; now += 16 * 60_000;
+  const r = await call("POST", "/api/vote", { bid: b.bid, ticket: b.ticket, choice: b.a.id }, tok);
+  assert.equal(r.status, 410); assert.equal(r.body.error, "ticket_expired");
+});
+
+test("posters: owner only, magic bytes checked, size capped, served as image", async () => {
+  ipN = 43; const tok = await register("poster1"), other = await register("poster2");
+  const mp4 = new Uint8Array(20_000); mp4.set([0, 0, 0, 0x20, ...new TextEncoder().encode("ftypisom"), 7, 7]);
+  const clip = (await call("POST", "/api/clips/upload?topic=art", mp4, tok, { "content-type": "video/mp4", "x-rights-confirmed": "1" })).body;
+  assert.equal(clip.poster, null);
+  const png = new Uint8Array(500); png.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  const path = `/api/clips/${clip.id}/poster`;
+  assert.equal((await call("PUT", path, png, other, { "content-type": "image/png" })).status, 403, "not the owner");
+  assert.equal((await call("PUT", path, new TextEncoder().encode("<svg onload=alert(1)>"), tok, { "content-type": "image/png" })).body.error, "bad_image");
+  assert.equal((await call("PUT", path, new Uint8Array(300 * 1024 + 1), tok, { "content-type": "image/jpeg" })).status, 413);
+  assert.equal((await call("PUT", path, png, tok, { "content-type": "image/jpeg" })).status, 200);
+  const mine = (await call("GET", "/api/my/clips", undefined, tok)).body as { id: string; poster: string }[];
+  assert.equal(mine.find(c => c.id === clip.id)!.poster, path);
+  const img = await fetch(base + path, { headers: { "x-forwarded-for": "198.51.100.43" } });
+  assert.equal(img.status, 200); assert.equal(img.headers.get("content-type"), "image/png", "type from bytes, not the header");
+});
+
+test("delete own clip: owner only, files gone, same video can be uploaded again", async () => {
+  ipN = 44; const tok = await register("deleter"), other = await register("nosy");
+  const mp4 = new Uint8Array(20_000); mp4.set([0, 0, 0, 0x20, ...new TextEncoder().encode("ftypisom"), 9, 9]);
+  const up = () => call("POST", "/api/clips/upload?topic=tech", mp4, tok, { "content-type": "video/mp4", "x-rights-confirmed": "1" });
+  const clip = (await up()).body;
+  assert.equal((await call("DELETE", `/api/clips/${clip.id}`, undefined, other)).status, 403);
+  assert.equal((await call("DELETE", `/api/clips/${clip.id}`, undefined, tok)).status, 200);
+  assert.equal((await call("DELETE", `/api/clips/${clip.id}`, undefined, tok)).status, 404);
+  assert.equal((await fetch(base + clip.video, { headers: { "x-forwarded-for": "198.51.100.44" } })).status, 404);
+  assert.equal((await up()).status, 201, "not a duplicate any more");
+  ipN = 2;
 });
 
 test("rate limit: a flood from one IP gets 429", async () => {

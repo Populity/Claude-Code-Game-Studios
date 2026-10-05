@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createHash, randomUUID } from "node:crypto";
-import { createReadStream, createWriteStream, renameSync, statSync, unlinkSync, existsSync } from "node:fs";
+import { createReadStream, createWriteStream, renameSync, statSync, unlinkSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import * as Sec from "../../../packages/security/src/index.ts";
 import { applyVote, newClip, pickPair, statusOf, instagramShortcode, type ClipRecord, type ClipStatus } from "../../../packages/core/src/index.ts";
@@ -10,10 +10,31 @@ import { isTopic, REPORT_REASONS, TOPIC_IDS } from "./topics.ts";
 import type { Config } from "./config.ts";
 
 interface ClipRow { id: string; owner: string; topic: string; caption: string; src: string; code: string | null; sha256: string | null; file: string | null; mime: string | null;
-  wins: number; losses: number; rating: number; status: ClipStatus; hist: string; removed: number; created_at: number; handle?: string }
+  wins: number; losses: number; rating: number; status: ClipStatus; hist: string; removed: number; created_at: number; poster: string | null; handle?: string }
 interface User { id: string; handle: string; lang: string; topics: string; created_at: number }
 const SESSION_TTL = 60 * 86_400_000;
 const MIME: Record<string, string> = { mp4: "video/mp4", mov: "video/quicktime", webm: "video/webm", "3gp": "video/3gpp" };
+const POSTER_MAX = 300 * 1024;
+const DAY = 86_400_000;
+
+/** Image type from magic bytes — the declared Content-Type is never trusted. */
+function sniffImage(b: Buffer): "jpg" | "png" | "webp" | null {
+  if (b.length >= 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return "jpg";
+  if (b.length >= 8 && b.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return "png";
+  if (b.length >= 12 && b.toString("latin1", 0, 4) === "RIFF" && b.toString("latin1", 8, 12) === "WEBP") return "webp";
+  return null;
+}
+const IMAGE_MIME = { jpg: "image/jpeg", png: "image/png", webp: "image/webp" } as const;
+
+/** Current and best run of consecutive UTC days with a vote; the current run may end yesterday. */
+export function voteStreak(days: number[], today: number): { streak: number; bestStreak: number } {
+  const d = [...new Set(days)].sort((a, b) => b - a);
+  let best = 0, run = 0;
+  for (let i = 0; i < d.length; i++) { run = i > 0 && d[i - 1] - d[i] === 1 ? run + 1 : 1; best = Math.max(best, run); }
+  let streak = d.length && today - d[0] <= 1 ? 1 : 0;
+  while (streak && streak < d.length && d[streak - 1] - d[streak] === 1) streak++;
+  return { streak, bestStreak: best };
+}
 
 export function createApp(cfg: Config, clock: () => number = Date.now) {
   const db: Db = openDb(join(cfg.dataDir, "vsv.db"));
@@ -31,7 +52,7 @@ export function createApp(cfg: Config, clock: () => number = Date.now) {
   if (cfg.demoSeed && !db.prepare("SELECT 1 FROM users LIMIT 1").get()) seedDemo(db, clock());
 
   const toApi = (c: ClipRow) => ({ id: c.id, handle: c.handle ?? "", topic: c.topic, caption: c.caption, src: c.src, code: c.code,
-    video: c.file ? `/api/clips/${c.id}/video` : null, wins: c.wins, losses: c.losses, rating: c.rating, status: c.status, hist: JSON.parse(c.hist) as number[], ts: c.created_at });
+    video: c.file ? `/api/clips/${c.id}/video` : null, poster: c.poster ? `/api/clips/${c.id}/poster` : null, wins: c.wins, losses: c.losses, rating: c.rating, status: c.status, hist: JSON.parse(c.hist) as number[], ts: c.created_at });
   const getClip = (id: string) => db.prepare("SELECT c.*, u.handle FROM clips c JOIN users u ON u.id = c.owner WHERE c.id = ?").get(id) as ClipRow | undefined;
 
   async function auth(req: IncomingMessage): Promise<{ user: User; device: string }> {
@@ -68,7 +89,20 @@ export function createApp(cfg: Config, clock: () => number = Date.now) {
       send(res, 201, { token, user: { id, handle, lang, topics } });
     }],
 
-    ["GET", /^\/api\/me$/, async (req, res) => { const { user } = await auth(req); send(res, 200, { id: user.id, handle: user.handle, lang: user.lang, topics: JSON.parse(user.topics) }); }],
+    ["POST", /^\/api\/auth\/logout$/, async (req, res) => {
+      const { user } = await auth(req);
+      db.prepare("DELETE FROM sessions WHERE hash = ?").run(await Sec.hashSession((req.headers.authorization ?? "").slice(7)));
+      audit(user.id, "logout", {}); send(res, 200, { ok: true });
+    }],
+
+    ["GET", /^\/api\/me$/, async (req, res) => {
+      const { user } = await auth(req);
+      const c = db.prepare("SELECT COUNT(*) clips, COALESCE(SUM(wins), 0) wins, COALESCE(SUM(status = 'king'), 0) kings FROM clips WHERE owner = ? AND removed = 0").get(user.id) as { clips: number; wins: number; kings: number };
+      const days = (db.prepare("SELECT DISTINCT CAST(created_at / 86400000 AS INTEGER) AS d FROM votes WHERE voter = ?").all(user.id) as { d: number }[]).map(r => Number(r.d));
+      const stats = { clips: Number(c.clips), wins: Number(c.wins), kings: Number(c.kings), votes: Number((db.prepare("SELECT COUNT(*) n FROM votes WHERE voter = ?").get(user.id) as { n: number }).n),
+        ...voteStreak(days, Math.floor(clock() / DAY)) };
+      send(res, 200, { id: user.id, handle: user.handle, lang: user.lang, topics: JSON.parse(user.topics), stats });
+    }],
     ["PUT", /^\/api\/me$/, async (req, res) => {
       const { user } = await auth(req); const b = await readJson<{ lang?: string; topics?: unknown }>(req);
       const topics = Array.isArray(b.topics) ? [...new Set(b.topics.filter(isTopic))] : JSON.parse(user.topics);
@@ -78,7 +112,7 @@ export function createApp(cfg: Config, clock: () => number = Date.now) {
     }],
     ["DELETE", /^\/api\/me$/, async (req, res) => {
       const { user } = await auth(req);
-      for (const c of db.prepare("SELECT file FROM clips WHERE owner = ? AND file IS NOT NULL").all(user.id) as { file: string }[]) try { unlinkSync(join(cfg.dataDir, "videos", c.file)); } catch {}
+      for (const c of db.prepare("SELECT file, poster FROM clips WHERE owner = ?").all(user.id) as { file: string | null; poster: string | null }[]) removeFiles(c);
       db.prepare("DELETE FROM users WHERE id = ?").run(user.id); audit(user.id, "delete_account", {});
       send(res, 200, { ok: true });
     }],
@@ -111,7 +145,11 @@ export function createApp(cfg: Config, clock: () => number = Date.now) {
       const b = await readJson<{ bid?: string; ticket?: string; choice?: string }>(req);
       if (!Sec.isSafeId(b.bid, 64) || !Sec.isSafeId(b.choice, 64) || typeof b.ticket !== "string") throw new HttpError(400, "bad_vote");
       const r = await Sec.redeemTicket({ token: b.ticket, bid: b.bid, choice: b.choice, viewer: user.id, device }, ring, nonces, clock);
-      if (!r.ok) { audit(user.id, "vote_rejected", { reason: r.reason, ip }); throw new HttpError(r.reason === "too_fast" ? 425 : 403, r.reason); }
+      if (!r.ok) {
+        audit(user.id, "vote_rejected", { reason: r.reason, ip });
+        if (r.reason === "expired") throw new HttpError(410, "ticket_expired");
+        throw new HttpError(r.reason === "too_fast" ? 425 : 403, r.reason);
+      }
       const t = r.ticket, loserId = b.choice === t.a ? t.b : t.a, now = clock();
       const w = getClip(b.choice), l = getClip(loserId);
       if (!w || !l || w.removed || l.removed || w.status === "out" || l.status === "out") throw new HttpError(409, "battle_closed");
@@ -208,6 +246,38 @@ export function createApp(cfg: Config, clock: () => number = Date.now) {
       res.writeHead(200, { ...headers, "Content-Length": total }); createReadStream(path).pipe(res);
     }],
 
+    ["DELETE", /^\/api\/clips\/([\w-]{1,64})$/, async (req, res, m) => {
+      const { user } = await auth(req);
+      const c = getClip(m[1]); if (!c) throw new HttpError(404, "not_found");
+      if (c.owner !== user.id) throw new HttpError(403, "not_owner");
+      db.prepare("DELETE FROM clips WHERE id = ?").run(c.id); removeFiles(c);
+      audit(user.id, "clip_delete", { id: c.id }); send(res, 200, { ok: true });
+    }],
+
+    ["PUT", /^\/api\/clips\/([\w-]{1,64})\/poster$/, async (req, res, m) => {
+      const { user } = await auth(req); await limit(`poster:${user.id}`, Sec.UPLOAD_RULES);
+      const c = getClip(m[1]); if (!c || c.removed) throw new HttpError(404, "not_found");
+      if (c.owner !== user.id) throw new HttpError(403, "not_owner");
+      if (Number(req.headers["content-length"]) > POSTER_MAX) throw new HttpError(413, "too_large");
+      const parts: Buffer[] = []; let size = 0;
+      for await (const chunk of req) { size += (chunk as Buffer).length; if (size > POSTER_MAX) throw new HttpError(413, "too_large"); parts.push(chunk as Buffer); }
+      const body = Buffer.concat(parts), kind = sniffImage(body);
+      if (!kind) throw new HttpError(400, "bad_image");
+      const file = `${c.id}.poster.${kind}`;
+      if (c.poster && c.poster !== file) removeFiles({ file: null, poster: c.poster });
+      writeFileSync(join(cfg.dataDir, "videos", file), body, { mode: 0o600 });
+      db.prepare("UPDATE clips SET poster = ? WHERE id = ?").run(file, c.id);
+      send(res, 200, { poster: `/api/clips/${c.id}/poster` });
+    }],
+
+    ["GET", /^\/api\/clips\/([\w-]{1,64})\/poster$/, async (_q, res, m) => {
+      const c = getClip(m[1]); if (!c || !c.poster || c.removed) throw new HttpError(404, "not_found");
+      const kind = c.poster.slice(c.poster.lastIndexOf(".") + 1) as keyof typeof IMAGE_MIME;
+      const body = readFileSync(join(cfg.dataDir, "videos", c.poster));
+      res.writeHead(200, { "Content-Type": IMAGE_MIME[kind], "Content-Length": body.length, "X-Content-Type-Options": "nosniff", "Cache-Control": "public, max-age=3600", "Content-Disposition": "inline" });
+      res.end(body);
+    }],
+
     ["GET", /^\/api\/ranking$/, async (req, res) => {
       const topic = new URL(req.url!, "http://x").searchParams.get("topic");
       const rows = (isTopic(topic) ? db.prepare("SELECT c.*, u.handle FROM clips c JOIN users u ON u.id = c.owner WHERE c.status != 'out' AND c.removed = 0 AND c.topic = ? ORDER BY c.rating DESC LIMIT 50").all(topic)
@@ -253,6 +323,10 @@ export function createApp(cfg: Config, clock: () => number = Date.now) {
       send(res, 200, { url: `${cfg.publicUrl}/deletion?code=${code}`, confirmation_code: code });
     }],
   ];
+
+  function removeFiles(c: { file: string | null; poster: string | null }) {
+    for (const f of [c.file, c.poster]) if (f) try { unlinkSync(join(cfg.dataDir, "videos", f)); } catch {}
+  }
 
   async function handle(req: IncomingMessage, res: ServerResponse) {
     const ip = clientIp(req, cfg.trustProxy);
