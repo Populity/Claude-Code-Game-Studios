@@ -21,6 +21,8 @@ function noise(dur, vol = 0.3, lp = 1200) {
 let lastPop = 0;
 export const Sfx = {
   unlock() { ac()?.resume(); },
+  /** Suspend/resume all sound (tab hidden, ads). Required by Yandex Games moderation. */
+  mute(on) { if (!ctx) return; on ? ctx.suspend() : ctx.resume(); },
   click() { tone(880, 0.05, 'square', 0.1); },
   pop() { const n = performance.now(); if (n - lastPop < 40) return; lastPop = n; tone(500 + Math.random() * 400, 0.08, 'triangle', 0.15, 600); },
   snipe() { noise(0.15, 0.25, 4000); tone(1400, 0.1, 'sawtooth', 0.08, -1000); },

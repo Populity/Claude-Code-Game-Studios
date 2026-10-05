@@ -11,6 +11,7 @@ import { ALLIES, GRID, HEROES, ENEMIES, LEVELS, difficulty, ULT, COMBO, EARLY_WA
 import { buildHero, setHeroLevel, animateHero, buildEnemy, animateEnemy, preloadModels, addEyes } from './models.js';
 import { Sfx } from './audio.js';
 import { buildWorld, cellToWorld } from './world.js';
+import { initPlatform, gameReady, loadCloud, saveCloud, showInterstitial, showRewarded, hasAds, PLATFORM } from './platform.js';
 import { LANGS, initLang, setLang, getLang, t, heroName, heroDesc, levelName, allyName, allyDesc, diffName, applyStatic } from './i18n.js';
 
 const $ = id => document.getElementById(id);
@@ -19,7 +20,7 @@ const T = GRID.tile;
 // ---------- Save ----------
 const save = (() => { try { return JSON.parse(localStorage.getItem('reelswars') || '{}'); } catch { return {}; } })();
 save.stars ||= {}; save.diff ||= 4;
-const persist = () => { try { localStorage.setItem('reelswars', JSON.stringify(save)); } catch {} };
+const persist = () => { try { localStorage.setItem('reelswars', JSON.stringify(save)); } catch {} saveCloud(save); };
 
 // ---------- Renderer ----------
 // Quality: ULTRA renders at >=1080p internal resolution with GTAO + SMAA; HIGH skips AO.
@@ -527,7 +528,7 @@ $('btnResume').onclick = () => { G.paused = false; $('pause').classList.remove('
 $('btnRestart').onclick = () => { $('pause').classList.remove('active'); clearRun(); startLevel(G_idx()); };
 $('btnQuit').onclick = () => { $('pause').classList.remove('active'); quit(); };
 $('btnUlt').onclick = useUlt;
-$('btnNext').onclick = () => { $('end').classList.remove('active'); const won = G.lives > 0; const i = won ? Math.min(G.idx + 1, LEVELS.length - 1) : G.idx; const next = won && G.idx === LEVELS.length - 1 ? G.idx : i; clearRun(); startLevel(next); };
+$('btnNext').onclick = async () => { $('end').classList.remove('active'); await showInterstitial(() => Sfx.mute(true), () => Sfx.mute(false)); const won = G.lives > 0; const i = won ? Math.min(G.idx + 1, LEVELS.length - 1) : G.idx; const next = won && G.idx === LEVELS.length - 1 ? G.idx : i; clearRun(); startLevel(next); };
 $('btnEndMenu').onclick = () => { $('end').classList.remove('active'); quit(); };
 const G_idx = () => G.idx;
 function clearRun() { for (const b of beamPool.values()) world.remove(b); beamPool.clear(); labels.innerHTML = ''; }
@@ -577,6 +578,13 @@ function menuScene(t) {
 }
 document.addEventListener('click', () => Sfx.unlock(), { once: true });
 
+await initPlatform();
+Object.assign(save, await loadCloud({ ...save }));
+document.body.dataset.platform = PLATFORM;
+document.addEventListener('visibilitychange', () => { Sfx.mute(document.hidden); if (document.hidden && G && !G.over && !G.paused) $('btnPause').click(); });
+// Rewarded ad between waves: +150 likes (only where an ad SDK is present).
+$('btnReward').hidden = !hasAds();
+$('btnReward').onclick = async () => { if (!G || !G.between) return; const wasPaused = G.paused; G.paused = true; const ok = await showRewarded(() => Sfx.mute(true), () => Sfx.mute(false)); G.paused = wasPaused; if (ok) { G.gold += 150; floatText(G.base.position.clone(), '+150 👍', '#ffd23f', 24); updateHud(); } };
 initLang(save.lang); applyStatic(); qLabel();
 const langBtn = $('btnLang');
 const langLabel = () => langBtn.textContent = t('menu.lang') + ': ' + LANGS[getLang()];
@@ -585,5 +593,6 @@ langLabel();
 await preloadModels(HEROES);
 setupMenuScene(); show('menu');
 requestAnimationFrame(frame);
+gameReady();
 // debug hook for automated QA
 window.__game = { cam, get G() { return G; }, startLevel, spawnWave: () => spawnWave(), placeHero: (id, c) => placeHero(id, c), callAlly: (id, c) => callAlly(id, cellToWorld(...c)), useUlt, show };

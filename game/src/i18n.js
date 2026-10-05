@@ -8,7 +8,7 @@ export const LANGS = { en: 'English', ru: 'Русский', es: 'Español', pt: 
 
 const STR = {
   en: {
-    'menu.play': '▶ PLAY', 'menu.heroes': '🧬 HEROES', 'menu.howto': '❔ HOW TO PLAY', 'menu.lang': '🌐 LANGUAGE',
+    'hud.reward': '📺 +150 👍 (ad)', 'menu.play': '▶ PLAY', 'menu.heroes': '🧬 HEROES', 'menu.howto': '❔ HOW TO PLAY', 'menu.lang': '🌐 LANGUAGE',
     'menu.footer': 'v0.2 · early build · 3 levels', 'menu.gfx': 'GRAPHICS: {q}', 'gfx.ultra': 'ULTRA 1080p+', 'gfx.high': 'HIGH',
     'levels.title': 'SELECT LEVEL', 'levels.diff': 'DIFFICULTY:', 'back': '← BACK', 'heroes.title': 'REELS HEROES', 'howto.title': 'HOW TO PLAY',
     'howto.list': '<li>Soldiers, tanks and mages march along the roads to your base. Every leak costs you followers ❤.</li><li>Pick a hero at the bottom and click the grass to place them. You pay in likes 👍.</li><li>Click a hero to upgrade (up to level 3) or sell.</li><li>Kill in streaks — the COMBO multiplies rewards.</li><li>The <b>VIRAL MOMENT</b> bar fills with kills — press <b>Q</b> to wipe the screen.</li><li>Sky allies (right side, <b>Z X C</b>): call them onto any point, each has a cooldown.</li><li>Space — next wave early (bonus likes). <b>F</b> — speed. Right mouse / wheel — camera.</li><li>Mages shield their allies, tanks shrug off part of the damage. Hardcore 10/10 is for legends.</li>',
@@ -23,7 +23,7 @@ const STR = {
     'diff.info': 'Enemy HP x{hp} · speed x{sp} · reward x{rw}', 'diff.lives': ' · lives x0.5', 'loading': 'Loading…',
   },
   ru: {
-    'menu.play': '▶ ИГРАТЬ', 'menu.heroes': '🧬 ГЕРОИ', 'menu.howto': '❔ КАК ИГРАТЬ', 'menu.lang': '🌐 ЯЗЫК',
+    'hud.reward': '📺 +150 👍 за рекламу', 'menu.play': '▶ ИГРАТЬ', 'menu.heroes': '🧬 ГЕРОИ', 'menu.howto': '❔ КАК ИГРАТЬ', 'menu.lang': '🌐 ЯЗЫК',
     'menu.footer': 'v0.2 · ранняя сборка · 3 уровня', 'menu.gfx': 'ГРАФИКА: {q}', 'gfx.ultra': 'УЛЬТРА 1080p+', 'gfx.high': 'ВЫСОКАЯ',
     'levels.title': 'ВЫБОР УРОВНЯ', 'levels.diff': 'СЛОЖНОСТЬ:', 'back': '← НАЗАД', 'heroes.title': 'ГЕРОИ РИЛСОВ', 'howto.title': 'КАК ИГРАТЬ',
     'howto.list': '<li>Солдаты, танки и маги идут по дорогам к твоей базе. Каждый прорыв — минус подписчики ❤.</li><li>Выбери героя внизу и кликни по траве — он встанет на позицию. Платишь лайками 👍.</li><li>Кликни по герою — прокачка до 3 уровня или продажа.</li><li>Убивай сериями — КОМБО множит награду.</li><li>Шкала <b>ВИРУСНЫЙ МОМЕНТ</b> заполняется от убийств — жми <b>Q</b> и сноси всех.</li><li>Помощники с неба (справа, <b>Z X C</b>): сбрасываешь в любую точку, у каждого перезарядка.</li><li>Пробел — следующая волна раньше (бонус лайков). <b>F</b> — ускорение. ПКМ/колесо — камера.</li><li>Маги ставят щиты союзникам, танки игнорируют часть урона. Хардкор 10/10 — для легенд.</li>',
@@ -38,7 +38,7 @@ const STR = {
     'diff.info': 'HP врагов x{hp} · скорость x{sp} · награда x{rw}', 'diff.lives': ' · жизни x0.5', 'loading': 'Загрузка…',
   },
   es: {
-    'menu.play': '▶ JUGAR', 'menu.heroes': '🧬 HÉROES', 'menu.howto': '❔ CÓMO JUGAR', 'menu.lang': '🌐 IDIOMA',
+    'hud.reward': '📺 +150 👍 (anuncio)', 'menu.play': '▶ JUGAR', 'menu.heroes': '🧬 HÉROES', 'menu.howto': '❔ CÓMO JUGAR', 'menu.lang': '🌐 IDIOMA',
     'menu.footer': 'v0.2 · versión temprana · 3 niveles', 'menu.gfx': 'GRÁFICOS: {q}', 'gfx.ultra': 'ULTRA 1080p+', 'gfx.high': 'ALTO',
     'levels.title': 'ELIGE NIVEL', 'levels.diff': 'DIFICULTAD:', 'back': '← ATRÁS', 'heroes.title': 'HÉROES DE REELS', 'howto.title': 'CÓMO JUGAR',
     'howto.list': '<li>Soldados, tanques y magos marchan por las carreteras hacia tu base. Cada fuga te cuesta seguidores ❤.</li><li>Elige un héroe abajo y haz clic en el césped para colocarlo. Pagas con likes 👍.</li><li>Haz clic en un héroe para mejorarlo (hasta nivel 3) o venderlo.</li><li>Mata en racha: el COMBO multiplica la recompensa.</li><li>La barra <b>MOMENTO VIRAL</b> se llena con las bajas: pulsa <b>Q</b> y arrasa con todo.</li><li>Aliados del cielo (a la derecha, <b>Z X C</b>): lánzalos sobre cualquier punto; cada uno tiene recarga.</li><li>Espacio: siguiente oleada antes (likes extra). <b>F</b>: velocidad. Botón derecho / rueda: cámara.</li><li>Los magos protegen a sus aliados y los tanques ignoran parte del daño. Hardcore 10/10 es para leyendas.</li>',
@@ -53,7 +53,7 @@ const STR = {
     'diff.info': 'Vida enemiga x{hp} · velocidad x{sp} · recompensa x{rw}', 'diff.lives': ' · vidas x0.5', 'loading': 'Cargando…',
   },
   pt: {
-    'menu.play': '▶ JOGAR', 'menu.heroes': '🧬 HERÓIS', 'menu.howto': '❔ COMO JOGAR', 'menu.lang': '🌐 IDIOMA',
+    'hud.reward': '📺 +150 👍 (anúncio)', 'menu.play': '▶ JOGAR', 'menu.heroes': '🧬 HERÓIS', 'menu.howto': '❔ COMO JOGAR', 'menu.lang': '🌐 IDIOMA',
     'menu.footer': 'v0.2 · versão inicial · 3 fases', 'menu.gfx': 'GRÁFICOS: {q}', 'gfx.ultra': 'ULTRA 1080p+', 'gfx.high': 'ALTO',
     'levels.title': 'ESCOLHA A FASE', 'levels.diff': 'DIFICULDADE:', 'back': '← VOLTAR', 'heroes.title': 'HERÓIS DOS REELS', 'howto.title': 'COMO JOGAR',
     'howto.list': '<li>Soldados, tanques e magos marcham pelas estradas até a sua base. Cada vazamento custa seguidores ❤.</li><li>Escolha um herói embaixo e clique na grama para posicioná-lo. Você paga em likes 👍.</li><li>Clique num herói para evoluir (até o nível 3) ou vender.</li><li>Mate em sequência: o COMBO multiplica a recompensa.</li><li>A barra <b>MOMENTO VIRAL</b> enche com abates: aperte <b>Q</b> e limpe a tela.</li><li>Aliados do céu (à direita, <b>Z X C</b>): chame em qualquer ponto; cada um tem recarga.</li><li>Espaço: próxima onda antes (likes bônus). <b>F</b>: velocidade. Botão direito / roda: câmera.</li><li>Magos protegem aliados com escudos, tanques ignoram parte do dano. Hardcore 10/10 é para lendas.</li>',
