@@ -1,0 +1,10 @@
+{
+  "name": "@vsv/security",
+  "version": "0.1.0",
+  "private": true,
+  "description": "VSV security: signed battle tickets, replay protection, rate limiting, vote-fraud scoring, collusion detection, upload validation, OAuth PKCE/state, Meta signed_request, tamper-evident audit log, input sanitization. WebCrypto only — runs on Node, Deno (Supabase Edge) and React Native.",
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": { "test": "node --test test/*.test.ts" },
+  "engines": { "node": ">=22.18" }
+}

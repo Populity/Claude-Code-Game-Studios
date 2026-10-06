@@ -1,0 +1,58 @@
+{
+  "expo": {
+    "name": "VSV",
+    "slug": "vsv",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "app.vsv.mobile",
+      "infoPlist": {
+        "NSCameraUsageDescription": "VSV uses the camera to record clips for battles.",
+        "NSMicrophoneUsageDescription": "VSV records sound with your clips.",
+        "NSPhotoLibraryUsageDescription": "VSV lets you pick a video to send to a battle."
+      },
+      "buildNumber": "1"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#000000",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "package": "app.vsv.mobile",
+      "versionCode": 1
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "backgroundColor": "#000000",
+    "plugins": [
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#000000",
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 200
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "VSV uses the camera to record clips for battles.",
+          "microphonePermission": "VSV records sound with your clips.",
+          "photosPermission": "VSV lets you pick a video to send to a battle."
+        }
+      ],
+      "expo-video"
+    ],
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "scheme": "vsv"
+  }
+}

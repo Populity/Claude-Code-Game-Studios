@@ -1,0 +1,42 @@
+{
+	servers {
+		# Slowloris guard: headers must arrive quickly; bodies get long timeouts for 200 MB uploads.
+		timeouts {
+			read_header 15s
+			idle 2m
+		}
+	}
+}
+
+# Automatic HTTPS when SITE_ADDRESS is a domain (e.g. vsv.example.com); plain HTTP on :80 otherwise.
+# Browser security headers (CSP, frame-ancestors, Permissions-Policy, ...) are set by nginx (deploy/nginx.conf)
+# for the web app and by the API itself for /api — one owner each, so they are never duplicated here.
+{$SITE_ADDRESS::80} {
+	encode zstd gzip
+	header -Server
+	header -Via
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+	# Only the video upload may carry a large body; everything else is small JSON or an image.
+	@upload path /api/clips/upload
+	@small not path /api/clips/upload
+	request_body @upload {
+		max_size 210MB
+	}
+	request_body @small {
+		max_size 1MB
+	}
+	handle /api/* {
+		reverse_proxy api:8080
+	}
+	handle {
+		reverse_proxy web:8080
+	}
+}
+
+# Any other Host on port 80 (raw IP, scanners, someone else's domain pointed here): close the connection
+# instead of redirecting to https://<that host>. Caddy still puts its HTTP->HTTPS redirect for SITE_ADDRESS
+# and ACME challenges ahead of this catch-all. In plain-HTTP mode (SITE_ADDRESS=:80) bootstrap.sh sets
+# REJECT_ADDRESS to an unused name, since the site itself is then the catch-all.
+{$REJECT_ADDRESS:http://} {
+	abort
+}

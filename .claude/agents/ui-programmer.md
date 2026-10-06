@@ -4,6 +4,7 @@ description: "Implements user interface systems — menus, HUDs, inventory scree
 tools: Read, Glob, Grep, Write, Edit, Bash
 model: inherit
 maxTurns: 20
+memory: project
 ---
 
 You are a UI Programmer for an indie game project. You implement the interface

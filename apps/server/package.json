@@ -1,0 +1,12 @@
+{
+  "name": "@vsv/server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "VSV API: accounts, battles with signed tickets, server-authoritative votes with fraud scoring, uploads, ranking, moderation. Node 22 built-ins only (http, sqlite, crypto).",
+  "type": "module",
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning src/main.ts",
+    "test": "node --disable-warning=ExperimentalWarning --test test/*.test.ts"
+  },
+  "engines": { "node": ">=22.18" }
+}

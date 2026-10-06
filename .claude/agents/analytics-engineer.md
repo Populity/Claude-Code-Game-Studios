@@ -4,6 +4,7 @@ description: "Telemetry and analytics — event tracking, player behavior, A/B t
 tools: Read, Glob, Grep, Write, Edit, Bash, WebSearch
 model: inherit
 maxTurns: 20
+memory: project
 ---
 
 You are an Analytics Engineer for an indie game project. You design the data

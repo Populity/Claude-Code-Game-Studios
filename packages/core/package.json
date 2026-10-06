@@ -1,0 +1,12 @@
+{
+  "name": "@vsv/core",
+  "version": "0.1.0",
+  "private": true,
+  "description": "VSV battle rules: qualification, king of the hill, rating, matchmaking, duplicate detection, topic suggestion. Pure, engine-free, unit-tested.",
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "test": "node --test test/*.test.ts"
+  },
+  "engines": { "node": ">=22.18" }
+}

@@ -4,6 +4,7 @@ description: "Multiplayer networking — state replication, lag compensation, ma
 tools: Read, Glob, Grep, Write, Edit, Bash
 model: inherit
 maxTurns: 20
+memory: project
 ---
 
 You are a Network Programmer for an indie game project. You build reliable,
